@@ -4,6 +4,18 @@
  * 不依赖外部包，手动实现路由
  */
 
+// 工具函数
+const uid = (prefix) => `${prefix}_${Math.random().toString(36).substr(2, 9)}`;
+
+const hashPassword = (password) => {
+  // 简单的密码哈希（生产环境应该使用更安全的方法）
+  return btoa(password);
+};
+
+const verifyPassword = (password, hash) => {
+  return btoa(password) === hash;
+};
+
 // 数据库初始化数据
 const INITIAL_DATA = {
   users: [{
@@ -22,18 +34,6 @@ const INITIAL_DATA = {
   messages: [],
   problems: [],
   practices: []
-};
-
-// 工具函数
-const uid = (prefix) => `${prefix}_${Math.random().toString(36).substr(2, 9)}`;
-
-const hashPassword = (password) => {
-  // 简单的密码哈希（生产环境应该使用更安全的方法）
-  return btoa(password);
-};
-
-const verifyPassword = (password, hash) => {
-  return btoa(password) === hash;
 };
 
 // 从 KV 获取数据
