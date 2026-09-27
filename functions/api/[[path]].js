@@ -13,7 +13,7 @@ const INITIAL_DATA = {
     role: 'admin',
     bio: '本站管理员，负责文章、帖子与投稿审核。',
     createdAt: Date.now(),
-    password: 'admin123' // 实际使用时应该加密
+    password: hashPassword('admin123') // 密码需要哈希存储
   }],
   articles: [],
   posts: [],
