@@ -4,6 +4,7 @@ compatibility_date = "2024-01-01"
 [env.production]
 vars = { ENVIRONMENT = "production" }
 
+# KV 命名空间绑定
 [[kv_namespaces]]
 binding = "DATA"
-id = "your-kv-namespace-id"
+id = "cb14318386c34f3b9233eac196d7f4d7"
