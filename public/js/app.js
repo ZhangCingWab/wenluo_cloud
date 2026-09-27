@@ -1,7 +1,7 @@
 /* ============ 文洛 · 前端 SPA ============ */
 const $app = document.getElementById('app');
 const $sidebar = document.getElementById('sidebar');
-const state = { me: null };
+const state = { me: null, token: localStorage.getItem('token') || null };
 
 /* ---------- 类别常量 ---------- */
 const ART_CATS = ['散文', '小说', '科幻', '诗歌', '记叙文', '议论文', '随笔', '其他'];
@@ -10,6 +10,9 @@ const POST_CATS = ['题目讲解', '方法分享', '经验交流', '灌水闲聊
 /* ---------- 基础工具 ---------- */
 async function api(path, { method = 'GET', body, form } = {}) {
   const opts = { method, headers: {} };
+  if (state.token) {
+    opts.headers['Authorization'] = `Bearer ${state.token}`;
+  }
   if (form) opts.body = form;
   else if (body !== undefined) {
     opts.headers['Content-Type'] = 'application/json';
@@ -160,6 +163,8 @@ function toggleUserMenu() {
   div.querySelector('#logoutBtn').onclick = async () => {
     try { await api('/api/logout', { method: 'POST' }); } catch (e) {}
     state.me = null;
+    state.token = null;
+    localStorage.removeItem('token');
     closeMenu();
     renderSidebar();
     toast('已退出登录');
@@ -855,14 +860,20 @@ function viewLogin() {
       e.target.disabled = true;
       try {
         const d = await api('/api/login', { method: 'POST', body: { username: lUser.value, password: lPass.value } });
-        state.me = d.user; toast('欢迎回来，' + d.user.nickname); go('#/home'); route();
+        state.me = d.user;
+        state.token = d.token;
+        localStorage.setItem('token', d.token);
+        toast('欢迎回来，' + d.user.nickname); go('#/home'); route();
       } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
     };
     else document.getElementById('rBtn').onclick = async (e) => {
       e.target.disabled = true;
       try {
         const d = await api('/api/register', { method: 'POST', body: { username: rUser.value, nickname: rNick.value, password: rPass.value } });
-        state.me = d.user; toast('注册成功，欢迎加入文洛！'); go('#/home'); route();
+        state.me = d.user;
+        state.token = d.token;
+        localStorage.setItem('token', d.token);
+        toast('注册成功，欢迎加入文洛！'); go('#/home'); route();
       } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
     };
   };

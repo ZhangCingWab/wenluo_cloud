@@ -70,13 +70,28 @@ async function handleRequest(request, env) {
 
   // 健康检查
   if (path === '/api/health' && method === 'GET') {
-    return jsonResponse({ status: 'ok' });
+    try {
+      const data = await getData(env);
+      return jsonResponse({ 
+        status: 'ok', 
+        hasData: !!data,
+        userCount: data.users.length,
+        users: data.users.map(u => ({ username: u.username, nickname: u.nickname }))
+      });
+    } catch (error) {
+      return jsonResponse({ status: 'error', error: error.message }, 500);
+    }
   }
 
   // 获取当前用户
   if (path === '/api/me' && method === 'GET') {
     const user = await requireAuth(request, env);
     return jsonResponse({ user });
+  }
+
+  // 登出
+  if (path === '/api/logout' && method === 'POST') {
+    return jsonResponse({ ok: true });
   }
 
   // 登录
