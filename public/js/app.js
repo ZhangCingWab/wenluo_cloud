@@ -1,0 +1,1299 @@
+/* ============ 文洛 · 前端 SPA ============ */
+const $app = document.getElementById('app');
+const $sidebar = document.getElementById('sidebar');
+const state = { me: null };
+
+/* ---------- 类别常量 ---------- */
+const ART_CATS = ['散文', '小说', '科幻', '诗歌', '记叙文', '议论文', '随笔', '其他'];
+const POST_CATS = ['题目讲解', '方法分享', '经验交流', '灌水闲聊', '其他'];
+
+/* ---------- 基础工具 ---------- */
+async function api(path, { method = 'GET', body, form } = {}) {
+  const opts = { method, headers: {} };
+  if (form) opts.body = form;
+  else if (body !== undefined) {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  }
+  const res = await fetch(path, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || '请求失败 (' + res.status + ')');
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+function toast(msg, type = 'ok') {
+  const d = document.createElement('div');
+  d.className = 'toast ' + type;
+  d.textContent = msg;
+  document.getElementById('toast-wrap').appendChild(d);
+  setTimeout(() => d.remove(), 2600);
+}
+
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/* 轻量 Markdown 渲染 */
+function md(src) {
+  let s = esc(src);
+  const blocks = [];
+  s = s.replace(/```([\s\S]*?)```/g, (_, code) => {
+    blocks.push('<pre><code>' + code.replace(/^\n|\n$/g, '') + '</code></pre>');
+    return '\u0000B' + (blocks.length - 1) + '\u0000';
+  });
+  s = s.replace(/^### (.+)$/gm, '<h3>$1</h3>')
+       .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+       .replace(/^# (.+)$/gm, '<h2>$1</h2>')
+       .replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>')
+       .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+       .replace(/\*([^*\n]+)\*/g, '<i>$1</i>')
+       .replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  s = s.split(/\n{2,}/).map(p => {
+    const t = p.trim();
+    if (/^<(h2|h3|blockquote|pre)/.test(t)) return t;
+    return '<p>' + t.replace(/\n/g, '<br>') + '</p>';
+  }).join('');
+  s = s.replace(/\u0000B(\d+)\u0000/g, (_, i) => blocks[i]);
+  return s;
+}
+
+function fmtTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function fmtSize(n) {
+  if (n > 1048576) return (n / 1048576).toFixed(1) + ' MB';
+  if (n > 1024) return (n / 1024).toFixed(1) + ' KB';
+  return n + ' B';
+}
+function fmtRange(a, b) { return fmtTime(a).slice(0, 16) + ' ~ ' + fmtTime(b).slice(0, 16); }
+function excerpt(s, n = 90) {
+  const t = String(s || '').replace(/[#*`>\n]/g, ' ').replace(/\s+/g, ' ').trim();
+  return t.length > n ? t.slice(0, n) + '…' : t;
+}
+const avatarColor = (id) => {
+  const cs = ['#3498db', '#9b59b6', '#1abc9c', '#e67e22', '#e74c3c', '#2c82c9', '#16a085'];
+  let h = 0; for (const c of String(id || 'x')) h = (h * 31 + c.charCodeAt(0)) % 997;
+  return cs[h % cs.length];
+};
+const avatarHtml = (u, cls = '') =>
+  `<div class="avatar ${cls}" style="background:${avatarColor(u && u.id)}">${esc((u && u.nickname || '?')[0].toUpperCase())}</div>`;
+const statusBadge = (s) => ({ pending: '审核中', approved: '已通过', rejected: '未通过' }[s] || s);
+const contestBadge = (s) => ({ upcoming: '未开始', ongoing: '进行中', ended: '已结束' }[s] || s);
+const needLogin = () => {
+  if (!state.me) { toast('请先登录', 'err'); location.hash = '#/login'; return true; }
+  return false;
+};
+
+/* ---------- 侧边栏 ---------- */
+function renderSidebar() {
+  const me = state.me;
+  const cur = location.hash.replace(/^#/, '') || '/home';
+  const link = (h, icon, label, extra) =>
+    `<a href="#${h}" class="${cur === h || cur.startsWith(h + '/') ? 'active' : ''}"><span class="icon">${icon}</span><span class="txt">${label}</span>${extra || ''}</a>`;
+  let html = `
+  <div class="logo">
+    <div class="logo-mark">文</div>
+    <div><span class="logo-name">文洛</span><span class="logo-sub">WENLUO</span></div>
+  </div>
+  <nav class="nav">
+    ${link('/home', '🏠', '主页')}
+    ${link('/forum', '💬', '论坛广场')}
+    ${link('/articles', '📖', '文章库')}
+    ${link('/problems', '📚', '题库')}
+    ${link('/rank', '🏆', '排行榜')}
+    ${link('/contests', '🏁', '比赛广场')}
+    ${link('/submit', '📤', '文件投稿')}
+    ${link('/mine', '📝', '我的文章')}
+    ${me ? link('/messages', '✉️', '私信', '<span class="msg-badge" id="msgBadge" style="display:none">0</span>') : ''}
+    ${me && me.role === 'admin' ? `
+      <div class="nav-label">后台管理</div>
+      ${link('/admin/contest', '🛠️', '创建比赛')}
+      ${link('/admin/articles', '✅', '审核文章')}
+      ${link('/admin/posts', '📋', '审核帖子')}
+      ${link('/admin/problems', '📚', '审核题目')}
+      ${link('/admin/files', '📁', '审核投稿')}` : ''}
+  </nav>
+  <div class="user-zone" id="userZone">`;
+  if (me) {
+    html += `
+    <div class="user-card" id="userCard">
+      ${avatarHtml(me)}
+      <div class="uinfo">
+        <div class="name">${esc(me.nickname)}${me.role === 'admin' ? '<span class="role-badge">管理员</span>' : ''}</div>
+        <div class="uname">@${esc(me.username)}</div>
+      </div>
+    </div>`;
+  } else {
+    html += `<a class="login-btn" href="#/login">登录 / 注册</a>`;
+  }
+  html += `</div>`;
+  $sidebar.innerHTML = html;
+
+  const card = document.getElementById('userCard');
+  if (card) card.onclick = toggleUserMenu;
+}
+function toggleUserMenu() {
+  const zone = document.getElementById('userZone');
+  if (document.getElementById('userMenu')) return closeMenu();
+  const me = state.me;
+  const div = document.createElement('div');
+  div.className = 'popover';
+  div.id = 'userMenu';
+  div.innerHTML = `
+    <div class="p-head">${esc(me.nickname)} <span style="font-weight:400;font-size:12px">@${esc(me.username)}</span></div>
+    <a href="#/user/${me.id}">👤 个人主页</a>
+    <a href="#/messages">✉️ 私信</a>
+    <a href="#/mine">📝 我的文章</a>
+    <a href="#/settings">⚙️ 偏好设置</a>
+    <div class="divider"></div>
+    <div class="p-item logout" id="logoutBtn">🚪 登出账号</div>`;
+  zone.appendChild(div);
+  div.querySelector('#logoutBtn').onclick = async () => {
+    try { await api('/api/logout', { method: 'POST' }); } catch (e) {}
+    state.me = null;
+    closeMenu();
+    renderSidebar();
+    toast('已退出登录');
+    location.hash = '#/home';
+  };
+  setTimeout(() => document.addEventListener('click', closeMenu, { once: true }), 0);
+}
+function closeMenu() { const m = document.getElementById('userMenu'); if (m) m.remove(); }
+
+/* 未读私信红点 */
+async function refreshUnread() {
+  if (!state.me) return;
+  try {
+    const d = await api('/api/messages/unread');
+    const b = document.getElementById('msgBadge');
+    if (b) {
+      b.textContent = d.count;
+      b.style.display = d.count > 0 ? 'inline-block' : 'none';
+    }
+  } catch (e) {}
+}
+
+/* ---------- 路由 ---------- */
+const routes = {
+  home: viewHome, forum: viewForum, post: viewPostDetail, newpost: viewNewPost,
+  articles: viewArticles, article: viewArticleDetail, write: viewWrite,
+  rank: viewRank, contests: viewContests, contest: viewContestDetail,
+  submit: viewSubmit, mine: viewMine, user: viewProfile, settings: viewSettings,
+  login: viewLogin, admin: viewAdmin, messages: viewMessages, chat: viewChat,
+  problems: viewProblems, problem: viewProblemDetail
+};
+async function route() {
+  closeMenu();
+  const hash = location.hash.replace(/^#\//, '') || 'home';
+  const [name, ...rest] = hash.split('/');
+  const arg = rest.join('/');
+  renderSidebar();
+  refreshUnread();
+  $app.innerHTML = '<div class="loading-block">加载中…</div>';
+  try {
+    const fn = routes[name] || viewHome;
+    await fn(arg);
+  } catch (e) {
+    $app.innerHTML = `<div class="card"><div class="empty">😕 ${esc(e.message)}</div></div>`;
+  }
+  window.scrollTo(0, 0);
+}
+const go = (h) => { location.hash = h; };
+
+/* ---------- 主页 ---------- */
+async function viewHome() {
+  const d = await api('/api/home');
+  const itemList = (arr, type) => arr.map(x => `
+    <div class="item">
+      ${avatarHtml(x.author, 'xs')}
+      <div style="flex:1">
+        <div class="title"><a href="#/${type}/${x.id}">${esc(x.title)}</a></div>
+        <div class="meta"><span>${esc(x.author.nickname)}</span><span>${fmtTime(x.createdAt)}</span>
+        ${type === 'article' ? `<span>👁 <span class="num">${x.views || 0}</span></span><span>❤️ <span class="num">${x.likeCount || 0}</span></span>` : `<span>💬 <span class="num">${x.commentCount || 0}</span></span>`}
+        </div>
+      </div>
+    </div>`).join('') || '<div class="empty">暂无内容</div>';
+
+  $app.innerHTML = `
+  <div class="container">
+    <div class="hero">
+      <h1>文洛 · 文章竞赛社区</h1>
+      <p>写作、交流、比赛 —— 一个简洁流畅的创作家园</p>
+      <div class="hero-btns">
+        <button class="btn-hero solid" id="hWrite">✍️ 立即开始创作</button>
+        <button class="btn-hero solid" id="hPost">💬 发帖 · 论坛</button>
+        <button class="btn-hero ghost" id="hFile">📤 文件投稿</button>
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="num">${d.stats.users}</div><div class="lab">注册用户</div></div>
+      <div class="stat"><div class="num">${d.stats.articles}</div><div class="lab">收录文章</div></div>
+      <div class="stat"><div class="num">${d.stats.posts}</div><div class="lab">论坛帖子</div></div>
+      <div class="stat"><div class="num">${d.stats.contests}</div><div class="lab">举办比赛</div></div>
+    </div>
+    ${d.activeContests.length ? `
+    <div class="card">
+      <h2>🏁 进行中的比赛</h2>
+      ${d.activeContests.map(c => contestRow(c)).join('')}
+    </div>` : ''}
+    <div class="grid-2">
+      <div class="card"><h2>📖 最新文章</h2>${itemList(d.latestArticles, 'article')}</div>
+      <div class="card"><h2>💬 最新帖子</h2>${itemList(d.latestPosts, 'post')}</div>
+    </div>
+  </div>`;
+  document.getElementById('hWrite').onclick = () => needLogin() || go('#/write');
+  document.getElementById('hPost').onclick = () => needLogin() || go('#/newpost');
+  document.getElementById('hFile').onclick = () => needLogin() || go('#/submit');
+}
+const contestRow = (c) => `
+  <div class="item contest" style="cursor:pointer" onclick="location.hash='#/contest/${c.id}'">
+    <div style="flex:1">
+      <div class="c-title">${esc(c.title)}</div>
+      <div class="c-meta"><span class="badge ${c.status}">${contestBadge(c.status)}</span>
+        <span>⏰ ${fmtRange(c.startTime, c.endTime)}</span><span>👥 ${c.participantCount} 人已报名</span><span>📋 ${c.problemCount || 0} 道题</span></div>
+    </div>
+    <span style="color:var(--text2)">›</span>
+  </div>`;
+
+/* 搜索框 UI */
+function searchBoxHtml(id, q, placeholder) {
+  return `<div class="search-box">
+    <input id="${id}" value="${esc(q)}" placeholder="${esc(placeholder)}" maxlength="60">
+    <button class="btn primary" data-searchbtn="${id}">🔍 搜索</button>
+  </div>`;
+}
+function bindSearch(id, apply) {
+  const input = document.getElementById(id);
+  if (!input) return;
+  const btn = document.querySelector(`[data-searchbtn="${id}"]`);
+  const doSearch = () => apply(input.value.trim());
+  if (btn) btn.onclick = doSearch;
+  input.onkeydown = (e) => { if (e.key === 'Enter') doSearch(); };
+}
+
+/* ---------- 论坛 ---------- */
+async function viewForum() {
+  const cat = viewForum._c || '';
+  const q = viewForum._q || '';
+  const params = new URLSearchParams();
+  if (cat) params.set('category', cat);
+  if (q) params.set('q', q);
+  const d = await api('/api/posts?' + params);
+  $app.innerHTML = `
+  <div class="container">
+    <div class="page-title">
+      <div><h1>论坛广场</h1><div class="sub">和大家一起交流讨论</div></div>
+      <button class="btn primary" id="newPostBtn">＋ 发帖</button>
+    </div>
+    ${searchBoxHtml('fQ', q, '搜索帖子标题 / 内容 / 作者…')}
+    <div class="tabs">
+      <span class="t ${cat === '' ? 'active' : ''}" data-c="">全部</span>
+      ${POST_CATS.map(c => `<span class="t ${cat === c ? 'active' : ''}" data-c="${c}">${c}</span>`).join('')}
+    </div>
+    <div class="card">
+      ${d.posts.map(p => `
+      <div class="item">
+        ${avatarHtml(p.author, 'xs')}
+        <div style="flex:1">
+          <div class="title"><a href="#/post/${p.id}">${esc(p.title)}</a> <span class="type-badge">${esc(p.category || '其他')}</span></div>
+          <div class="meta"><span>${esc(p.author.nickname)}</span><span>${fmtTime(p.createdAt)}</span>
+          <span>💬 <span class="num">${p.commentCount}</span></span></div>
+        </div>
+      </div>`).join('') || `<div class="empty">${q || cat ? '没有匹配条件的帖子' : '还没有帖子，来发第一帖吧！'}</div>`}
+    </div>
+  </div>`;
+  document.getElementById('newPostBtn').onclick = () => needLogin() || go('#/newpost');
+  document.querySelectorAll('.tabs .t').forEach(t => t.onclick = () => { viewForum._c = t.dataset.c; route(); });
+  bindSearch('fQ', (v) => { viewForum._q = v; route(); });
+}
+
+async function viewNewPost() {
+  if (needLogin()) return;
+  $app.innerHTML = `
+  <div class="container" style="max-width:760px">
+    <div class="page-title"><h1>发布帖子</h1></div>
+    <div class="card">
+      <div class="form-item"><label>标题</label><input id="pTitle" maxlength="80" placeholder="一句话概括你的话题"></div>
+      <div class="form-item"><label>类型</label><select id="pCat">${POST_CATS.map(c => `<option>${c}</option>`).join('')}</select></div>
+      <div class="form-item"><label>内容</label><textarea id="pContent" class="tall" style="min-height:220px" placeholder="支持 Markdown 基础语法"></textarea></div>
+      <button class="btn primary" id="pSubmit">提交（待管理员审核）</button>
+      <span class="hint" style="margin-left:10px">审核通过后将在论坛广场展示</span>
+    </div>
+  </div>`;
+  document.getElementById('pSubmit').onclick = async (e) => {
+    e.target.disabled = true;
+    try {
+      await api('/api/posts', { method: 'POST', body: { title: pTitle.value, category: pCat.value, content: pContent.value } });
+      toast('发布成功，等待审核');
+      go('#/mine');
+    } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
+  };
+}
+
+async function viewPostDetail(id) {
+  const d = await api('/api/posts/' + id);
+  const p = d.post;
+  $app.innerHTML = `
+  <div class="container" style="max-width:820px">
+    <div class="card">
+      <div class="doc-head">
+        <h1>${esc(p.title)}</h1>
+        <div class="meta">
+          <span class="type-badge">${esc(p.category || '其他')}</span>
+          <span class="who">${avatarHtml(p.author, 'small')} ${esc(p.author.nickname)}</span>
+          <span>${fmtTime(p.createdAt)}</span>
+          <span>💬 ${p.commentCount} 条回复</span>
+          ${state.me && (state.me.id === p.authorId || state.me.role === 'admin') ? '<button class="btn red sm" id="delPost">删除</button>' : ''}
+        </div>
+      </div>
+      <div class="doc-content">${md(p.content)}</div>
+    </div>
+    <div class="card">
+      <h2>全部回复（${p.commentCount}）</h2>
+      <div id="cList">
+        ${p.comments.map(c => `
+        <div class="comment">
+          ${avatarHtml(c.author, 'small')}
+          <div class="c-body">
+            <div class="c-meta"><b>${esc(c.author.nickname)}</b> · ${fmtTime(c.createdAt)}</div>
+            <div>${md(c.content)}</div>
+          </div>
+        </div>`).join('') || '<div class="empty">还没有回复</div>'}
+      </div>
+      ${state.me ? `
+      <div style="margin-top:14px" class="form-item">
+        <textarea id="cInput" placeholder="友善回复，理性讨论…" style="min-height:80px"></textarea>
+        <button class="btn primary" id="cSubmit" style="margin-top:10px">发表回复</button>
+      </div>` : `<div class="empty"><a href="#/login">登录</a> 后参与讨论</div>`}
+    </div>
+  </div>`;
+  const del = document.getElementById('delPost');
+  if (del) del.onclick = async () => {
+    if (!confirm('确定删除该帖子？')) return;
+    await api('/api/posts/' + id, { method: 'DELETE' });
+    toast('已删除'); go('#/forum');
+  };
+  const cs = document.getElementById('cSubmit');
+  if (cs) cs.onclick = async () => {
+    try {
+      const r = await api(`/api/posts/${id}/comments`, { method: 'POST', body: { content: cInput.value } });
+      go('#/post/' + id); route();
+    } catch (err) { toast(err.message, 'err'); }
+  };
+}
+
+/* ---------- 文章库 ---------- */
+async function viewArticles() {
+  const sort = viewArticles._s || 'new';
+  const cat = viewArticles._c || '';
+  const q = viewArticles._q || '';
+  const params = new URLSearchParams({ sort });
+  if (cat) params.set('category', cat);
+  if (q) params.set('q', q);
+  const d = await api('/api/articles?' + params);
+  $app.innerHTML = `
+  <div class="container">
+    <div class="page-title">
+      <div><h1>文章库</h1><div class="sub">共 ${d.articles.length} 篇${cat ? '「' + cat + '」' : ''}文章${q ? `（搜索：“${esc(q)}”）` : ''}</div></div>
+      <button class="btn primary" id="wBtn">✍️ 我要写文章</button>
+    </div>
+    ${searchBoxHtml('aQ', q, '搜索文章标题 / 内容 / 作者…')}
+    <div class="tabs">
+      <span class="t ${sort === 'new' ? 'active' : ''}" data-s="new">最新</span>
+      <span class="t ${sort === 'hot' ? 'active' : ''}" data-s="hot">最热</span>
+      <span style="margin:0 6px;color:var(--border)">|</span>
+      <span class="t ${cat === '' ? 'active' : ''}" data-c="">全部类别</span>
+      ${ART_CATS.map(c => `<span class="t ${cat === c ? 'active' : ''}" data-c="${c}">${c}</span>`).join('')}
+    </div>
+    <div class="card">
+      ${d.articles.map(a => `
+      <div class="item">
+        ${avatarHtml(a.author, 'xs')}
+        <div style="flex:1">
+          <div class="title"><a href="#/article/${a.id}">${esc(a.title)}</a> <span class="type-badge">${esc(a.category || '其他')}</span></div>
+          <div class="meta"><span>${excerpt(a.content)}</span></div>
+          <div class="meta"><span>${esc(a.author.nickname)}</span><span>${fmtTime(a.createdAt)}</span>
+            <span>👁 <span class="num">${a.views || 0}</span></span><span>❤️ <span class="num">${a.likeCount || 0}</span></span></div>
+        </div>
+      </div>`).join('') || `<div class="empty">${q || cat ? '没有匹配条件的文章' : '暂无文章'}</div>`}
+    </div>
+  </div>`;
+  document.getElementById('wBtn').onclick = () => needLogin() || go('#/write');
+  document.querySelectorAll('.tabs .t[data-s]').forEach(t => t.onclick = () => { viewArticles._s = t.dataset.s; route(); });
+  document.querySelectorAll('.tabs .t[data-c]').forEach(t => t.onclick = () => { viewArticles._c = t.dataset.c; route(); });
+  bindSearch('aQ', (v) => { viewArticles._q = v; route(); });
+}
+
+async function viewArticleDetail(id) {
+  const d = await api('/api/articles/' + id);
+  const a = d.article;
+  $app.innerHTML = `
+  <div class="container" style="max-width:820px">
+    <div class="card">
+      <div class="doc-head">
+        <h1>${esc(a.title)}</h1>
+        <div class="meta">
+          <span class="type-badge">${esc(a.category || '其他')}</span>
+          <span class="who">${avatarHtml(a.author, 'small')} ${esc(a.author.nickname)}</span>
+          <span>${fmtTime(a.createdAt)}</span>
+          <span>👁 ${a.views || 0}</span>
+          ${a.status !== 'approved' ? `<span class="badge ${a.status}">${statusBadge(a.status)}</span>` : ''}
+          ${state.me && (state.me.id === a.authorId || state.me.role === 'admin') ? `<button class="btn red sm" id="delArt">删除</button>` : ''}
+        </div>
+      </div>
+      <div class="doc-content">${md(a.content)}</div>
+      <div style="margin-top:22px;text-align:center">
+        <button class="btn like-btn ${a.liked ? 'liked' : ''}" id="likeBtn">${a.liked ? '❤️ 已赞' : '🤍 点赞'} · ${a.likeCount}</button>
+      </div>
+    </div>
+  </div>`;
+  const del = document.getElementById('delArt');
+  if (del) del.onclick = async () => {
+    if (!confirm('确定删除该文章？')) return;
+    await api('/api/articles/' + id, { method: 'DELETE' });
+    toast('已删除'); go('#/articles');
+  };
+  const lb = document.getElementById('likeBtn');
+  if (lb) lb.onclick = async () => {
+    if (needLogin()) return;
+    try {
+      const r = await api(`/api/articles/${id}/like`, { method: 'POST' });
+      lb.className = 'btn like-btn' + (r.liked ? ' liked' : '');
+      lb.innerHTML = (r.liked ? '❤️ 已赞' : '🤍 点赞') + ' · ' + r.likeCount;
+    } catch (e) { toast(e.message, 'err'); }
+  };
+}
+
+async function viewWrite(editId) {
+  if (needLogin()) return;
+  let a = null;
+  if (editId) {
+    const d = await api('/api/articles/' + editId);
+    a = d.article;
+  }
+  $app.innerHTML = `
+  <div class="container" style="max-width:860px">
+    <div class="page-title"><h1>${a ? '编辑文章' : '写文章'}</h1></div>
+    <div class="card">
+      <div class="form-item"><label>标题</label><input id="aTitle" maxlength="80" value="${a ? esc(a.title) : ''}" placeholder="给你的文章起个标题"></div>
+      <div class="form-item"><label>类别</label>
+        <select id="aCat">${ART_CATS.map(c => `<option ${a && (a.category || '其他') === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
+        <div class="hint">选择文体/题材类别，方便读者在文章库筛选</div>
+      </div>
+      <div class="form-item">
+        <label>内容（支持 Markdown：## 标题、**加粗**、\`代码\`、引用等）</label>
+        <textarea id="aContent" class="tall" placeholder="正文…">${a ? esc(a.content) : ''}</textarea>
+      </div>
+      <button class="btn primary" id="aSubmit">${a ? '保存修改' : '提交（待管理员审核）'}</button>
+      <span class="hint" style="margin-left:10px">审核通过后将在文章库展示</span>
+    </div>
+  </div>`;
+  document.getElementById('aSubmit').onclick = async (e) => {
+    e.target.disabled = true;
+    try {
+      if (a) await api('/api/articles/' + a.id, { method: 'PUT', body: { title: aTitle.value, category: aCat.value, content: aContent.value } });
+      else await api('/api/articles', { method: 'POST', body: { title: aTitle.value, category: aCat.value, content: aContent.value } });
+      toast('提交成功，等待审核');
+      go('#/mine');
+    } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
+  };
+}
+
+/* ---------- 排行榜 ---------- */
+async function viewRank() {
+  const d = await api('/api/rank');
+  $app.innerHTML = `
+  <div class="container">
+    <div class="page-title"><div><h1>排行榜</h1><div class="sub">文章×10 + 帖子×5 + 获赞×3 + 评论×2 = 积分</div></div></div>
+    <div class="card">
+      <table class="rank">
+        <tr><th></th><th>用户</th><th>积分</th><th>文章</th><th>帖子</th><th>获赞</th></tr>
+        ${d.rank.map((r, i) => `
+        <tr>
+          <td class="rank-no ${i < 3 ? 'r' + (i + 1) : ''}">${i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</td>
+          <td><a class="who" href="#/user/${r.user.id}">${avatarHtml(r.user, 'small')} ${esc(r.user.nickname)}
+            ${r.user.role === 'admin' ? '<span class="role-badge">管理员</span>' : ''}</a></td>
+          <td class="score">${r.score}</td><td>${r.articles}</td><td>${r.posts}</td><td>${r.likes}</td>
+        </tr>`).join('') || '<tr><td colspan="6" class="empty">虚位以待</td></tr>'}
+      </table>
+    </div>
+  </div>`;
+}
+
+/* ---------- 比赛广场 ---------- */
+async function viewContests() {
+  const d = await api('/api/contests');
+  $app.innerHTML = `
+  <div class="container">
+    <div class="page-title">
+      <div><h1>比赛广场</h1><div class="sub">共 ${d.contests.length} 场比赛</div></div>
+      ${state.me && state.me.role === 'admin' ? '<button class="btn primary" onclick="go(\'#/admin/contest\')">＋ 创建比赛</button>' : ''}
+    </div>
+    ${d.contests.map(c => `
+    <div class="card contest" style="cursor:pointer" onclick="location.hash='#/contest/${c.id}'">
+      <div style="flex:1">
+        <div class="c-title">${esc(c.title)}</div>
+        <div class="c-meta">
+          <span class="badge ${c.status}">${contestBadge(c.status)}</span>
+          <span>⏰ ${fmtRange(c.startTime, c.endTime)}</span>
+          <span>👥 ${c.participantCount} 人报名</span>
+          <span>📋 ${c.problemCount || 0} 道题</span>
+          <span>主办方：${esc(c.creator ? c.creator.nickname : '管理员')}</span>
+        </div>
+      </div>
+      <span style="color:var(--text2);font-size:20px">›</span>
+    </div>`).join('') || '<div class="card"><div class="empty">暂无比赛</div></div>'}
+  </div>`;
+}
+
+async function viewContestDetail(id) {
+  const d = await api('/api/contests/' + id);
+  const c = d.contest;
+  let mySubs = [];
+  if (state.me) {
+    try { mySubs = (await api(`/api/contests/${id}/my-submissions`)).submissions; } catch (e) {}
+  }
+  const canSubmit = c.status === 'ongoing' && c.joined;
+  $app.innerHTML = `
+  <div class="container" style="max-width:820px">
+    <div class="card">
+      <div class="doc-head">
+        <h1>${esc(c.title)} <span class="badge ${c.status}">${contestBadge(c.status)}</span></h1>
+        <div class="meta"><span>⏰ ${fmtRange(c.startTime, c.endTime)}</span><span>👥 ${c.participantCount} 人已报名</span>
+        <span>📋 ${c.problemCount} 道题</span><span>📥 ${c.submissionCount} 份作品</span>
+        <span>主办方：${esc(c.creator ? c.creator.nickname : '')}</span></div>
+      </div>
+      <div class="doc-content">${md(c.description)}</div>
+      <div style="margin-top:16px;text-align:center">
+        ${c.status !== 'ended' ? `<button class="btn ${c.joined ? 'ghost' : 'green'}" id="joinBtn">${c.joined ? '✅ 已报名（点击取消）' : '🔥 立即报名'}</button>` : ''}
+      </div>
+    </div>
+    <div class="card">
+      <h2>📋 比赛题目（${c.problemCount}）</h2>
+      ${(c.problems || []).map((q, i) => {
+        const mine = mySubs.find(s => s.problemId === q.id);
+        return `
+        <div class="review-item">
+          <div class="r-head">
+            <span class="r-title">第 ${i + 1} 题 · ${esc(q.title)}</span>
+            ${q.wordLimit > 0 ? `<span class="badge upcoming">限 ${q.wordLimit} 字</span>` : '<span class="badge ended">不限字数</span>'}
+            ${mine ? '<span class="badge approved">已提交</span>' : ''}
+          </div>
+          <div class="r-content" style="white-space:pre-wrap">${esc(q.content)}</div>
+          ${mine ? `
+          <div class="hint" style="margin-bottom:8px">我的作品：<b style="color:var(--text)">${esc(mine.title)}</b> · ${mine.wordCount} 字 · ${fmtTime(mine.updatedAt || mine.createdAt)}</div>` : ''}
+          ${canSubmit ? `
+          <div class="r-actions">
+            <button class="btn primary sm" data-showsub="${q.id}">${mine ? '✏️ 修改我的作品' : '📝 提交本题作品'}</button>
+          </div>
+          <div id="sub-${q.id}" style="display:none;margin-top:12px">
+            <div class="form-item"><label>作品标题</label><input id="st-${q.id}" maxlength="80" value="${mine ? esc(mine.title) : ''}" placeholder="作品标题"></div>
+            <div class="form-item">
+              <label>作品内容</label>
+              <textarea id="sc-${q.id}" style="min-height:160px" oninput="document.getElementById('wc-${q.id}').textContent=this.value.replace(/\\s/g,'').length">${mine ? esc(mine.content) : ''}</textarea>
+              <div class="hint">当前字数：<b id="wc-${q.id}">${mine ? mine.wordCount : 0}</b>${q.wordLimit > 0 ? ' / 上限 ' + q.wordLimit + ' 字' : ''}</div>
+            </div>
+            <button class="btn green sm" data-send="${q.id}">📤 保存提交</button>
+          </div>` : (c.status === 'ongoing' && !c.joined ? '<div class="hint">报名后即可提交本题作品</div>' : '')}
+        </div>`;
+      }).join('') || '<div class="empty">该比赛暂无题目</div>'}
+      ${c.status === 'upcoming' ? '<div class="hint" style="margin-top:10px">⏳ 比赛开始后即可提交作品</div>' : ''}
+      ${c.status === 'ended' ? '<div class="hint" style="margin-top:10px">🏁 比赛已结束，作品提交通道已关闭</div>' : ''}
+    </div>
+    <div class="card">
+      <h2>报名名单（${c.participantCount}）</h2>
+      ${c.participantList.map(u => `
+      <div class="item">${avatarHtml(u, 'small')}
+        <div style="align-self:center"><a href="#/user/${u.id}">${esc(u.nickname)}</a>
+        <span class="meta">@${esc(u.username)}</span></div>
+      </div>`).join('') || '<div class="empty">还没有人报名</div>'}
+    </div>
+  </div>`;
+  const jb = document.getElementById('joinBtn');
+  if (jb) jb.onclick = async () => {
+    if (needLogin()) return;
+    try {
+      const r = await api(`/api/contests/${id}/join`, { method: 'POST' });
+      toast(r.joined ? '报名成功！' : '已取消报名');
+      route();
+    } catch (e) { toast(e.message, 'err'); }
+  };
+  document.querySelectorAll('[data-showsub]').forEach(b => b.onclick = () => {
+    const f = document.getElementById('sub-' + b.dataset.showsub);
+    f.style.display = f.style.display === 'none' ? 'block' : 'none';
+  });
+  document.querySelectorAll('[data-send]').forEach(b => b.onclick = async () => {
+    const qid = b.dataset.send;
+    try {
+      await api(`/api/contests/${id}/submit`, {
+        method: 'POST',
+        body: { problemId: qid, title: document.getElementById('st-' + qid).value, content: document.getElementById('sc-' + qid).value }
+      });
+      toast('作品已保存提交！'); route();
+    } catch (e) { toast(e.message, 'err'); }
+  });
+}
+
+/* ---------- 文件投稿 ---------- */
+async function viewSubmit() {
+  if (needLogin()) return;
+  const d = await api('/api/files/mine');
+  $app.innerHTML = `
+  <div class="container" style="max-width:760px">
+    <div class="page-title"><div><h1>文件投稿</h1><div class="sub">上传文档，审核通过后由管理员归档（≤20MB）</div></div></div>
+    <div class="card">
+      <div class="form-item"><label>选择文件</label><input type="file" id="fFile"></div>
+      <div class="form-item"><label>投稿说明</label><input id="fNote" maxlength="200" placeholder="简单说明一下这份文件"></div>
+      <button class="btn primary" id="fSubmit">📤 上传投稿</button>
+    </div>
+    <div class="card">
+      <h2>我的投稿记录</h2>
+      ${d.files.map(f => `
+      <div class="item">
+        <div style="align-self:center;font-size:22px">📄</div>
+        <div style="flex:1">
+          <div class="title">${esc(f.originalName)} <span class="badge ${f.status}">${statusBadge(f.status)}</span></div>
+          <div class="meta"><span>${esc(f.note || '无说明')}</span><span>${fmtSize(f.size)}</span><span>${fmtTime(f.createdAt)}</span></div>
+        </div>
+        <button class="btn ghost sm" onclick="window.open('/api/files/${f.id}/download')">下载</button>
+      </div>`).join('') || '<div class="empty">暂无投稿记录</div>'}
+    </div>
+  </div>`;
+  document.getElementById('fSubmit').onclick = async (e) => {
+    const file = document.getElementById('fFile').files[0];
+    if (!file) return toast('请选择文件', 'err');
+    const form = new FormData();
+    form.append('file', file);
+    form.append('note', document.getElementById('fNote').value);
+    e.target.disabled = true;
+    try {
+      await api('/api/files', { method: 'POST', form });
+      toast('上传成功，等待审核');
+      route();
+    } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
+  };
+}
+
+/* ---------- 我的文章 ---------- */
+async function viewMine() {
+  if (needLogin()) return;
+  const tab = viewMine._t || 'a';
+  const [da, dp, df] = await Promise.all([api('/api/articles/mine'), api('/api/posts/mine'), api('/api/files/mine')]);
+  let list = '';
+  if (tab === 'a') {
+    list = da.articles.map(a => `
+      <div class="item">
+        <div style="flex:1">
+          <div class="title"><a href="#/article/${a.id}">${esc(a.title)}</a> <span class="badge ${a.status}">${statusBadge(a.status)}</span></div>
+          <div class="meta"><span>${fmtTime(a.createdAt)}</span><span>👁 ${a.views || 0}</span><span>❤️ ${a.likeCount || 0}</span></div>
+        </div>
+        ${a.status !== 'approved' ? `<button class="btn ghost sm" onclick="go('#/write/${a.id}')">编辑</button>` : ''}
+        <button class="btn red sm" data-del-art="${a.id}">删除</button>
+      </div>`).join('') || '<div class="empty">还没有写过文章，<a href="#/write">去写一篇</a>！</div>';
+  } else if (tab === 'p') {
+    list = dp.posts.map(p => `
+      <div class="item">
+        <div style="flex:1">
+          <div class="title"><a href="#/post/${p.id}">${esc(p.title)}</a> <span class="badge ${p.status}">${statusBadge(p.status)}</span></div>
+          <div class="meta"><span>${fmtTime(p.createdAt)}</span><span>💬 ${p.commentCount}</span></div>
+        </div>
+        <button class="btn red sm" data-del-post="${p.id}">删除</button>
+      </div>`).join('') || '<div class="empty">还没有发过帖子</div>';
+  } else {
+    list = df.files.map(f => `
+      <div class="item">
+        <div style="align-self:center;font-size:22px">📄</div>
+        <div style="flex:1">
+          <div class="title">${esc(f.originalName)} <span class="badge ${f.status}">${statusBadge(f.status)}</span></div>
+          <div class="meta"><span>${esc(f.note || '')}</span><span>${fmtSize(f.size)}</span><span>${fmtTime(f.createdAt)}</span></div>
+        </div>
+      </div>`).join('') || '<div class="empty">暂无投稿</div>';
+  }
+  $app.innerHTML = `
+  <div class="container">
+    <div class="page-title"><div><h1>我的文章</h1><div class="sub">管理你发布的文章、帖子与投稿</div></div>
+    <button class="btn primary" onclick="go('#/write')">✍️ 写文章</button></div>
+    <div class="tabs">
+      <span class="t ${tab === 'a' ? 'active' : ''}" data-t="a">文章（${da.articles.length}）</span>
+      <span class="t ${tab === 'p' ? 'active' : ''}" data-t="p">帖子（${dp.posts.length}）</span>
+      <span class="t ${tab === 'f' ? 'active' : ''}" data-t="f">投稿（${df.files.length}）</span>
+    </div>
+    <div class="card">${list}</div>
+  </div>`;
+  document.querySelectorAll('.tabs .t').forEach(t => t.onclick = () => { viewMine._t = t.dataset.t; route(); });
+  document.querySelectorAll('[data-del-art]').forEach(b => b.onclick = async () => {
+    if (!confirm('确定删除该文章？')) return;
+    await api('/api/articles/' + b.dataset.delArt, { method: 'DELETE' });
+    toast('已删除'); route();
+  });
+  document.querySelectorAll('[data-del-post]').forEach(b => b.onclick = async () => {
+    if (!confirm('确定删除该帖子？')) return;
+    await api('/api/posts/' + b.dataset.delPost, { method: 'DELETE' });
+    toast('已删除'); route();
+  });
+}
+
+/* ---------- 个人主页 ---------- */
+async function viewProfile(id) {
+  const d = await api('/api/users/' + id);
+  const u = d.user;
+  const isMe = state.me && state.me.id === u.id;
+  $app.innerHTML = `
+  <div class="container" style="max-width:820px">
+    <div class="card">
+      <div class="profile-head">
+        ${avatarHtml(u, 'big')}
+        <div style="flex:1">
+          <h1 style="font-size:20px">${esc(u.nickname)} ${u.role === 'admin' ? '<span class="role-badge">管理员</span>' : ''}</h1>
+          <div class="meta" style="color:var(--text2);font-size:13px;margin-top:4px">@${esc(u.username)} · 加入于 ${fmtTime(u.createdAt)}</div>
+          <div style="margin-top:8px;font-size:13.5px;color:#556">${esc(u.bio || '这个人很懒，什么都没写')}</div>
+          ${!isMe && state.me ? `
+          <div style="margin-top:10px;display:flex;gap:8px">
+            <button class="btn ${d.isFollowing ? 'ghost' : 'primary'}" id="followBtn">${d.isFollowing ? '✅ 已关注' : '➕ 关注'}</button>
+            <button class="btn ghost" id="dmBtn">✉️ 发私信</button>
+          </div>` : ''}
+        </div>
+      </div>
+      <div class="profile-stats">
+        <div class="ps"><b>${d.stats.articles}</b><span class="hint">文章</span></div>
+        <div class="ps"><b>${d.stats.posts}</b><span class="hint">帖子</span></div>
+        <div class="ps"><b>${d.stats.likes}</b><span class="hint">获赞</span></div>
+        <div class="ps"><b>${d.stats.followingCount}</b><span class="hint">关注</span></div>
+        <div class="ps"><b>${d.stats.followerCount}</b><span class="hint">粉丝</span></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>TA 的文章</h2>
+      ${d.articles.map(a => `
+      <div class="item"><div style="flex:1">
+        <div class="title"><a href="#/article/${a.id}">${esc(a.title)}</a></div>
+        <div class="meta"><span>${fmtTime(a.createdAt)}</span><span>👁 ${a.views || 0}</span><span>❤️ ${a.likeCount || 0}</span></div>
+      </div></div>`).join('') || '<div class="empty">暂无公开文章</div>'}
+    </div>
+  </div>`;
+  const fb = document.getElementById('followBtn');
+  if (fb) fb.onclick = async () => {
+    if (needLogin()) return;
+    try {
+      const r = await api(`/api/users/${id}/follow`, { method: 'POST' });
+      toast(r.followed ? '已关注 ' + u.nickname : '已取消关注');
+      route();
+    } catch (e) { toast(e.message, 'err'); }
+  };
+  const dm = document.getElementById('dmBtn');
+  if (dm) dm.onclick = () => { go('#/chat/' + u.id); };
+}
+
+/* ---------- 偏好设置 ---------- */
+async function viewSettings() {
+  if (needLogin()) return;
+  const me = state.me;
+  $app.innerHTML = `
+  <div class="container" style="max-width:620px">
+    <div class="page-title"><h1>偏好设置</h1></div>
+    <div class="card">
+      <h2>基本资料</h2>
+      <div class="form-item"><label>昵称</label><input id="sNick" maxlength="24" value="${esc(me.nickname)}"></div>
+      <div class="form-item"><label>个人简介</label><textarea id="sBio" maxlength="200" style="min-height:70px">${esc(me.bio || '')}</textarea></div>
+      <button class="btn primary" id="sSave">保存资料</button>
+    </div>
+    <div class="card">
+      <h2>修改密码</h2>
+      <div class="form-item"><label>原密码</label><input type="password" id="sOld"></div>
+      <div class="form-item"><label>新密码（至少 8 位，包含字母和数字）</label><input type="password" id="sNew"></div>
+      <button class="btn primary" id="sPwd">修改密码</button>
+    </div>
+  </div>`;
+  document.getElementById('sSave').onclick = async () => {
+    try {
+      const d = await api('/api/me/profile', { method: 'PUT', body: { nickname: sNick.value, bio: sBio.value } });
+      state.me = d.user; renderSidebar(); toast('资料已更新');
+    } catch (e) { toast(e.message, 'err'); }
+  };
+  document.getElementById('sPwd').onclick = async () => {
+    try {
+      await api('/api/me/password', { method: 'PUT', body: { oldPassword: sOld.value, newPassword: sNew.value } });
+      toast('密码已修改'); sOld.value = sNew.value = '';
+    } catch (e) { toast(e.message, 'err'); }
+  };
+}
+
+/* ---------- 登录 / 注册 ---------- */
+function viewLogin() {
+  let mode = 'login';
+  $app.innerHTML = `
+  <div class="container">
+    <div class="card auth-card">
+      <div class="auth-tabs">
+        <div class="tab active" data-m="login">登 录</div>
+        <div class="tab" data-m="reg">注 册</div>
+      </div>
+      <div id="authBody"></div>
+    </div>
+  </div>`;
+  const body = document.getElementById('authBody');
+  const render = () => {
+    body.innerHTML = mode === 'login' ? `
+      <div class="form-item"><label>用户名</label><input id="lUser" placeholder="用户名"></div>
+      <div class="form-item"><label>密码</label><input type="password" id="lPass"></div>
+      <button class="btn primary" id="lBtn" style="width:100%">登录</button>
+      <div class="hint" style="margin-top:10px;text-align:center">连续输错 5 次密码将锁定账号 10 分钟</div>` : `
+      <div class="form-item"><label>用户名</label><input id="rUser" placeholder="3-24 位字母 / 数字 / 下划线"></div>
+      <div class="form-item"><label>昵称</label><input id="rNick" placeholder="展示昵称（可留空）"></div>
+      <div class="form-item"><label>密码</label><input type="password" id="rPass" placeholder="至少 8 位，需包含字母和数字"></div>
+      <button class="btn primary" id="rBtn" style="width:100%">注册并登录</button>`;
+    if (mode === 'login') document.getElementById('lBtn').onclick = async (e) => {
+      e.target.disabled = true;
+      try {
+        const d = await api('/api/login', { method: 'POST', body: { username: lUser.value, password: lPass.value } });
+        state.me = d.user; toast('欢迎回来，' + d.user.nickname); go('#/home'); route();
+      } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
+    };
+    else document.getElementById('rBtn').onclick = async (e) => {
+      e.target.disabled = true;
+      try {
+        const d = await api('/api/register', { method: 'POST', body: { username: rUser.value, nickname: rNick.value, password: rPass.value } });
+        state.me = d.user; toast('注册成功，欢迎加入文洛！'); go('#/home'); route();
+      } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
+    };
+  };
+  render();
+  document.querySelectorAll('.auth-tabs .tab').forEach(t => t.onclick = () => {
+    mode = t.dataset.m;
+    document.querySelectorAll('.auth-tabs .tab').forEach(x => x.classList.toggle('active', x === t));
+    render();
+  });
+}
+
+/* ---------- 后台管理 ---------- */
+async function viewAdmin(sub) {
+  if (!state.me || state.me.role !== 'admin') {
+    $app.innerHTML = '<div class="card"><div class="empty">⛔ 仅管理员可访问后台</div></div>';
+    return;
+  }
+  const [kind, st] = (sub || '').split('/');
+  if (kind === 'contest') return adminNewContest();
+  const map = { articles: 'articles', posts: 'posts', files: 'files', problems: 'problems' };
+  if (map[kind]) return adminReview(map[kind], st);
+  return adminReview('articles', st);
+}
+
+async function adminNewContest() {
+  $app.innerHTML = `
+  <div class="container" style="max-width:860px">
+    <div class="page-title"><div><h1>创建比赛</h1><div class="sub">发布后会出现在比赛广场，用户报名后按题目提交作品</div></div></div>
+    <div class="card">
+      <div class="form-item"><label>比赛标题</label><input id="ctTitle" maxlength="80" placeholder="例如：第二届「文洛杯」创作赛"></div>
+      <div class="form-item"><label>比赛说明（支持 Markdown）</label><textarea id="ctDesc" style="min-height:120px" placeholder="主题、规则、评分标准…"></textarea></div>
+      <div class="grid-2">
+        <div class="form-item"><label>开始时间</label><input type="datetime-local" id="ctStart"></div>
+        <div class="form-item"><label>结束时间</label><input type="datetime-local" id="ctEnd"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>比赛题目 <span class="hint" style="font-weight:400">（一般 3-4 题，也可更多，1-10 题）</span></h2>
+      <div id="problemList"></div>
+      <button class="btn ghost" id="addProblem">＋ 添加题目</button>
+    </div>
+    <div class="card">
+      <button class="btn primary" id="ctSubmit">🏁 发布比赛</button>
+    </div>
+  </div>`;
+  const pad = n => String(n).padStart(2, '0');
+  const now = new Date();
+  const def = new Date(now.getTime() + 3600000);
+  ctStart.value = `${def.getFullYear()}-${pad(def.getMonth() + 1)}-${pad(def.getDate())}T${pad(def.getHours())}:${pad(def.getMinutes())}`;
+  const end = new Date(now.getTime() + 8 * 86400000);
+  ctEnd.value = `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}T${pad(end.getHours())}:${pad(end.getMinutes())}`;
+
+  const problems = [{ title: '', content: '', wordLimit: '' }];
+  function renderProblems() {
+    document.getElementById('problemList').innerHTML = problems.map((p, i) => `
+      <div class="review-item" style="margin-bottom:14px">
+        <div class="r-head"><span class="r-title">第 ${i + 1} 题</span>
+          ${problems.length > 1 ? `<button class="btn red sm" data-rm="${i}">✕ 删除本题</button>` : ''}</div>
+        <div class="form-item"><label>题目标题</label><input maxlength="60" data-f="title" data-i="${i}" value="${esc(p.title)}" placeholder="例如：我的编程故事"></div>
+        <div class="form-item"><label>题目内容 / 要求</label><textarea data-f="content" data-i="${i}" style="min-height:90px" placeholder="布置题目：写什么、要求是什么…">${esc(p.content)}</textarea></div>
+        <div class="form-item"><label>字数限制</label><input type="number" min="0" step="100" data-f="wordLimit" data-i="${i}" value="${esc(p.wordLimit)}" placeholder="留空或 0 表示不限制，如 2000"></div>
+      </div>`).join('');
+    document.querySelectorAll('[data-f]').forEach(el => el.oninput = () => {
+      problems[+el.dataset.i][el.dataset.f] = el.value;
+    });
+    document.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
+      problems.splice(+b.dataset.rm, 1);
+      renderProblems();
+    });
+  }
+  renderProblems();
+  document.getElementById('addProblem').onclick = () => {
+    if (problems.length >= 10) return toast('最多 10 道题', 'err');
+    problems.push({ title: '', content: '', wordLimit: '' });
+    renderProblems();
+  };
+  document.getElementById('ctSubmit').onclick = async (e) => {
+    const valid = problems.filter(p => p.title.trim() && p.content.trim());
+    if (!valid.length) return toast('至少布置一道完整的题目', 'err');
+    try {
+      await api('/api/contests', {
+        method: 'POST',
+        body: {
+          title: ctTitle.value, description: ctDesc.value,
+          startTime: new Date(ctStart.value).getTime(), endTime: new Date(ctEnd.value).getTime(),
+          problems: valid
+        }
+      });
+      toast('比赛已发布'); go('#/contests');
+    } catch (err) { toast(err.message, 'err'); }
+  };
+}
+
+async function adminReview(kind, st) {
+  st = ['pending', 'approved', 'rejected'].includes(st) ? st : 'pending';
+  const apiPath = { articles: 'articles', posts: 'posts', files: 'files', problems: 'problems' }[kind];
+  const d = await api(`/api/admin/${apiPath}?status=${st}`);
+  const title = { articles: '审核文章', posts: '审核帖子', files: '审核投稿', problems: '审核题目' }[kind];
+  const counts = { pending: '待审核', approved: '已通过', rejected: '已拒绝' };
+  const dataMap = { articles: d.articles, posts: d.posts, files: d.files, problems: d.problems };
+
+  let items = '';
+  if (kind === 'problems') {
+    items = d.problems.map(p => `
+      <div class="review-item">
+        <div class="r-head">
+          <span class="r-title">${esc(p.title)}</span>
+          <span class="type-badge">${TYPE[p.type]}</span>
+          ${diffBadge(p.difficulty)}
+          <span class="badge ${p.status}">${statusBadge(p.status)}</span>
+        </div>
+        <div class="r-content">${esc(p.content)}</div>
+        <div class="r-actions">
+          <span class="hint">出题人：${esc(p.proposer.nickname)}（@${esc(p.proposer.username || '')}）· ${fmtTime(p.createdAt)}</span>
+          <button class="btn green sm" data-r="approve" data-id="${p.id}">✔ 通过</button>
+          <button class="btn red sm" data-r="reject" data-id="${p.id}">✘ 拒绝</button>
+        </div>
+      </div>`).join('');
+  } else if (kind === 'files') {
+    items = d.files.map(f => `
+      <div class="review-item">
+        <div class="r-head">
+          <span style="font-size:22px">📄</span>
+          <span class="r-title">${esc(f.originalName)}</span>
+          <span class="badge ${f.status}">${statusBadge(f.status)}</span>
+        </div>
+        <div class="r-content">投稿说明：${esc(f.note || '（无）')}\n文件大小：${fmtSize(f.size)}\n投稿人：${esc(f.author.nickname)}（@${esc(f.author.username)}）· ${fmtTime(f.createdAt)}</div>
+        <div class="r-actions">
+          <button class="btn green sm" data-r="approve" data-id="${f.id}">✔ 通过</button>
+          <button class="btn red sm" data-r="reject" data-id="${f.id}">✘ 拒绝</button>
+          <button class="btn ghost sm" onclick="window.open('/api/files/${f.id}/download')">⬇ 下载查看</button>
+        </div>
+      </div>`).join('');
+  } else if (kind === 'posts') {
+    items = d.posts.map(p => `
+      <div class="review-item">
+        <div class="r-head">
+          <span class="r-title">${esc(p.title)}</span>
+          <span class="badge ${p.status}">${statusBadge(p.status)}</span>
+        </div>
+        <div class="r-content">${esc(p.content)}</div>
+        <div class="r-actions">
+          <span class="hint">投稿人：${esc(p.author.nickname)}（@${esc(p.author.username)}）· ${fmtTime(p.createdAt)}</span>
+          <button class="btn green sm" data-r="approve" data-id="${p.id}">✔ 通过</button>
+          <button class="btn red sm" data-r="reject" data-id="${p.id}">✘ 拒绝</button>
+        </div>
+      </div>`).join('');
+  } else {
+    items = d.articles.map(a => `
+      <div class="review-item">
+        <div class="r-head">
+          <span class="r-title">${esc(a.title)}</span>
+          <span class="badge ${a.status}">${statusBadge(a.status)}</span>
+        </div>
+        <div class="r-content">${esc(a.content)}</div>
+        <div class="r-actions">
+          <span class="hint">作者：${esc(a.author.nickname)}（@${esc(a.author.username)}）· ${fmtTime(a.createdAt)}</span>
+          <button class="btn green sm" data-r="approve" data-id="${a.id}">✔ 通过</button>
+          <button class="btn red sm" data-r="reject" data-id="${a.id}">✘ 拒绝</button>
+        </div>
+      </div>`).join('');
+  }
+
+  $app.innerHTML = `
+  <div class="container" style="max-width:900px">
+    <div class="page-title"><div><h1>${title}</h1><div class="sub">后台管理 · ${state.me.nickname}</div></div>
+    <a href="#/admin/${kind}/${st}" class="btn ghost">刷新</a></div>
+    <div class="tabs">
+      ${['pending', 'approved', 'rejected'].map(s => `
+      <span class="t ${st === s ? 'active' : ''}" data-s="${s}">${counts[s]}（${dataMap[kind].length}）</span>`).join('')}
+    </div>
+    ${items || '<div class="card"><div class="empty">这里空空如也 🎉</div></div>'}
+  </div>`;
+
+  document.querySelectorAll('.tabs .t').forEach(t => t.onclick = () => {
+    location.hash = `#/admin/${kind}/${t.dataset.s}`;
+  });
+  document.querySelectorAll('[data-r]').forEach(b => b.onclick = async () => {
+    try {
+      await api(`/api/admin/${apiPath}/${b.dataset.id}/review`, { method: 'POST', body: { action: b.dataset.r } });
+      toast(b.dataset.r === 'approve' ? '已通过' : '已拒绝');
+      route();
+    } catch (e) { toast(e.message, 'err'); }
+  });
+}
+
+/* ---------- 私信 ---------- */
+async function viewMessages() {
+  if (needLogin()) return;
+  const d = await api('/api/messages/conversations');
+  $app.innerHTML = `
+  <div class="container" style="max-width:720px">
+    <div class="page-title"><div><h1>私信</h1><div class="sub">只属于你和他的对话</div></div></div>
+    <div class="card">
+      ${d.conversations.map(c => `
+      <div class="item" style="cursor:pointer" onclick="location.hash='#/chat/${c.partner.id}'">
+        ${avatarHtml(c.partner, 'xs')}
+        <div style="flex:1">
+          <div class="title">${esc(c.partner.nickname)}${c.unread ? `<span class="msg-badge" style="display:inline-block;margin-left:6px">${c.unread}</span>` : ''}</div>
+          <div class="meta"><span>${c.lastFromMe ? '我：' : ''}${esc(excerpt(c.lastContent, 40))}</span><span>${fmtTime(c.lastTime)}</span></div>
+        </div>
+        <span style="color:var(--text2)">›</span>
+      </div>`).join('') || `
+      <div class="empty">还没有私信<br><span class="hint">去别人的<a href="#/rank">个人主页</a>点「发私信」开始聊天</span></div>`}
+    </div>
+  </div>`;
+}
+
+async function viewChat(id) {
+  if (needLogin()) return;
+  const d = await api('/api/messages/with/' + id);
+  const p = d.partner;
+  $app.innerHTML = `
+  <div class="container" style="max-width:680px">
+    <div class="page-title">
+      <div style="display:flex;align-items:center;gap:10px">
+        <a href="#/messages" class="btn ghost sm">← 返回</a>
+        <h1 style="font-size:18px">与 ${esc(p.nickname)} 的对话</h1>
+        <span class="hint">当前身份：${esc(state.me.nickname)}</span>
+      </div>
+      <a href="#/user/${p.id}" class="btn ghost sm">TA 的主页</a>
+    </div>
+    <div class="card">
+      <div id="chatBox" style="max-height:420px;overflow-y:auto;padding:4px 2px">
+        ${d.messages.map(m => `
+        <div class="bubble-row ${m.fromId === state.me.id ? 'me' : ''}">
+          <div class="bubble">${esc(m.content).replace(/\n/g, '<br>')}<div class="t">${fmtTime(m.createdAt)}</div></div>
+        </div>`).join('') || '<div class="empty">还没有消息，打个招呼吧 👋</div>'}
+      </div>
+      <div style="display:flex;gap:10px;margin-top:14px">
+        <input id="msgInput" style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;outline:none" placeholder="输入消息，回车发送…" maxlength="2000">
+        <button class="btn primary" id="msgSend">发送</button>
+      </div>
+    </div>
+  </div>`;
+  const box = document.getElementById('chatBox');
+  box.scrollTop = box.scrollHeight;
+  const send = async () => {
+    const input = document.getElementById('msgInput');
+    if (!input || !input.value.trim()) return;
+    try {
+      await api('/api/messages', { method: 'POST', body: { toId: id, content: input.value } });
+      // 重新同步登录态：多标签页切换账号时防止身份错乱
+      try { const d2 = await api('/api/me'); state.me = d2.user; renderSidebar(); } catch (e) {}
+      route();
+    } catch (e) { toast(e.message, 'err'); }
+  };
+  document.getElementById('msgSend').onclick = send;
+  document.getElementById('msgInput').onkeydown = (e) => { if (e.key === 'Enter') send(); };
+}
+
+/* ---------- 题库 ---------- */
+const DIFF = { 1: ['入门', '#fe4c61'], 2: ['简单', '#f39c11'], 3: ['普通', '#ffc116'], 4: ['较难', '#52c41a'], 5: ['困难', '#3498db'], 6: ['挑战', '#9d3dcf'] };
+const TYPE = { theme: '主题写作', skill: '专项训练' };
+const diffBadge = (d) => {
+  const [name, color] = DIFF[d] || DIFF[1];
+  return `<span class="diff-badge" style="color:#fff;background:${color}">${name}</span>`;
+};
+const tagChips = (tags) => (tags || []).map(t => `<span class="tag-chip">${esc(t)}</span>`).join('');
+
+async function viewProblems() {
+  const type = viewProblems._t || '';
+  const diff = viewProblems._d || '';
+  const q = viewProblems._q || '';
+  const params = new URLSearchParams();
+  if (type) params.set('type', type);
+  if (diff) params.set('difficulty', diff);
+  if (q) params.set('q', q);
+  const d = await api('/api/problems' + (params.toString() ? '?' + params : ''));
+  const isAdmin = state.me && state.me.role === 'admin';
+  $app.innerHTML = `
+  <div class="container">
+    <div class="page-title">
+      <div><h1>题库</h1><div class="sub">在练习中进步 —— 共 ${d.problems.length} 道题${q ? `（搜索：“${esc(q)}”）` : ''}</div></div>
+      ${state.me ? `<button class="btn primary" id="addProbBtn">＋ ${isAdmin ? '收录题目' : '我要出题'}</button>`
+                 : '<a class="btn ghost" href="#/login">登录后出题</a>'}
+    </div>
+    <div class="filter-row">
+      <select id="pDiff" class="mini-select">
+        <option value="">全部难度</option>
+        ${[1, 2, 3, 4, 5, 6].map(i => `<option value="${i}" ${String(i) === diff ? 'selected' : ''}>${DIFF[i][0]}</option>`).join('')}
+      </select>
+      <div class="search-box" style="flex:1;margin:0">
+        <input id="pQ" value="${esc(q)}" placeholder="搜索题目标题 / 内容 / 标签…" maxlength="60">
+        <button class="btn primary" data-searchbtn="pQ">🔍 搜索</button>
+      </div>
+    </div>
+    <div class="tabs">
+      <span class="t ${type === '' ? 'active' : ''}" data-t="">全部</span>
+      <span class="t ${type === 'theme' ? 'active' : ''}" data-t="theme">主题写作</span>
+      <span class="t ${type === 'skill' ? 'active' : ''}" data-t="skill">专项训练</span>
+    </div>
+    <div id="probFormWrap" style="display:none">
+      <div class="card">
+        <h2>${isAdmin ? '收录新题目（直接生效）' : '投稿新题目（需管理员审核通过后收录）'}</h2>
+        <div class="grid-2">
+          <div class="form-item"><label>类型</label>
+            <select id="npType"><option value="theme">主题写作</option><option value="skill">专项训练</option></select></div>
+          <div class="form-item"><label>难度</label>
+            <select id="npDiff">${[1, 2, 3, 4, 5, 6].map(i => `<option value="${i}">${DIFF[i][0]}</option>`).join('')}</select></div>
+        </div>
+        <div class="form-item"><label>题目标题</label><input id="npTitle" maxlength="80" placeholder="例如：用排比写一段风景"></div>
+        <div class="form-item"><label>题目内容 / 要求（支持 Markdown）</label><textarea id="npContent" style="min-height:110px" placeholder="具体要求、字数建议、注意事项…"></textarea></div>
+        <div class="form-item"><label>标签（用逗号分隔，最多 5 个）</label><input id="npTags" placeholder="排比,写景"></div>
+        <button class="btn green" id="npSave">${isAdmin ? '✔ 收录' : '📤 提交出题'}</button>
+      </div>
+    </div>
+    <div class="card">
+      ${d.problems.map(p => `
+      <div class="item problem-item">
+        <div style="flex:1;cursor:pointer" onclick="location.hash='#/problem/${p.id}'">
+          <div class="title">${diffBadge(p.difficulty)} <a href="#/problem/${p.id}" onclick="event.stopPropagation()">${esc(p.title)}</a>
+            <span class="type-badge">${TYPE[p.type]}</span></div>
+          <div class="meta"><span>${excerpt(p.content, 60)}</span></div>
+          <div class="meta"><span>👥 ${p.doerCount} 人练过</span><span>📝 ${p.practiceCount} 篇练习</span>${tagChips(p.tags)}</div>
+        </div>
+      </div>`).join('') || `<div class="empty">${q || diff || type ? '没有匹配条件的题目' : '该分类下暂无题目'}</div>`}
+    </div>
+  </div>`;
+  document.querySelectorAll('.tabs .t').forEach(t => t.onclick = () => { viewProblems._t = t.dataset.t; route(); });
+  document.getElementById('pDiff').onchange = (e) => { viewProblems._d = e.target.value; route(); };
+  bindSearch('pQ', (v) => { viewProblems._q = v; route(); });
+  if (state.me) {
+    document.getElementById('addProbBtn').onclick = () => {
+      const w = document.getElementById('probFormWrap');
+      w.style.display = w.style.display === 'none' ? 'block' : 'none';
+    };
+    document.getElementById('npSave').onclick = async () => {
+      try {
+        await api('/api/problems', {
+          method: 'POST',
+          body: {
+            type: npType.value, difficulty: npDiff.value, title: npTitle.value,
+            content: npContent.value, tags: npTags.value.split(/[,，]/).map(s => s.trim()).filter(Boolean)
+          }
+        });
+        toast(isAdmin ? '题目已收录' : '出题已提交，等待管理员审核');
+        go('#/problems'); route();
+      } catch (e) { toast(e.message, 'err'); }
+    };
+  }
+}
+
+async function viewProblemDetail(id) {
+  const d = await api('/api/problems/' + id);
+  const p = d.problem;
+  const mine = d.myPractice;
+  $app.innerHTML = `
+  <div class="container" style="max-width:820px">
+    <div class="card">
+      <div class="doc-head">
+        <h1>${diffBadge(p.difficulty)} ${esc(p.title)}</h1>
+        <div class="meta">
+          <span class="type-badge">${TYPE[p.type]}</span>
+          ${p.status !== 'approved' ? `<span class="badge ${p.status}">${statusBadge(p.status)}</span>` : ''}
+          ${tagChips(p.tags)}
+          <span>👥 ${p.doerCount} 人练过</span><span>📝 ${p.practiceCount} 篇练习</span>
+          ${mine ? '<span class="badge approved">我已完成</span>' : ''}
+        </div>
+      </div>
+      <div class="doc-content">${md(p.content)}</div>
+    </div>
+    ${state.me ? `
+    <div class="card">
+      <h2>✍️ ${mine ? '修改我的练习' : '开始练习'}</h2>
+      <div class="form-item"><label>练习标题</label><input id="prTitle" maxlength="80" value="${mine ? esc(mine.title) : esc(state.me.nickname) + '的练习'}"></div>
+      <div class="form-item">
+        <label>练习内容</label>
+        <textarea id="prContent" style="min-height:200px" placeholder="在这里完成这道题…">${mine ? esc(mine.content) : ''}</textarea>
+        <div class="hint">当前字数：<b id="prWc">${mine ? mine.wordCount : 0}</b></div>
+      </div>
+      <button class="btn green" id="prSubmit">📤 提交练习</button>
+    </div>` : `<div class="card"><div class="empty"><a href="#/login">登录</a> 后开始练习</div></div>`}
+    <div class="card">
+      <h2>练习作品（${p.practiceCount}）</h2>
+      ${d.practices.map(x => `
+      <div class="item">
+        ${avatarHtml(x.author, 'xs')}
+        <div style="flex:1">
+          <div class="title">${esc(x.title)}${mine && x.id === mine.id ? '<span class="badge approved" style="margin-left:6px">我的</span>' : ''}</div>
+          <div class="meta"><span>${esc(x.author.nickname)}</span><span>${x.wordCount} 字</span><span>${fmtTime(x.createdAt)}</span></div>
+        </div>
+        <button class="btn ghost sm" data-view="${x.id}">查看</button>
+      </div>`).join('') || '<div class="empty">还没有人交练习，做第一个吧！</div>'}
+    </div>
+  </div>`;
+  const prc = document.getElementById('prContent');
+  if (prc) prc.oninput = () => { document.getElementById('prWc').textContent = prc.value.replace(/\s/g, '').length; };
+  const ps = document.getElementById('prSubmit');
+  if (ps) ps.onclick = async (e) => {
+    e.target.disabled = true;
+    try {
+      await api(`/api/problems/${id}/practice`, { method: 'POST', body: { title: document.getElementById('prTitle').value, content: prc.value } });
+      toast('练习已提交！'); route();
+    } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
+  };
+  document.querySelectorAll('[data-view]').forEach(b => b.onclick = async () => {
+    const pid = b.dataset.view;
+    try {
+      const r = await api(`/api/problems/${id}/practice/${pid}`);
+      openPracticeModal(r.practice, p);
+    } catch (e) { toast(e.message, 'err'); }
+  });
+}
+
+function openPracticeModal(pr, problem) {
+  const mask = document.createElement('div');
+  mask.style.cssText = 'position:fixed;inset:0;background:rgba(20,40,60,.5);z-index:50;display:flex;align-items:center;justify-content:center;padding:20px';
+  mask.innerHTML = `
+    <div class="card" style="max-width:640px;width:100%;max-height:82vh;overflow-y:auto;margin:0">
+      <div class="doc-head" style="margin-top:4px">
+        <h1 style="font-size:17px">${esc(pr.title)}</h1>
+        <div class="meta"><span>${esc(pr.author.nickname)}</span><span>${pr.wordCount} 字</span><span>${fmtTime(pr.createdAt)}</span></div>
+      </div>
+      <div class="doc-content">${md(pr.content)}</div>
+      <div style="text-align:right"><button class="btn ghost sm" id="pmClose">关闭</button></div>
+    </div>`;
+  document.body.appendChild(mask);
+  mask.onclick = (e) => { if (e.target === mask) mask.remove(); };
+  mask.querySelector('#pmClose').onclick = () => mask.remove();
+}
+
+/* ---------- 启动 ---------- */
+(async function init() {
+  try {
+    const d = await api('/api/me');
+    state.me = d.user;
+  } catch (e) { state.me = null; }
+  window.addEventListener('hashchange', route);
+  window.go = go;
+  renderSidebar();
+  route();
+  setInterval(refreshUnread, 30000);
+})();
