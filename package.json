@@ -5,13 +5,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "dev": "wrangler pages dev",
-    "deploy": "wrangler pages deploy"
-  },
-  "dependencies": {
-    "itty-router": "^4.0.0"
-  },
-  "devDependencies": {
-    "wrangler": "^3.0.0"
+    "dev": "wrangler pages dev public",
+    "deploy": "wrangler pages deploy public"
   }
 }
