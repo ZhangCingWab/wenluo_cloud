@@ -44,22 +44,29 @@ function esc(s) {
 
 /* 轻量 Markdown 渲染 */
 function md(src) {
+  if (!src) return '';
   let s = esc(src);
   const blocks = [];
   s = s.replace(/```([\s\S]*?)```/g, (_, code) => {
     blocks.push('<pre><code>' + code.replace(/^\n|\n$/g, '') + '</code></pre>');
     return '\u0000B' + (blocks.length - 1) + '\u0000';
   });
-  s = s.replace(/^### (.+)$/gm, '<h3>$1</h3>')
+  s = s.replace(/^#### (.+)$/gm, '<h4>$1</h4>')
+       .replace(/^### (.+)$/gm, '<h3>$1</h3>')
        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-       .replace(/^# (.+)$/gm, '<h2>$1</h2>')
+       .replace(/^# (.+)$/gm, '<h1>$1</h1>')
        .replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>')
+       .replace(/^\*\s+(.+)$/gm, '<li>$1</li>')
+       .replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>')
        .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
        .replace(/\*([^*\n]+)\*/g, '<i>$1</i>')
-       .replace(/`([^`\n]+)`/g, '<code>$1</code>');
+       .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+       .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  // 把连续 <li> 用 <ul> 包起来
+  s = s.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
   s = s.split(/\n{2,}/).map(p => {
     const t = p.trim();
-    if (/^<(h2|h3|blockquote|pre)/.test(t)) return t;
+    if (/^<(h1|h2|h3|h4|blockquote|pre|ul)/.test(t)) return t;
     return '<p>' + t.replace(/\n/g, '<br>') + '</p>';
   }).join('');
   s = s.replace(/\u0000B(\d+)\u0000/g, (_, i) => blocks[i]);
@@ -711,8 +718,17 @@ async function viewWrite(editId) {
         <div class="hint">选择文体/题材类别，方便读者在文章库筛选</div>
       </div>
       <div class="form-item">
-        <label>内容（支持 Markdown：## 标题、**加粗**、\`代码\`、引用等）</label>
-        <textarea id="aContent" class="tall" placeholder="正文…">${a ? esc(a.content) : ''}</textarea>
+        <label>内容（支持 Markdown）</label>
+        <div style="display:flex;gap:10px;margin-bottom:6px">
+          <label style="cursor:pointer;font-size:12px;color:var(--text-2)"><input type="checkbox" id="mdPreview" checked> 实时预览</label>
+        </div>
+        <div id="mdSplit" style="display:flex;gap:12px">
+          <div style="flex:1;min-width:0">
+            <textarea id="aContent" class="tall" style="min-height:360px" placeholder="## 标题
+这里是正文…">${a ? esc(a.content) : ''}</textarea>
+          </div>
+          <div id="mdPreviewBox" style="flex:1;min-width:0;max-height:480px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:14px;background:var(--bg-soft);font-size:14px;line-height:1.7"></div>
+        </div>
       </div>
       <button class="btn primary" id="aSubmit">${a ? '保存修改' : '提交（待管理员审核）'}</button>
       <span class="hint" style="margin-left:10px">审核通过后将在文章库展示</span>
@@ -750,11 +766,32 @@ async function viewWrite(editId) {
     const title = document.getElementById('aTitle').value;
     openAiPanel(title ? 'outline' : 'outline', title);
   };
+  // ========== Markdown 实时预览 ==========
+  const aContent = document.getElementById('aContent');
+  const mdBox = document.getElementById('mdPreviewBox');
+  const mdCheck = document.getElementById('mdPreview');
+  const updatePreview = () => {
+    if (!mdCheck.checked) { mdBox.innerHTML = ''; return; }
+    mdBox.innerHTML = md(aContent.value) || '<span class="hint">预览区（输入内容后自动渲染）</span>';
+  };
+  aContent.addEventListener('input', updatePreview);
+  mdCheck.onchange = updatePreview;
+  updatePreview();
+  // ========== 标签输入（可多标签） ==========
+  const tagsRow = document.createElement('div');
+  tagsRow.style.marginTop = '8px';
+  tagsRow.innerHTML = `<label style="font-size:12px;color:var(--text-2)">标签（逗号分隔，最多 8 个，选填）</label>
+    <input id="aTags" placeholder="散文, 随笔, 思考" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:8px;margin-top:4px">`;
+  document.getElementById('aCat').closest('.form-item').after(tagsRow);
+  const aTags = document.getElementById('aTags');
+  if (a) aTags.value = (a.tags || []).join(', ');
+
   document.getElementById('aSubmit').onclick = async (e) => {
     e.target.disabled = true;
     try {
-      if (a) await api('/api/articles/' + a.id, { method: 'PUT', body: { title: aTitle.value, category: aCat.value, content: aContent.value } });
-      else await api('/api/articles', { method: 'POST', body: { title: aTitle.value, category: aCat.value, content: aContent.value } });
+      const tags = aTags.value.split(/[,，]/).map(t => t.trim()).filter(Boolean);
+      if (a) await api('/api/articles/' + a.id, { method: 'PUT', body: { title: aTitle.value, category: aCat.value, content: aContent.value, tags } });
+      else await api('/api/articles', { method: 'POST', body: { title: aTitle.value, category: aCat.value, content: aContent.value, tags } });
       toast('提交成功，等待审核');
       go('#/mine');
     } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
