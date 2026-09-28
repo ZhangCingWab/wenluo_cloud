@@ -229,19 +229,23 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 async function userById(env, id) {
   return dbFirst(env, 'SELECT * FROM users WHERE id = ?', [id]);
 }
-async function withAuthor(env, item) {
-  const a = await userById(env, item.authorId);
+// userById 同步版：从内存 _cache 找（推荐，已经 loadDB 预加载了）
+function userByIdSync(db, id) {
+  if (!db || !db.users) return null;
+  return db.users.find(u => u.id === id) || null;
+}
+function withAuthorSync(db, item) {
+  const a = userByIdSync(db, item.authorId);
   return { ...item, author: pub(a) || { nickname: '已注销用户' } };
 }
-
-async function articleOut(env, a) {
-  const o = await withAuthor(env, a);
+function articleOut(a, db) {
+  const o = withAuthorSync(db, a);
   o.likeCount = (a.likes || []).length;
   delete o.likes;
   return o;
 }
-async function postOut(env, p) {
-  const o = await withAuthor(env, p);
+function postOut(p, db) {
+  const o = withAuthorSync(db, p);
   o.commentCount = (p.comments || []).length;
   return o;
 }
