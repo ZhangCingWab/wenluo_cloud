@@ -2,20 +2,56 @@
  * Cloudflare Pages Functions - 文洛·文章竞赛社区 完整 API
  * 数据存储：Cloudflare KV (DATA)
  * 认证方式：Bearer Token（KV 存储 token→userId）
- * 密码哈希：Web Crypto API PBKDF2
+ * 密码哈希：Web Crypto API PBKDF2 (100000次 + SHA-256 + 16字节随机salt)
+ * 安全加固：XSS清洗/CSP头/密码复杂度/登录锁定/速率限制/文件白名单/Token强随机
  */
 
 /* ---------------- 工具函数 ---------------- */
-const uid = (p) => p + '_' + Math.random().toString(36).slice(2, 11);
-const bad = (msg, status = 400) => new Response(JSON.stringify({ error: msg }), { status, headers: corsHeaders() });
-const json = (data, status = 200, extraHeaders = {}) => new Response(JSON.stringify(data), { status, headers: { ...corsHeaders(), ...extraHeaders } });
-const corsHeaders = () => ({
-  'Content-Type': 'application/json',
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-});
-const clean = (s, max) => String(s == null ? '' : s).trim().slice(0, max || 20000);
+const uid = (p) => p + '_' + Math.random().toString(36).slice(2, 11) + cryptoRandomHex(6);
+const cryptoRandomHex = (n) => {
+  const arr = new Uint8Array(n); crypto.getRandomValues(arr);
+  return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+};
+const bad = (msg, status = 400) => new Response(JSON.stringify({ error: String(msg).slice(0, 200) }), { status, headers: securityHeaders() });
+const json = (data, status = 200, extraHeaders = {}) => new Response(JSON.stringify(data), { status, headers: { ...securityHeaders(), ...extraHeaders } });
+
+/* 安全响应头（CSP 防XSS / HSTS / 禁止嗅探 / 防点击劫持） */
+function securityHeaders() {
+  return {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Max-Age': '86400',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'geolocation=(), microphone=(), camera=()',
+    'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+    'Content-Security-Policy': "default-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'"
+  };
+}
+
+/* 输入清洗：trim + 长度限制 + 剥离 HTML标签 + 剥离危险 Markdown */
+const clean = (s, max) => {
+  const str = String(s == null ? '' : s).trim();
+  let out = str.slice(0, max || 20000);
+  // 剥离所有 HTML 标签（Markdown 保留的 <code> 等前端 esc() 会处理，但后端存储要安全）
+  out = out.replace(/<[^>]*>/g, '');
+  // 剥离危险 Markdown 攻击向量
+  out = out.replace(/`[^`]*`([\s\S]*)?/g, (m) => m.includes('javascript:') ? '' : m);
+  // 过滤事件处理器 onXxx=
+  out = out.replace(/on\w+\s*=\s*["'][^"']*["']/gi, '');
+  return out;
+};
+
+/* 文件扩展名白名单（只允许安全的文档类型） */
+const ALLOWED_FILE_EXT = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'md', 'csv', 'rtf', 'zip'];
+function isAllowedFile(name) {
+  const m = (name || '').toLowerCase().match(/\.([a-z0-9]+)$/);
+  return m && ALLOWED_FILE_EXT.includes(m[1]);
+}
+const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 
 /* ---------------- 类别常量 ---------------- */
 const ART_CATS = ['散文', '小说', '科幻', '诗歌', '记叙文', '议论文', '随笔', '其他'];
@@ -60,7 +96,7 @@ async function loadDB(env) {
   const raw = await env.DATA.get(KV_KEY);
   let changed = false;
   if (!raw) {
-    _cache = initDB();
+    _cache = await initDB();
     await saveDB(env);
   } else {
     _cache = JSON.parse(raw);
@@ -155,10 +191,12 @@ async function loadDB(env) {
       changed = true;
     }
 
-    // 补齐管理员密码占位符（如果缺失）
-    if (adminUser && (adminUser.salt === undefined || adminUser.hash === undefined)) {
-      adminUser.salt = 'seed_salt_placeholder';
-      adminUser.hash = 'seed_hash_placeholder';
+    // 补齐管理员密码（旧数据是 placeholder 时强制重置为 admin123 真实 hash）
+    if (adminUser && (adminUser.salt === 'seed_salt_placeholder' || adminUser.hash === 'seed_hash_placeholder')) {
+      const pw = await hashPassword('admin123');
+      adminUser.salt = pw.salt;
+      adminUser.hash = pw.hash;
+      adminUser.loginFails = 0; adminUser.lockedUntil = 0;
       changed = true;
     }
 
@@ -171,13 +209,18 @@ async function saveDB(env) {
   await env.DATA.put(KV_KEY, JSON.stringify(_cache, null, 2));
 }
 
-function initDB() {
+async function initDB() {
   const now = Date.now();
   const user = {
     id: 'u_admin', username: 'admin', nickname: '站务管理员', role: 'admin',
     bio: '本站管理员，负责文章、帖子与投稿审核。', createdAt: now,
     badges: []
   };
+  // admin 默认密码：admin123（真实 PBKDF2 hash，不再是 placeholder 任何人可绕过）
+  const pw = await hashPassword('admin123');
+  user.salt = pw.salt;
+  user.hash = pw.hash;
+  user.loginFails = 0; user.lockedUntil = 0;
   const db = {
     users: [user], articles: [], posts: [], contests: [],
     files: [], messages: [], problems: [], practices: [],
@@ -497,7 +540,29 @@ async function deleteToken(env, token) {
 }
 
 /* ---------------- 辅助函数 ---------------- */
-const pub = (u) => u ? { id: u.id, username: u.username, nickname: u.nickname, role: u.role, bio: u.bio || '', createdAt: u.createdAt } : null;
+// pub() 严格脱敏：绝对不能泄露 salt/hash/loginFails/lockedUntil/score 内部数据
+const pub = (u) => {
+  if (!u) return null;
+  return {
+    id: u.id,
+    username: u.username,
+    nickname: u.nickname,
+    role: u.role,
+    bio: u.bio || '',
+    createdAt: u.createdAt
+  };
+};
+function pubFull(u) {
+  // 仅管理员 / 本人自己看自己的完整资料时用
+  if (!u) return null;
+  return {
+    ...pub(u),
+    badges: u.badges || [],
+    following: u.following || [],
+    score: u.score || 0
+  };
+}
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 const userById = (db, id) => db.users.find(u => u.id === id);
 const withAuthor = (item, db) => Object.assign({}, item, { author: pub(userById(db, item.authorId)) || { nickname: '已注销用户' } });
 
@@ -738,7 +803,7 @@ export async function onRequest(context) {
   const { request, env } = context;
 
   // OPTIONS 预检
-  if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders() });
+  if (request.method === 'OPTIONS') return new Response(null, { headers: securityHeaders() });
 
   try {
     const db = await loadDB(env);
@@ -749,7 +814,8 @@ export async function onRequest(context) {
     // ---- 认证 ----
     if (match(path, 'me') && method === 'GET') {
       const u = await auth(request, env, db);
-      return json({ user: pub(u) });
+      if (!u) return bad('未登录', 401);
+      return json({ user: pubFull(u) });
     }
 
     // ---- 健康检查 ----
@@ -776,36 +842,32 @@ export async function onRequest(context) {
 
     // ---- 登录 ----
     if (match(path, 'login') && method === 'POST') {
-      const body = await request.json();
+      const body = await request.json().catch(() => ({}));
       const username = clean(body.username, 24);
+      if (!username || typeof body.password !== 'string') return bad('请输入用户名和密码');
       const user = db.users.find(u => u.username.toLowerCase() === username.toLowerCase());
-      if (!user) return bad('用户名或密码错误');
+      // 统一错误消息，防止用户名枚举
+      const genericError = '用户名或密码错误';
+      if (!user) { await sleep(300); return bad(genericError); } // 延时防枚举
       if (user.lockedUntil && Date.now() < user.lockedUntil) {
         const mins = Math.ceil((user.lockedUntil - Date.now()) / 60000);
         return bad(`该账号已因多次登录失败被锁定，请 ${mins} 分钟后再试`, 429);
       }
-      if (user.salt === 'seed_salt_placeholder') {
-        // 首次登录：初始化管理员密码
-        const { salt, hash } = await hashPassword(body.password);
-        user.salt = salt; user.hash = hash;
-        await saveDB(env);
-        user.loginFails = 0; user.lockedUntil = 0;
-        const token = await createToken(env, user.id);
-        return json({ user: pub(user), token });
-      }
-      if (!await verifyPassword(body.password || '', user)) {
+      const ok = await verifyPassword(body.password, user);
+      if (!ok) {
         user.loginFails = (user.loginFails || 0) + 1;
         if (user.loginFails >= 5) {
           user.lockedUntil = Date.now() + 10 * 60000;
           user.loginFails = 0;
         }
         await saveDB(env);
-        return bad('用户名或密码错误');
+        await sleep(300); // 延时防暴力破解
+        return bad(genericError);
       }
       user.loginFails = 0; user.lockedUntil = 0;
       await saveDB(env);
       const token = await createToken(env, user.id);
-      return json({ user: pub(user), token });
+      return json({ user: pubFull(user), token });
     }
 
     // ---- 登出 ----
@@ -1394,19 +1456,15 @@ export async function onRequest(context) {
       const file = formData.get('file');
       const note = clean(formData.get('note') || '', 200);
       if (!file) return bad('请选择文件');
-      if (file.size > 20 * 1024 * 1024) return bad('文件不能超过 20MB');
-      const ALLOW_EXT = ['.txt', '.md', '.doc', '.docx', '.pdf', '.png', '.jpg', '.jpeg', '.gif', '.webp',
-        '.zip', '.rar', '.7z', '.ppt', '.pptx', '.xls', '.xlsx', '.csv', '.mp3', '.mp4'];
-      const originalName = file.name;
-      const ext = originalName.slice(originalName.lastIndexOf('.')).toLowerCase();
-      if (!ALLOW_EXT.includes(ext)) return bad('不允许上传该类型的文件');
-      // 文件存入 KV（base64）
+      if (!isAllowedFile(file.name)) return bad('不允许上传该类型的文件');
+      if (file.size > MAX_FILE_SIZE) return bad('文件不能超过 20MB');
       const fileId = uid('f');
       const arrayBuf = await file.arrayBuffer();
       const base64 = new Uint8Array(arrayBuf).reduce((a, b) => a + String.fromCharCode(b), '');
-      const storedName = fileId + ext.slice(0, 10);
+      const ext = (file.name.match(/\.([a-z0-9]+)$/) || [,'bin'])[1].toLowerCase();
+      const storedName = fileId + '.' + ext;
       await env.DATA.put('file:' + storedName, btoa(base64));
-      const f = { id: fileId, authorId: me.id, originalName, storedName, size: file.size, note, status: 'pending', createdAt: Date.now() };
+      const f = { id: fileId, authorId: me.id, originalName: file.name, storedName, size: file.size, note, status: 'pending', createdAt: Date.now() };
       db.files.push(f);
       await saveDB(env);
       return json({ file: withAuthor(f, db) });
