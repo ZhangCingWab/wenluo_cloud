@@ -90,14 +90,10 @@ button, input, textarea, select, .nav a, .btn, .item, .tpl-card {
 .nav a:hover { background: var(--blue-light); color: var(--blue-dark); }
 .nav a.active {
   background: var(--blue-light); color: var(--blue); font-weight: 600;
-  box-shadow: inset 3px 0 0 var(--blue);
+  border-left: 3px solid var(--blue);
+  padding-left: 9px;
 }
-.nav a.active::before {
-  content: ''; position: absolute; left: -1px; top: 50%; transform: translateY(-50%);
-  width: 3px; height: 22px; border-radius: 2px;
-  background: linear-gradient(180deg, #3498db, #6fb3f2);
-  box-shadow: 0 0 8px var(--blue-glow);
-}
+.nav a.active::before { content: none; }
 
 /* 用户区 */
 .user-zone { padding: 10px; border-top: 1px solid var(--border); position: relative; }
