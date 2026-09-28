@@ -417,19 +417,19 @@ function userByIdSync(db, id) {
   if (!db || !db.users) return null;
   return db.users.find(u => u.id === id) || null;
 }
-function withAuthorSync(db, item) {
+function withAuthorSyncSync(db, item) {
   const a = userByIdSync(db, item.authorId);
   return { ...item, author: pub(a) || { nickname: '已注销用户' } };
 }
 function articleOut(a, db) {
-  const o = withAuthorSync(db, a);
+  const o = withAuthorSyncSync(db, a);
   o.likeCount = (a.likes || []).length;
   o.tags = typeof a.tags === 'string' ? safeJSON(a.tags) : (a.tags || []);
   delete o.likes;
   return o;
 }
 function postOut(p, db) {
-  const o = withAuthorSync(db, p);
+  const o = withAuthorSyncSync(db, p);
   o.commentCount = (p.comments || []).length;
   return o;
 }
@@ -470,7 +470,7 @@ function validPassword(pw) {
 }
 
 /* 简单作者信息（点评等场景用） */
-function withAuthorSimple(id, db) {
+function withAuthorSyncSimple(id, db) {
   const u = userByIdSync(db, id);
   if (!u) return { nickname: '已注销用户' };
   return { id: u.id, nickname: u.nickname, role: u.role };
@@ -1173,17 +1173,26 @@ export async function onRequest(context) {
       return json({ posts: rows.map(p => postOut(p, db)) });
     }
 
-    // ---- 帖子详情 ----
+    // ---- 帖子详情（直接 SQL）----
     m = match(path, 'posts/:id');
     if (m && method === 'GET') {
-      const p = db.posts.find(x => x.id === m.id);
+      let p;
+      try {
+        const r = await env.DB.prepare(`SELECT * FROM posts WHERE id=?`).bind(m.id).all();
+        const row = (r.results || [])[0];
+        if (row) p = {
+          id: row.id, authorId: row.author_id, title: row.title, content: row.content,
+          category: row.category, status: row.status, createdAt: row.created_at,
+          comments: JSON.parse(row.comments || '[]')
+        };
+      } catch {}
       if (!p) return bad('帖子不存在', 404);
       const me = await auth(request, env);
       if (p.status !== 'approved' && !(me && (me.id === p.authorId || me.role === 'admin'))) {
         return bad('帖子正在审核中', 403);
       }
       const o = postOut(p, db);
-      o.comments = (p.comments || []).map(c => withAuthor(c, db));
+      o.comments = (p.comments || []).map(c => withAuthorSyncSync(db, c));
       return json({ post: o });
     }
 
@@ -1227,7 +1236,7 @@ export async function onRequest(context) {
       // 同步更新内存
       const memP = db.posts.find(x => x.id === m.id);
       if (memP) { memP.comments = p.comments; }
-      return json({ comment: withAuthorSync(db, c) });
+      return json({ comment: withAuthorSyncSync(db, c) });
     }
 
     // ---- 删除帖子 ----
@@ -1692,7 +1701,7 @@ export async function onRequest(context) {
       if (!c) return bad('比赛不存在', 404);
       return json({
         problems: c.problems || [],
-        submissions: (c.submissions || []).map(s => { const o = withAuthor(s, db); delete o.content; return o; })
+        submissions: (c.submissions || []).map(s => { const o = withAuthorSync(s, db); delete o.content; return o; })
       });
     }
 
@@ -1738,7 +1747,7 @@ export async function onRequest(context) {
       return json({
         problem: problemOut(p, db),
         myPractice: mine,
-        practices: practices.slice(0, 50).map(x => { const o = withAuthor(x, db); delete o.content; return o; })
+        practices: practices.slice(0, 50).map(x => { const o = withAuthorSync(x, db); delete o.content; return o; })
       });
     }
 
@@ -1799,7 +1808,7 @@ export async function onRequest(context) {
     if (m && method === 'GET') {
       const s = db.practices.find(x => x.id === m.prId && x.problemId === m.id);
       if (!s) return bad('练习不存在', 404);
-      return json({ practice: withAuthor(s, db) });
+      return json({ practice: withAuthorSync(s, db) });
     }
 
     // ---- 我的练习 ----
@@ -1830,14 +1839,14 @@ export async function onRequest(context) {
       const f = { id: fileId, authorId: me.id, originalName: file.name, storedName, size: file.size, note, status: 'pending', createdAt: Date.now() };
       db.files.push(f);
       await saveDB(env);
-      return json({ file: withAuthor(f, db) });
+      return json({ file: withAuthorSync(f, db) });
     }
 
     // ---- 我的文件 ----
     if (match(path, 'files/mine') && method === 'GET') {
       const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
-      return json({ files: db.files.filter(f => f.authorId === me.id).sort((a, b) => b.createdAt - a.createdAt).map(f => withAuthor(f, db)) });
+      return json({ files: db.files.filter(f => f.authorId === me.id).sort((a, b) => b.createdAt - a.createdAt).map(f => withAuthorSync(f, db)) });
     }
 
     // ---- 文件下载 ----
@@ -1952,7 +1961,7 @@ export async function onRequest(context) {
       const me = await auth(request, env);
       if (!me || me.role !== 'admin') return bad('需要管理员权限', 403);
       const status = ['pending', 'approved', 'rejected'].includes(url.searchParams.get('status')) ? url.searchParams.get('status') : 'pending';
-      return json({ files: db.files.filter(f => f.status === status).sort((a, b) => b.createdAt - a.createdAt).map(f => withAuthor(f, db)) });
+      return json({ files: db.files.filter(f => f.status === status).sort((a, b) => b.createdAt - a.createdAt).map(f => withAuthorSync(f, db)) });
     }
 
     // ---- 审核文件 ----
@@ -2048,7 +2057,7 @@ export async function onRequest(context) {
       const out = reviews.map(r => ({
         id: r.id, rating: r.rating, content: r.content,
         createdAt: r.createdAt,
-        author: withAuthorSimple(r.authorId, db)
+        author: withAuthorSyncSimple(r.authorId, db)
       }));
       const avg = out.length ? (out.reduce((s, r) => s + r.rating, 0) / out.length).toFixed(1) : '0.0';
       return json({ reviews: out, avgRating: avg, count: out.length });
@@ -2074,7 +2083,7 @@ export async function onRequest(context) {
       const myReviewCount = db.reviews.filter(x => x.authorId === me.id).length;
       if (myReviewCount >= 3) awardBadge(me.id, '热心点评员', '你已点评 3 篇以上文章');
       await saveDB(env);
-      return json({ ok: true, review: { ...r, author: withAuthorSimple(me.id, db) } });
+      return json({ ok: true, review: { ...r, author: withAuthorSyncSimple(me.id, db) } });
     }
 
     // ---- 今日打卡题目 ----
