@@ -677,7 +677,7 @@ function renderComments(roots, targetType, targetId) {
 
 async function viewWrite(editId) {
   hideAiFab();
-  showAiFab();
+  hideAiFab(); // 确认关掉浮动按钮，写文章页面内嵌 AI
   if (needLogin()) return;
   let a = null;
   if (editId) {
@@ -686,15 +686,17 @@ async function viewWrite(editId) {
   }
   const tpls = await api('/api/templates').catch(() => ({ templates: [] }));
   $app.innerHTML = `
-  <div class="container" style="max-width:860px">
+  <div class="container" style="max-width:960px">
     <div class="page-title">
       <h1>${a ? '编辑文章' : '写文章'}</h1>
       <div style="display:flex;gap:8px">
         <button class="btn ghost sm" id="tplBtn">📝 选择模板</button>
-        <button class="btn primary sm" id="aiBtn">🤖 AI 助手</button>
       </div>
     </div>
 
+    <div style="display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start">
+      <!-- 左侧：编辑器 + 预览 -->
+      <div id="writeLeft">
     <div id="tplPanel" style="display:none">
       <div class="card">
         <h2>📝 写作模板（点击应用到编辑器）</h2>
@@ -733,6 +735,26 @@ async function viewWrite(editId) {
       <button class="btn primary" id="aSubmit">${a ? '保存修改' : '提交（待管理员审核）'}</button>
       <span class="hint" style="margin-left:10px">审核通过后将在文章库展示</span>
     </div>
+      </div>
+
+      <!-- 右侧：AI 助手（内嵌） -->
+      <div id="writeAI" class="card" style="position:sticky;top:20px">
+        <div style="font-weight:600;font-size:15px;margin-bottom:10px">🤖 AI 写作助手</div>
+        <div class="ai-task-bar" style="flex-wrap:wrap">
+          <button class="ai-task-btn active" data-t="outline">📋 大纲</button>
+          <button class="ai-task-btn" data-t="rewrite">✨ 润色</button>
+          <button class="ai-task-btn" data-t="continue">📖 续写</button>
+          <button class="ai-task-btn" data-t="review">📝 批改</button>
+        </div>
+        <div style="margin-top:10px">
+          <div class="form-item"><label style="font-size:12px">主题 / 你的问题</label><textarea id="aiInput" class="ai-input" style="min-height:60px" placeholder="关于「${a ? a.title : '你的主题'}」，你想让我帮你做什么？">${a ? a.title : ''}</textarea></div>
+          <div class="form-item"><label style="font-size:12px">风格（可选）</label><input id="aiStyle" placeholder="议论文 / 轻松幽默 / 简洁有力"></div>
+          <button class="ai-send" id="aiSend" style="width:100%;margin-top:6px">🚀 让 AI 帮我</button>
+          <div id="aiResult" style="margin-top:10px;min-height:40px;font-size:13px"></div>
+          <button class="btn ghost sm" id="aiApply" style="display:none;margin-top:6px;width:100%">📥 把结果应用到编辑器</button>
+        </div>
+      </div>
+    </div>
   </div>`;
 
   document.getElementById('tplBtn').onclick = () => {
@@ -759,12 +781,57 @@ async function viewWrite(editId) {
       toast('模板已应用！');
       document.getElementById('tplDetail').style.display = 'none';
       document.getElementById('aContent').focus();
+      updatePreview();
     };
     document.getElementById('closeTpl').onclick = () => { document.getElementById('tplDetail').style.display = 'none'; document.getElementById('tplPanel').style.display = 'block'; };
   });
-  document.getElementById('aiBtn').onclick = () => {
-    const title = document.getElementById('aTitle').value;
-    openAiPanel(title ? 'outline' : 'outline', title);
+
+  // ========== 内嵌 AI 助手逻辑 ==========
+  let _aiTask = 'outline';
+  document.querySelectorAll('#writeAI .ai-task-btn').forEach(b => b.onclick = () => {
+    _aiTask = b.dataset.t;
+    document.querySelectorAll('#writeAI .ai-task-btn').forEach(x => x.classList.toggle('active', x === b));
+    // 根据任务自动填充输入内容
+    const aiInput = document.getElementById('aiInput');
+    if (aiInput && !aiInput.value) {
+      if (_aiTask === 'outline') aiInput.placeholder = '给「' + (aTitle?.value || '你的主题') + '」列一个大纲';
+      if (_aiTask === 'rewrite') aiInput.placeholder = '把这段内容润色一下';
+      if (_aiTask === 'continue') aiInput.placeholder = '接着往下写…';
+      if (_aiTask === 'review') aiInput.placeholder = '帮我批改这段';
+    }
+  });
+  document.getElementById('aiSend').onclick = async () => {
+    if (needLogin()) return;
+    const input = document.getElementById('aiInput').value;
+    const style = document.getElementById('aiStyle').value;
+    const aiResult = document.getElementById('aiResult');
+    const aiApply = document.getElementById('aiApply');
+    if (!input) return toast('请写点什么', 'err');
+    document.getElementById('aiSend').disabled = true;
+    document.getElementById('aiSend').textContent = '思考中…';
+    aiResult.innerHTML = '<div class="ai-loader">AI 正在想办法</div>';
+    aiApply.style.display = 'none';
+    try {
+      const currentContent = document.getElementById('aContent').value;
+      const r = await api('/api/ai/write', { method: 'POST', body: { task: _aiTask, input, style, content: currentContent, title: aTitle.value } });
+      aiResult.innerHTML = md(r.result) || '<span class="hint">AI 没返回内容</span>';
+      aiApply.style.display = 'block';
+      aiApply.dataset.result = r.result || '';
+    } catch (e) {
+      aiResult.innerHTML = '<span style="color:var(--danger)">AI 暂时不可用：' + esc(e.message) + '</span>';
+    }
+    document.getElementById('aiSend').disabled = false;
+    document.getElementById('aiSend').textContent = '🚀 让 AI 帮我';
+  };
+  document.getElementById('aiApply').onclick = () => {
+    const r = document.getElementById('aiApply').dataset.result;
+    if (!r) return;
+    const ta = document.getElementById('aContent');
+    const cur = ta.value;
+    if (cur) ta.value = cur + '\n\n' + r; else ta.value = r;
+    toast('已应用到编辑器，记得检查修改');
+    document.getElementById('aiApply').style.display = 'none';
+    updatePreview();
   };
   // ========== Markdown 实时预览 ==========
   const aContent = document.getElementById('aContent');
