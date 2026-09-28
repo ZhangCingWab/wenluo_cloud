@@ -268,7 +268,10 @@ function rowToBinds(row, cols) {
 /* 全量保存：内存 _cache → D1（逐表 DELETE + INSERT） */
 async function saveDB(env) {
   if (!_cache || !env.DB) return;
+  // tokens 表不参与全量覆盖（register/login 已经单独 INSERT，saveDB 会把新 token 清掉！）
+  const SKIP_TABLES = new Set(['tokens']);
   for (const table of CACHED_TABLES) {
+    if (SKIP_TABLES.has(table)) continue;
     const rows = _cache[table];
     if (!rows || rows.length === 0) {
       try { await env.DB.prepare(`DELETE FROM ${table}`).run(); } catch {}
@@ -276,11 +279,9 @@ async function saveDB(env) {
     }
     const cols = await getTableCols(env, table);
     if (!cols.length) continue;
-    // 清空再全量写入（简单可靠）
     await env.DB.prepare(`DELETE FROM ${table}`).run();
     const colStr = cols.join(',');
     const ph = cols.map(() => '?').join(',');
-    // 逐条 INSERT（D1 batch 最多 100 条，这里量小）
     for (const row of rows) {
       const binds = rowToBinds(row, cols);
       try { await env.DB.prepare(`INSERT INTO ${table} (${colStr}) VALUES (${ph})`).bind(...binds).run(); } catch {}
