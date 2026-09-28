@@ -3,6 +3,27 @@ const $app = document.getElementById('app');
 const $sidebar = document.getElementById('sidebar');
 const state = { me: null, token: localStorage.getItem('token') || null };
 
+/* 静态数据 localStorage 缓存（减少后端请求） */
+const CACHE_TTL = 5 * 60 * 1000; // 5 分钟
+async function apiCached(path) {
+  const key = 'cache:' + path;
+  const raw = localStorage.getItem(key);
+  if (raw) {
+    try {
+      const { ts, data } = JSON.parse(raw);
+      if (Date.now() - ts < CACHE_TTL) return data;
+    } catch {}
+  }
+  const data = await api(path);
+  try { localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data })); } catch {}
+  return data;
+}
+/* 让缓存失效（写操作后调） */
+function invalidateCache(path) {
+  if (path) { localStorage.removeItem('cache:' + path); return; }
+  Object.keys(localStorage).filter(k => k.startsWith('cache:')).forEach(k => localStorage.removeItem(k));
+}
+
 /* ---------- 类别常量 ---------- */
 const ART_CATS = ['散文', '小说', '科幻', '诗歌', '记叙文', '议论文', '随笔', '其他'];
 const POST_CATS = ['题目讲解', '方法分享', '经验交流', '灌水闲聊', '其他'];
