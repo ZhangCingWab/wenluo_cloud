@@ -387,27 +387,18 @@ function pubFull(u) {
 
 /* 实时从 D1 计算用户积分（和排行榜同算法）*/
 async function computeScore(env, userId) {
-  try {
-    const [ar, pr, pcr, cr] = await Promise.all([
-      env.DB.prepare(`SELECT likes FROM articles WHERE author_id=? AND status='approved'`).bind(userId).all(),
-      env.DB.prepare(`SELECT comments FROM posts WHERE author_id=? AND status='approved'`).bind(userId).all(),
-      env.DB.prepare(`SELECT id FROM practices WHERE author_id=?`).bind(userId).all(),
-      env.DB.prepare(`SELECT id FROM checkins WHERE user_id=?`).bind(userId).all(),
-    ]);
-    const arts = ar.results || [];
-    const posts = pr.results || [];
-    const practices = (pcr.results || []).length;
-    const checkins = (cr.results || []).length;
-    let likes = 0, comments = 0;
-    for (const a of arts) try { likes += (JSON.parse(a.likes || '[]')).length; } catch {}
-    for (const p of posts) try { comments += (JSON.parse(p.comments || '[]')).length; } catch {}
-    return {
-      score: arts.length * 10 + posts.length * 5 + likes * 3 + comments * 2 + practices * 2 + checkins * 2,
-      articles: arts.length, posts: posts.length, likes, comments, practices, checkins
-    };
-  } catch {
-    return { score: 0, articles: 0, posts: 0, likes: 0, comments: 0, practices: 0, checkins: 0 };
-  }
+  let artRows = [], postRows = [], pracRows = [], checkRows = [];
+  try { artRows = (await env.DB.prepare(`SELECT likes FROM articles WHERE author_id=? AND status='approved'`).bind(userId).all()).results || []; } catch {}
+  try { postRows = (await env.DB.prepare(`SELECT comments FROM posts WHERE author_id=? AND status='approved'`).bind(userId).all()).results || []; } catch {}
+  try { pracRows = (await env.DB.prepare(`SELECT id FROM practices WHERE author_id=?`).bind(userId).all()).results || []; } catch {}
+  try { checkRows = (await env.DB.prepare(`SELECT id FROM checkins WHERE user_id=?`).bind(userId).all()).results || []; } catch {}
+  let likes = 0, comments = 0;
+  for (const a of artRows) try { likes += (JSON.parse(a.likes || '[]')).length; } catch {}
+  for (const p of postRows) try { comments += (JSON.parse(p.comments || '[]')).length; } catch {}
+  return {
+    score: artRows.length * 10 + postRows.length * 5 + likes * 3 + comments * 2 + pracRows.length * 2 + checkRows.length * 2,
+    articles: artRows.length, posts: postRows.length, likes, comments, practices: pracRows.length, checkins: checkRows.length
+  };
 }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -1468,21 +1459,15 @@ export async function onRequest(context) {
 
     // ---- 排行榜（直接 SQL 查 D1 实时算，跨 isolate 一致）----
     if (match(path, 'rank') && method === 'GET') {
-      // 并行查所有 approved 内容 + 互动数据
-      let artRows = [], postRows = [], pracRows = [], checkRows = [];
-      try {
-        const [ar, pr, pcr, cr] = await Promise.all([
-          env.DB.prepare(`SELECT author_id, likes FROM articles WHERE status='approved'`).all(),
-          env.DB.prepare(`SELECT author_id, comments FROM posts WHERE status='approved'`).all(),
-          env.DB.prepare(`SELECT author_id FROM practices`).all(),
-          env.DB.prepare(`SELECT user_id FROM checkins`).all(),
-        ]);
-        artRows = ar.results || [];
-        postRows = pr.results || [];
-        pracRows = pcr.results || [];
-        checkRows = cr.results || [];
-      } catch {}
-      // 聚合每个用户的统计
+      // 分别 try-catch，一个失败不影响其他
+      let artRows = [];
+      try { artRows = (await env.DB.prepare(`SELECT author_id, likes FROM articles WHERE status='approved'`).all()).results || []; } catch (e) {}
+      let postRows = [];
+      try { postRows = (await env.DB.prepare(`SELECT author_id, comments FROM posts WHERE status='approved'`).all()).results || []; } catch (e) {}
+      let pracRows = [];
+      try { pracRows = (await env.DB.prepare(`SELECT author_id FROM practices`).all()).results || []; } catch (e) {}
+      let checkRows = [];
+      try { checkRows = (await env.DB.prepare(`SELECT user_id FROM checkins`).all()).results || []; } catch (e) {}
       const stats = {};
       for (const u of db.users) stats[u.id] = { arts: 0, posts: 0, likes: 0, comments: 0, practices: 0, checkins: 0 };
       for (const row of artRows) {
