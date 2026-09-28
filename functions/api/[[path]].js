@@ -462,16 +462,39 @@ async function aiAssist(env, task, { topic, content, style, extra }) {
 function buildAiPrompt(task, topic, content, style, extra) {
   const sys = '你是一个专业的中文写作助手，帮助用户提高写作能力。用中文简洁回答。';
   const tasks = {
+    write: `请根据用户的描述，写一篇完整的文章。\n描述：${topic}\n${style ? `风格/字数要求：${style}\n` : ''}${content ? `参考已有内容：${content.slice(0, 500)}\n` : ''}${extra ? `其他要求：${extra}\n` : ''}请用 Markdown 格式输出完整文章，包含标题、分段、适当使用 **加粗** 等格式。`,
     outline: `请为这个写作主题生成一个详细的大纲：\n主题：${topic}\n${style ? `风格：${style}\n` : ''}${extra ? `要求：${extra}\n` : ''}请用 Markdown 格式输出，包含 3-5 个主要部分，每个部分 2-3 个要点。`,
     rewrite: `请润色以下这段文字，让它更${style || '流畅、生动'}：\n\n${content}\n\n润色后的版本：`,
     continue: `请续写以下内容，保持文风一致：\n\n${content}\n\n续写部分：`,
     review: `请以语文老师的角度，对以下文章进行点评。给出：1）总体评价（星级）；2）亮点；3）改进建议。\n\n${content}\n\n点评：`
   };
-  return `${sys}\n\n${tasks[task] || tasks.outline}`;
+  return `${sys}\n\n${tasks[task] || tasks.write}`;
 }
 
 function aiFallback(task, topic, content, style) {
   switch (task) {
+    case 'write': {
+      const t = topic || '你的主题';
+      return `# ${t}
+
+## 引言
+
+关于「${t}」，每个人都有自己的理解。${style === '议论文' ? '它不是一个非黑即白的命题，而是值得我们反复思考的话题。' : '让我们慢慢展开，看看它能带给我们什么样的感受。'}
+
+## 展开
+
+${style === '议论文' ? '首先，我们需要明确核心观点。任何讨论都不能停留在表面，我们需要追溯问题的根源。其次，多角度的分析能让我们看得更全面——既要看它的积极面，也要承认它可能带来的挑战。' : '每一个细节都值得细细品味。它们或许不显眼，但正是这些细碎的片段，拼出了完整的画面。当我们停下来认真感受时，会发现意想不到的触动。'}
+
+${content ? `> 参考了你已写的内容，以下是延续：\n\n${content.slice(0, 200)}...` : ''}
+
+## 结语
+
+${style === '议论文' ? '结论或许并不重要，重要的是思考本身。希望这篇文字能带给你一些启发。' : '文字到这里告一段落，但思考和感受会继续。愿你写出更多属于自己的故事。'}
+
+---
+
+*（AI 模板回复，开启 Workers AI 后自动替换为真实 AI 生成内容）*`;
+    }
     case 'outline': {
       const cat = style || '议论文';
       return `## 《${topic || '未命名'}》写作大纲
@@ -1577,8 +1600,10 @@ export async function onRequest(context) {
       const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       const body = await request.json().catch(() => ({}));
-      const { task = 'outline', topic = '', content = '', style = '', extra = '' } = body;
-      return json(await aiAssist(env, task, { topic, content, style, extra }));
+      // 兼容前端传 input 或 topic
+      const { task = 'write', input = '', topic = '', content = '', style = '', extra = '', title = '' } = body;
+      const finalTopic = topic || input || title;
+      return json(await aiAssist(env, task, { topic: finalTopic, content, style, extra }));
     }
 
     // ---- 写作模板列表 ----

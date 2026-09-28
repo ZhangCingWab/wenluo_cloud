@@ -686,7 +686,7 @@ async function viewWrite(editId) {
   }
   const tpls = await api('/api/templates').catch(() => ({ templates: [] }));
   $app.innerHTML = `
-  <div class="container" style="max-width:960px">
+  <div class="container" style="max-width:100%;padding:0 16px">
     <div class="page-title">
       <h1>${a ? '编辑文章' : '写文章'}</h1>
       <div style="display:flex;gap:8px">
@@ -694,64 +694,90 @@ async function viewWrite(editId) {
       </div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start">
-      <!-- 左侧：编辑器 + 预览 -->
-      <div id="writeLeft">
-    <div id="tplPanel" style="display:none">
-      <div class="card">
-        <h2>📝 写作模板（点击应用到编辑器）</h2>
-        <div class="tpl-grid">
-          ${tpls.templates.map(t => `
-          <div class="tpl-card" data-tpl="${t.id}">
-            <div class="t-title">${esc(t.title)}</div>
-            <div class="t-desc">${esc(t.description)}</div>
-            <span class="t-cat">${esc(t.category)}</span>
-          </div>`).join('')}
-        </div>
-      </div>
-    </div>
-
-    <div id="tplDetail" style="display:none"></div>
-
-    <div class="card">
-      <div class="form-item"><label>标题</label><input id="aTitle" maxlength="80" value="${a ? esc(a.title) : ''}" placeholder="给你的文章起个标题"></div>
-      <div class="form-item"><label>类别</label>
-        <select id="aCat">${ART_CATS.map(c => `<option ${a && (a.category || '其他') === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
-        <div class="hint">选择文体/题材类别，方便读者在文章库筛选</div>
-      </div>
-      <div class="form-item">
-        <label>内容（支持 Markdown）</label>
-        <div style="display:flex;gap:10px;margin-bottom:6px">
-          <label style="cursor:pointer;font-size:12px;color:var(--text-2)"><input type="checkbox" id="mdPreview" checked> 实时预览</label>
-        </div>
-        <div id="mdSplit" style="display:flex;gap:12px">
-          <div style="flex:1;min-width:0">
-            <textarea id="aContent" class="tall" style="min-height:360px" placeholder="## 标题
-这里是正文…">${a ? esc(a.content) : ''}</textarea>
+    <!-- 可拖拽分栏 -->
+    <div id="writeSplit" class="write-split">
+      <!-- 左侧：编辑器 -->
+      <div id="writeLeft" class="write-pane" style="width:55%;min-width:340px">
+        <div id="tplPanel" style="display:none">
+          <div class="card">
+            <h2>📝 写作模板（点击应用到编辑器）</h2>
+            <div class="tpl-grid">
+              ${tpls.templates.map(t => `
+              <div class="tpl-card" data-tpl="${t.id}">
+                <div class="t-title">${esc(t.title)}</div>
+                <div class="t-desc">${esc(t.description)}</div>
+                <span class="t-cat">${esc(t.category)}</span>
+              </div>`).join('')}
+            </div>
           </div>
-          <div id="mdPreviewBox" style="flex:1;min-width:0;max-height:480px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:14px;background:var(--bg-soft);font-size:14px;line-height:1.7"></div>
         </div>
-      </div>
-      <button class="btn primary" id="aSubmit">${a ? '保存修改' : '提交（待管理员审核）'}</button>
-      <span class="hint" style="margin-left:10px">审核通过后将在文章库展示</span>
-    </div>
+
+        <div id="tplDetail" style="display:none"></div>
+
+        <div class="card">
+          <div class="form-item"><label>标题</label><input id="aTitle" maxlength="80" value="${a ? esc(a.title) : ''}" placeholder="给你的文章起个标题"></div>
+          <div class="form-item"><label>类别</label>
+            <select id="aCat">${ART_CATS.map(c => `<option ${a && (a.category || '其他') === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
+            <div class="hint">选择文体/题材类别，方便读者在文章库筛选</div>
+          </div>
+          <div class="form-item">
+            <label>内容（支持 Markdown）</label>
+            <div style="display:flex;gap:10px;margin-bottom:6px">
+              <label style="cursor:pointer;font-size:12px;color:var(--text-2)"><input type="checkbox" id="mdPreview" checked> 实时预览</label>
+            </div>
+            <div id="mdSplit" style="display:flex;gap:12px">
+              <div style="flex:1;min-width:0">
+                <textarea id="aContent" class="tall" style="min-height:520px" placeholder="## 标题
+这里是正文…">${a ? esc(a.content) : ''}</textarea>
+              </div>
+              <div id="mdPreviewBox" style="flex:1;min-width:0;max-height:600px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:14px;background:var(--bg-soft);font-size:14px;line-height:1.7"></div>
+            </div>
+          </div>
+          <button class="btn primary" id="aSubmit">${a ? '保存修改' : '提交（待管理员审核）'}</button>
+          <span class="hint" style="margin-left:10px">审核通过后将在文章库展示</span>
+        </div>
       </div>
 
-      <!-- 右侧：AI 助手（内嵌） -->
-      <div id="writeAI" class="card" style="position:sticky;top:20px">
-        <div style="font-weight:600;font-size:15px;margin-bottom:10px">🤖 AI 写作助手</div>
-        <div class="ai-task-bar" style="flex-wrap:wrap">
-          <button class="ai-task-btn active" data-t="outline">📋 大纲</button>
-          <button class="ai-task-btn" data-t="rewrite">✨ 润色</button>
-          <button class="ai-task-btn" data-t="continue">📖 续写</button>
-          <button class="ai-task-btn" data-t="review">📝 批改</button>
-        </div>
-        <div style="margin-top:10px">
-          <div class="form-item"><label style="font-size:12px">主题 / 你的问题</label><textarea id="aiInput" class="ai-input" style="min-height:60px" placeholder="关于「${a ? a.title : '你的主题'}」，你想让我帮你做什么？">${a ? a.title : ''}</textarea></div>
-          <div class="form-item"><label style="font-size:12px">风格（可选）</label><input id="aiStyle" placeholder="议论文 / 轻松幽默 / 简洁有力"></div>
-          <button class="ai-send" id="aiSend" style="width:100%;margin-top:6px">🚀 让 AI 帮我</button>
-          <div id="aiResult" style="margin-top:10px;min-height:40px;font-size:13px"></div>
-          <button class="btn ghost sm" id="aiApply" style="display:none;margin-top:6px;width:100%">📥 把结果应用到编辑器</button>
+      <!-- 拖拽手柄 -->
+      <div id="writeDivider" class="write-divider" title="拖拽调整宽度">
+        <div class="divider-handle"></div>
+      </div>
+
+      <!-- 右侧：AI 助手 -->
+      <div id="writeAI" class="write-pane write-ai" style="width:45%;min-width:280px">
+        <div class="ai-card">
+          <div class="ai-header">
+            <div class="ai-logo">✦</div>
+            <div>
+              <div class="ai-title">AI 写作助手</div>
+              <div class="ai-sub">描述你的创意，让 AI 帮你变成文字</div>
+            </div>
+          </div>
+          <div class="ai-task-bar">
+            <button class="ai-task-btn active" data-t="write">✨ 帮你写</button>
+            <button class="ai-task-btn" data-t="outline">📋 列大纲</button>
+            <button class="ai-task-btn" data-t="rewrite">🎨 润色</button>
+            <button class="ai-task-btn" data-t="continue">📖 续写</button>
+            <button class="ai-task-btn" data-t="review">📝 批改</button>
+          </div>
+          <div class="ai-body">
+            <div class="ai-field">
+              <label>你想写什么？</label>
+              <textarea id="aiInput" class="ai-input" placeholder="${a ? '基于已写内容帮我写更多…' : '比如：写一篇关于「代码与生活」的散文，谈谈编程教会了我什么'}">${a ? '' : ''}</textarea>
+            </div>
+            <div class="ai-field">
+              <label>风格 / 要求</label>
+              <input id="aiStyle" placeholder="议论文 / 轻松幽默 / 简洁有力 / 800 字">
+            </div>
+            <button class="ai-send" id="aiSend">
+              <span class="ai-send-ico">⚡</span>
+              <span>让 AI 帮你写</span>
+            </button>
+            <div id="aiResult" class="ai-result"></div>
+            <button class="ai-apply" id="aiApply">
+              <span>📥 把结果插入编辑器</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -786,18 +812,50 @@ async function viewWrite(editId) {
     document.getElementById('closeTpl').onclick = () => { document.getElementById('tplDetail').style.display = 'none'; document.getElementById('tplPanel').style.display = 'block'; };
   });
 
-  // ========== 内嵌 AI 助手逻辑 ==========
-  let _aiTask = 'outline';
+  // ========== 可拖拽分栏 ==========
+  (function() {
+    const split = document.getElementById('writeSplit');
+    const left = document.getElementById('writeLeft');
+    const right = document.getElementById('writeAI');
+    const div = document.getElementById('writeDivider');
+    let dragging = false;
+    div.addEventListener('mousedown', (e) => {
+      dragging = true;
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    });
+    document.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const rect = split.getBoundingClientRect();
+      let pct = ((e.clientX - rect.left) / rect.width) * 100;
+      pct = Math.max(25, Math.min(75, pct)); // 25%~75% 限制
+      left.style.width = pct + '%';
+      right.style.width = (100 - pct) + '%';
+    });
+    document.addEventListener('mouseup', () => {
+      if (dragging) {
+        dragging = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    });
+  })();
+
+  // ========== AI 助手逻辑 ==========
+  let _aiTask = 'write'; // 默认「帮你写」
   document.querySelectorAll('#writeAI .ai-task-btn').forEach(b => b.onclick = () => {
     _aiTask = b.dataset.t;
     document.querySelectorAll('#writeAI .ai-task-btn').forEach(x => x.classList.toggle('active', x === b));
-    // 根据任务自动填充输入内容
     const aiInput = document.getElementById('aiInput');
-    if (aiInput && !aiInput.value) {
-      if (_aiTask === 'outline') aiInput.placeholder = '给「' + (aTitle?.value || '你的主题') + '」列一个大纲';
-      if (_aiTask === 'rewrite') aiInput.placeholder = '把这段内容润色一下';
-      if (_aiTask === 'continue') aiInput.placeholder = '接着往下写…';
-      if (_aiTask === 'review') aiInput.placeholder = '帮我批改这段';
+    if (aiInput) {
+      const phMap = {
+        write: '比如：写一篇关于「代码与生活」的散文，谈谈编程教会了我什么',
+        outline: '给「' + (aTitle?.value || '你的主题') + '」列一个大纲',
+        rewrite: '把这段内容润色一下（会参考左侧编辑器里已写的内容）',
+        continue: '接着左侧编辑器里已写的内容往下写',
+        review: '帮我批改左侧编辑器里的内容，给建议和分数'
+      };
+      aiInput.placeholder = phMap[_aiTask] || '描述你的需求';
     }
   });
   document.getElementById('aiSend').onclick = async () => {
@@ -806,9 +864,10 @@ async function viewWrite(editId) {
     const style = document.getElementById('aiStyle').value;
     const aiResult = document.getElementById('aiResult');
     const aiApply = document.getElementById('aiApply');
+    const btn = document.getElementById('aiSend');
     if (!input) return toast('请写点什么', 'err');
-    document.getElementById('aiSend').disabled = true;
-    document.getElementById('aiSend').textContent = '思考中…';
+    btn.disabled = true;
+    btn.innerHTML = '<span class="ai-send-ico">✦</span><span>AI 正在思考…</span>';
     aiResult.innerHTML = '<div class="ai-loader">AI 正在想办法</div>';
     aiApply.style.display = 'none';
     try {
