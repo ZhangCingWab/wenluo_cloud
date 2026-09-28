@@ -36,14 +36,13 @@ function securityHeaders() {
 const clean = (s, max) => {
   const str = String(s == null ? '' : s).trim();
   let out = str.slice(0, max || 20000);
-  // 剥离所有 HTML 标签（Markdown 保留的 <code> 等前端 esc() 会处理，但后端存储要安全）
   out = out.replace(/<[^>]*>/g, '');
-  // 剥离危险 Markdown 攻击向量
   out = out.replace(/`[^`]*`([\s\S]*)?/g, (m) => m.includes('javascript:') ? '' : m);
-  // 过滤事件处理器 onXxx=
   out = out.replace(/on\w+\s*=\s*["'][^"']*["']/gi, '');
   return out;
 };
+/* 安全 JSON 解析，失败返回默认值 */
+const safeJSON = (s, def = []) => { try { return JSON.parse(s); } catch { return def; } };
 
 /* 文件扩展名白名单（只允许安全的文档类型） */
 const ALLOWED_FILE_EXT = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'md', 'csv', 'rtf', 'zip'];
@@ -366,6 +365,7 @@ function withAuthorSync(db, item) {
 function articleOut(a, db) {
   const o = withAuthorSync(db, a);
   o.likeCount = (a.likes || []).length;
+  o.tags = typeof a.tags === 'string' ? safeJSON(a.tags) : (a.tags || []);
   delete o.likes;
   return o;
 }
@@ -801,14 +801,27 @@ export async function onRequest(context) {
     // ---- 文章列表 ----
     if (match(path, 'articles') && method === 'GET') {
       let list = db.articles.filter(a => a.status === 'approved');
-      const cat = url.searchParams.get('category');
-      const q = url.searchParams.get('q');
-      const sort = url.searchParams.get('sort');
+      const qs = requestQuery(request);
+      const cat = qs.category;
+      const tag = qs.tag;
+      const q = qs.q;
+      const sort = qs.sort;
       if (cat) list = list.filter(a => (a.category || '其他') === cat);
+      if (tag) list = list.filter(a => {
+        const t = typeof a.tags === 'string' ? safeJSON(a.tags) : (a.tags || []);
+        return t.includes(tag);
+      });
       list = searchFilter(list, q, db);
       if (sort === 'hot') list.sort((a, b) => ((b.likes || []).length * 5 + b.views) - ((a.likes || []).length * 5 + a.views));
       else list.sort((a, b) => b.createdAt - a.createdAt);
-      return json({ articles: list.map(a => articleOut(a, db)) });
+      // 返回热门标签前 10 个
+      const allTags = {};
+      db.articles.forEach(a => {
+        const t = typeof a.tags === 'string' ? safeJSON(a.tags) : (a.tags || []);
+        t.forEach(x => allTags[x] = (allTags[x] || 0) + 1);
+      });
+      const hotTags = Object.entries(allTags).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([t]) => t);
+      return json({ articles: list.map(a => articleOut(a, db)), hotTags });
     }
 
     // ---- 我的文章 ----
@@ -841,7 +854,8 @@ export async function onRequest(context) {
       const content = clean(body.content, 50000);
       if (!title || !content) return bad('标题和内容不能为空');
       const category = ART_CATS.includes(body.category) ? body.category : '其他';
-      const a = { id: uid('a'), authorId: me.id, title, content, category, status: 'pending', views: 0, likes: [], createdAt: Date.now() };
+      const tagsRaw = Array.isArray(body.tags) ? body.tags.slice(0, 8).map(t => clean(t, 20)).filter(Boolean) : [];
+      const a = { id: uid('a'), authorId: me.id, title, content, category, status: 'pending', views: 0, likes: [], tags: JSON.stringify(tagsRaw), createdAt: Date.now() };
       db.articles.push(a);
       await saveDB(env);
       return json({ article: articleOut(a, db) });
@@ -858,6 +872,9 @@ export async function onRequest(context) {
       a.title = clean(body.title, 80) || a.title;
       a.content = clean(body.content, 50000) || a.content;
       if (ART_CATS.includes(body.category)) a.category = body.category;
+      if (Array.isArray(body.tags)) {
+        a.tags = JSON.stringify(body.tags.slice(0, 8).map(t => clean(t, 20)).filter(Boolean));
+      }
       if (a.status !== 'approved') a.status = 'pending';
       await saveDB(env);
       return json({ article: articleOut(a, db) });
