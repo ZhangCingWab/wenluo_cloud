@@ -207,6 +207,54 @@ async function loadDB(env) {
   return _cache;
 }
 
+/* 列名缓存（PRAGMA 只查一次） */
+let _tableCols = null;
+async function getTableCols(env, table) {
+  if (!_tableCols) _tableCols = {};
+  if (_tableCols[table]) return _tableCols[table];
+  try {
+    const r = await env.DB.prepare(`PRAGMA table_info(${table})`).all();
+    _tableCols[table] = r.results.map(c => c.name);
+  } catch {
+    _tableCols[table] = [];
+  }
+  return _tableCols[table];
+}
+const camelToSnake = s => s.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase();
+
+/* 把内存中的行（camelCase）转成 SQL bind 值 */
+function rowToBinds(row, cols) {
+  return cols.map(c => {
+    const v = row[camelToSnake(c)] ?? row[c];
+    if (v === undefined || v === null) return null;
+    if (Array.isArray(v) || (typeof v === 'object' && v !== null)) return JSON.stringify(v);
+    return v;
+  });
+}
+
+/* 全量保存：内存 _cache → D1（逐表 DELETE + INSERT） */
+async function saveDB(env) {
+  if (!_cache || !env.DB) return;
+  for (const table of CACHED_TABLES) {
+    const rows = _cache[table];
+    if (!rows || rows.length === 0) {
+      try { await env.DB.prepare(`DELETE FROM ${table}`).run(); } catch {}
+      continue;
+    }
+    const cols = await getTableCols(env, table);
+    if (!cols.length) continue;
+    // 清空再全量写入（简单可靠）
+    await env.DB.prepare(`DELETE FROM ${table}`).run();
+    const colStr = cols.join(',');
+    const ph = cols.map(() => '?').join(',');
+    // 逐条 INSERT（D1 batch 最多 100 条，这里量小）
+    for (const row of rows) {
+      const binds = rowToBinds(row, cols);
+      try { await env.DB.prepare(`INSERT INTO ${table} (${colStr}) VALUES (${ph})`).bind(...binds).run(); } catch {}
+    }
+  }
+}
+
 // 迁移端点用：从旧 KV 读取完整 JSON（用于一次性灌入 D1）
 async function loadOldKV(env) {
   try {
