@@ -1573,7 +1573,8 @@ async function viewChat(id) {
 const DIFF = { 1: ['入门', '#fe4c61'], 2: ['简单', '#f39c11'], 3: ['普通', '#ffc116'], 4: ['较难', '#52c41a'], 5: ['困难', '#3498db'], 6: ['挑战', '#9d3dcf'] };
 const TYPE = { theme: '主题写作', skill: '专项训练' };
 const diffBadge = (d) => {
-  const [name, color] = DIFF[d] || DIFF[1];
+  const k = parseInt(d, 10) || 1;
+  const [name, color] = DIFF[k] || DIFF[1];
   return `<span class="diff-badge" style="color:#fff;background:${color}">${name}</span>`;
 };
 const tagChips = (tags) => (tags || []).map(t => `<span class="tag-chip">${esc(t)}</span>`).join('');
@@ -1794,7 +1795,7 @@ async function viewDaily() {
       ${d.daily ? `
       <div class="cc-row" style="flex-direction:column;align-items:flex-start;gap:10px">
         <div style="display:flex;gap:8px;align-items:center">
-          <span class="diff-badge" style="background:${DIFF[d.daily.difficulty][1]}">${DIFF[d.daily.difficulty][0]}</span>
+          <span class="diff-badge" style="background:${DIFF[parseInt(d.daily.difficulty,10)||1][1]}">${DIFF[parseInt(d.daily.difficulty,10)||1][0]}</span>
           <b style="font-size:16px">${esc(d.daily.title)}</b>
         </div>
         <div style="font-size:13px;line-height:1.7;white-space:pre-wrap">${esc(d.daily.content)}</div>
