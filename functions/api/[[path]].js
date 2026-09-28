@@ -1500,9 +1500,21 @@ export async function onRequest(context) {
       return json({ rank: rows.slice(0, 50), total: rows.length });
     }
 
-    // ---- 比赛列表 ----
+    // ---- 比赛列表（直接 SQL D1）----
     if (match(path, 'contests') && method === 'GET') {
-      return json({ contests: db.contests.slice().sort((a, b) => b.createdAt - a.createdAt).map(c => contestOut(c, db)) });
+      let rows = [];
+      try {
+        const r = await env.DB.prepare(`SELECT * FROM contests ORDER BY created_at DESC`).all();
+        rows = (r.results || []).map(row => ({
+          id: row.id, title: row.title, description: row.description,
+          problems: JSON.parse(row.problems || '[]'),
+          startTime: row.start_time, endTime: row.end_time,
+          createdBy: row.created_by, createdAt: row.created_at,
+          participants: JSON.parse(row.participants || '[]'),
+          submissions: JSON.parse(row.submissions || '[]')
+        }));
+      } catch {}
+      return json({ contests: rows.map(c => contestOut(c, db)) });
     }
 
     // ---- 我的比赛 ----
@@ -1516,7 +1528,21 @@ export async function onRequest(context) {
     // ---- 比赛详情 ----
     m = match(path, 'contests/:id');
     if (m && method === 'GET') {
-      const c = db.contests.find(x => x.id === m.id);
+      let c;
+      try {
+        const r = await env.DB.prepare(`SELECT * FROM contests WHERE id = ?`).bind(m.id).all();
+        const row = (r.results || [])[0];
+        if (row) {
+          c = {
+            id: row.id, title: row.title, description: row.description,
+            problems: JSON.parse(row.problems || '[]'),
+            startTime: row.start_time, endTime: row.end_time,
+            createdBy: row.created_by, createdAt: row.created_at,
+            participants: JSON.parse(row.participants || '[]'),
+            submissions: JSON.parse(row.submissions || '[]')
+          };
+        }
+      } catch {}
       if (!c) return bad('比赛不存在', 404);
       const o = contestOut(c, db);
       const me = await auth(request, env);
@@ -1548,9 +1574,19 @@ export async function onRequest(context) {
         wordLimit: Math.max(0, parseInt(p.wordLimit, 10) || 0)
       })).filter(p => p.title && p.content);
       if (!problems.length) return bad('每道题目的标题和内容不能为空');
-      const c = { id: uid('c'), title, description, problems, startTime, endTime, createdBy: me.id, createdAt: Date.now(), participants: [], submissions: [] };
+      const id = uid('c');
+      const now = Date.now();
+      const participants = [];
+      const submissions = [];
+      // 直接 SQL INSERT（跨 isolate 持久化）
+      try {
+        await env.DB.prepare(`INSERT INTO contests (id, title, description, problems, start_time, end_time, created_by, created_at, participants, submissions)
+          VALUES (?,?,?,?,?,?,?,?,?,?)`)
+          .bind(id, title, description, JSON.stringify(problems), startTime, endTime, me.id, now, '[]', '[]').run();
+      } catch (e) { return bad('创建失败: ' + e.message); }
+      const c = { id, title, description, problems, startTime, endTime, createdBy: me.id, createdAt: now, participants, submissions };
       db.contests.push(c);
-      await saveDB(env);
+      invalidateCache();
       return json({ contest: contestOut(c, db) });
     }
 
@@ -1559,13 +1595,22 @@ export async function onRequest(context) {
     if (m && method === 'POST') {
       const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
-      const c = db.contests.find(x => x.id === m.id);
+      // 直接 SQL 查 + 更新
+      let c;
+      try {
+        const r = await env.DB.prepare(`SELECT * FROM contests WHERE id=?`).bind(m.id).all();
+        const row = (r.results || [])[0];
+        if (row) {
+          c = { participants: JSON.parse(row.participants || '[]'), endTime: row.end_time };
+        }
+      } catch {}
       if (!c) return bad('比赛不存在', 404);
       if (Date.now() > c.endTime) return bad('比赛已结束');
-      c.participants = c.participants || [];
       const i = c.participants.indexOf(me.id);
       if (i >= 0) c.participants.splice(i, 1); else c.participants.push(me.id);
-      await saveDB(env);
+      try { await env.DB.prepare(`UPDATE contests SET participants=? WHERE id=?`).bind(JSON.stringify(c.participants), m.id).run(); }
+      catch (e) { return bad('操作失败: ' + e.message); }
+      invalidateCache();
       return json({ joined: i < 0, participantCount: c.participants.length });
     }
 
