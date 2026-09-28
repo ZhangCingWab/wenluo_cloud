@@ -434,29 +434,109 @@ function awardBadge(userId, name, reason) {
   u.badges.push({ name, reason, earnedAt: Date.now() });
 }
 
-/* AI 写作助手：优先调用 Workers AI，失败则用精心设计的本地 fallback */
-async function aiAssist(env, task, { topic, content, style, extra }) {
+/* AI 限频：每用户每天 MAX_PER_USER 次，全局每天 MAX_GLOBAL 次（保护免费 10k Neurons） */
+const AI_MAX_PER_USER = 10;       // 每用户每天 10 次（够写大纲+润色+批改 2 篇）
+const AI_MAX_GLOBAL = 1200;       // 全局每天 1200 次（约 9600 Neurons，留 buffer）
+const AI_CACHE_TTL = 3600;        // 相同请求缓存 1 小时（省重复调用）
+
+function aiTodayKey() { return new Date().toISOString().slice(0, 10); } // YYYY-MM-DD
+
+async function cryptoHash(str) {
+  try {
+    const buf = new TextEncoder().encode(str);
+    const hashBuf = await crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2,'0')).join('').slice(0, 24);
+  } catch {
+    // fallback：简单 hash
+    let h = 0;
+    for (let i = 0; i < str.length; i++) h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+    return 'h_' + Math.abs(h).toString(36);
+  }
+}
+
+async function checkAiLimit(env, userId) {
+  if (!env.DB) return { ok: true, reason: '' };
+  const dayKey = aiTodayKey();
+  try {
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_limits (
+      user_id TEXT, day TEXT, count INTEGER DEFAULT 0,
+      PRIMARY KEY (user_id, day))`).run();
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_cache (
+      hash TEXT PRIMARY KEY, result TEXT, source TEXT, created_at INTEGER)`).run();
+  } catch {}
+
+  // 全局计数
+  const gRow = await env.DB.prepare(`SELECT COALESCE(SUM(count),0) as c FROM ai_limits WHERE day = ?`).bind(dayKey).first();
+  const globalCount = gRow?.c || 0;
+  if (globalCount >= AI_MAX_GLOBAL) return { ok: false, reason: '今日 AI 额度已用完，请明天再来' };
+
+  // 用户计数
+  const uRow = await env.DB.prepare(`SELECT count FROM ai_limits WHERE user_id = ? AND day = ?`).bind(userId, dayKey).first();
+  const userCount = uRow?.count || 0;
+  if (userCount >= AI_MAX_PER_USER) return { ok: false, reason: `今日 AI 次数已用完（${AI_MAX_PER_USER}次/天），明天再来吧` };
+
+  return { ok: true, remaining: AI_MAX_PER_USER - userCount - 1 };
+}
+
+async function incrementAiUsage(env, userId) {
+  if (!env.DB) return;
+  const dayKey = aiTodayKey();
+  await env.DB.prepare(`INSERT INTO ai_limits (user_id, day, count) VALUES (?, ?, 1)
+    ON CONFLICT(user_id, day) DO UPDATE SET count = count + 1`).bind(userId, dayKey).run();
+}
+
+async function getAiCache(env, hash) {
+  if (!env.DB) return null;
+  const row = await env.DB.prepare(`SELECT result, source FROM ai_cache WHERE hash = ? AND created_at > ?`)
+    .bind(hash, Math.floor(Date.now()/1000) - AI_CACHE_TTL).first();
+  return row ? { result: row.result, source: row.source } : null;
+}
+
+async function setAiCache(env, hash, result, source) {
+  if (!env.DB) return;
+  await env.DB.prepare(`INSERT OR REPLACE INTO ai_cache (hash, result, source, created_at)
+    VALUES (?, ?, ?, ?)`).bind(hash, result, source, Math.floor(Date.now()/1000)).run();
+}
+
+/* AI 写作助手：优先 Workers AI → 缓存命中 → 超限 fallback 模板 */
+async function aiAssist(env, userId, task, { topic, content, style, extra }) {
   const topicStr = topic || '';
   const contentStr = content || '';
   const styleStr = style || '';
   const extraStr = extra || '';
 
-  // 尝试 Workers AI
+  // 生成请求 hash（去重缓存）
+  const hash = await cryptoHash(`${task}|${topicStr}|${contentStr.slice(0,300)}|${styleStr}`);
+
+  // 1) 先查缓存
+  const cached = await getAiCache(env, hash);
+  if (cached) return { ...cached, cached: true, remaining: -1 };
+
+  // 2) 检查限频
+  const limit = await checkAiLimit(env, userId);
+  if (!limit.ok) {
+    // 超限 → fallback 模板（不扣次数）
+    return { result: aiFallback(task, topicStr, contentStr, styleStr), source: 'template', limited: true, reason: limit.reason };
+  }
+
+  // 3) 尝试 Workers AI
   try {
     if (env && env.AI) {
       const prompt = buildAiPrompt(task, topicStr, contentStr, styleStr, extraStr);
-      const resp = await env.AI.run('@cloudflare/llama-3.2-1b-instruct', {
+      const resp = await env.AI.run('@cf/meta/llama-3.2-1b-instruct', {
         prompt, max_tokens: 800
       });
       const text = resp && resp.response ? resp.response.trim() : '';
       if (text && text.length > 5) {
-        return { result: text, source: 'ai' };
+        await incrementAiUsage(env, userId);
+        await setAiCache(env, hash, text, 'ai');
+        return { result: text, source: 'ai', remaining: limit.remaining };
       }
     }
   } catch (e) { /* AI 不可用时 fallback */ }
 
   // Fallback：本地精心设计的回复模板
-  return { result: aiFallback(task, topicStr, contentStr, styleStr), source: 'template' };
+  return { result: aiFallback(task, topicStr, contentStr, styleStr), source: 'template', remaining: limit?.remaining ?? AI_MAX_PER_USER };
 }
 
 function buildAiPrompt(task, topic, content, style, extra) {
@@ -1603,7 +1683,7 @@ export async function onRequest(context) {
       // 兼容前端传 input 或 topic
       const { task = 'write', input = '', topic = '', content = '', style = '', extra = '', title = '' } = body;
       const finalTopic = topic || input || title;
-      return json(await aiAssist(env, task, { topic: finalTopic, content, style, extra }));
+      return json(await aiAssist(env, me.id, task, { topic: finalTopic, content, style, extra }));
     }
 
     // ---- 写作模板列表 ----
