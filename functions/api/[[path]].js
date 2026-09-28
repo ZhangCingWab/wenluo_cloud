@@ -1459,15 +1459,19 @@ export async function onRequest(context) {
 
     // ---- 排行榜（直接 SQL 查 D1 实时算，跨 isolate 一致）----
     if (match(path, 'rank') && method === 'GET') {
-      // 分别 try-catch，一个失败不影响其他
-      let artRows = [];
-      try { artRows = (await env.DB.prepare(`SELECT author_id, likes FROM articles WHERE status='approved'`).all()).results || []; } catch (e) {}
-      let postRows = [];
-      try { postRows = (await env.DB.prepare(`SELECT author_id, comments FROM posts WHERE status='approved'`).all()).results || []; } catch (e) {}
-      let pracRows = [];
-      try { pracRows = (await env.DB.prepare(`SELECT author_id FROM practices`).all()).results || []; } catch (e) {}
-      let checkRows = [];
-      try { checkRows = (await env.DB.prepare(`SELECT user_id FROM checkins`).all()).results || []; } catch (e) {}
+      // DEBUG: 暴露 SQL 错误
+      let artRows = [], err1 = '';
+      try { artRows = (await env.DB.prepare(`SELECT author_id, likes FROM articles WHERE status='approved'`).all()).results || []; } catch (e) { err1 = e.message; }
+      let postRows = [], err2 = '';
+      try { postRows = (await env.DB.prepare(`SELECT author_id, comments FROM posts WHERE status='approved'`).all()).results || []; } catch (e) { err2 = e.message; }
+      let pracRows = [], err3 = '';
+      try { pracRows = (await env.DB.prepare(`SELECT author_id FROM practices`).all()).results || []; } catch (e) { err3 = e.message; }
+      let checkRows = [], err4 = '';
+      try { checkRows = (await env.DB.prepare(`SELECT user_id FROM checkins`).all()).results || []; } catch (e) { err4 = e.message; }
+      // DEBUG: 如果有错误直接返回
+      if (err1 || err2 || err3 || err4) {
+        return json({ debug: { err1, err2, err3, err4, artCount: artRows.length, postCount: postRows.length, pracCount: pracRows.length, checkCount: checkRows.length }, rank: [] });
+      }
       const stats = {};
       for (const u of db.users) stats[u.id] = { arts: 0, posts: 0, likes: 0, comments: 0, practices: 0, checkins: 0 };
       for (const row of artRows) {
