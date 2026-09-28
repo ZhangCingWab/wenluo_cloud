@@ -454,16 +454,19 @@ async function cryptoHash(str) {
   }
 }
 
+/* 确保 AI 相关表存在（D1 的 CREATE TABLE IF NOT EXISTS 需显式调） */
+async function ensureAiTables(env) {
+  if (!env.DB) return;
+  try { await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_limits (
+    user_id TEXT, day TEXT, count INTEGER DEFAULT 0,
+    PRIMARY KEY (user_id, day))`).run(); } catch {}
+  try { await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_cache (
+    hash TEXT PRIMARY KEY, result TEXT, source TEXT, created_at INTEGER)`).run(); } catch {}
+}
+
 async function checkAiLimit(env, userId) {
   if (!env.DB) return { ok: true, reason: '' };
   const dayKey = aiTodayKey();
-  try {
-    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_limits (
-      user_id TEXT, day TEXT, count INTEGER DEFAULT 0,
-      PRIMARY KEY (user_id, day))`).run();
-    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_cache (
-      hash TEXT PRIMARY KEY, result TEXT, source TEXT, created_at INTEGER)`).run();
-  } catch {}
 
   // 全局计数
   const gRow = await env.DB.prepare(`SELECT COALESCE(SUM(count),0) as c FROM ai_limits WHERE day = ?`).bind(dayKey).first();
@@ -504,6 +507,9 @@ async function aiAssist(env, userId, task, { topic, content, style, extra }) {
   const contentStr = content || '';
   const styleStr = style || '';
   const extraStr = extra || '';
+
+  // 先确保表存在（避免 "no such table"）
+  await ensureAiTables(env);
 
   // 生成请求 hash（去重缓存）
   const hash = await cryptoHash(`${task}|${topicStr}|${contentStr.slice(0,300)}|${styleStr}`);
