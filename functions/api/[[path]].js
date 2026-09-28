@@ -969,7 +969,7 @@ export async function onRequest(context) {
     if (m && method === 'POST') {
       const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
-      const t = userById(env, m.id);
+      const t = userByIdSync(db, m.id);
       if (!t) return bad('用户不存在', 404);
       if (t.id === me.id) return bad('不能关注自己');
       me.following = me.following || [];
@@ -1586,7 +1586,7 @@ export async function onRequest(context) {
       const o = contestOut(c, db);
       const me = await auth(request, env);
       o.joined = !!(me && (c.participants || []).includes(me.id));
-      o.participantList = (c.participants || []).map(id => pub(userById(env, id))).filter(Boolean);
+      o.participantList = (c.participants || []).map(id => pub(userByIdSync(db, id))).filter(Boolean);
       delete o.participants;
       delete o.submissions;
       return json({ contest: o });
