@@ -111,6 +111,9 @@ const CACHED_TABLES = ['users', 'tokens', 'articles', 'posts', 'contests', 'mess
   'problems', 'practices', 'reviews', 'checkins', 'templates', 'comments', 'favorites', 'notifications'];
 
 let _cache = null;
+let _cacheDirty = false;
+/* 标记内存缓存过期（写操作后调，下次 loadDB 重查 D1） */
+function invalidateCache() { _cacheDirty = true; }
 
 // 分别检查每张表是否为空，分别补种子
 async function ensureSeedData(env) {
@@ -248,14 +251,15 @@ async function ensureSeedData(env) {
 }
 
 async function loadDB(env) {
-  if (_cache) return _cache;
+  if (_cache && !_cacheDirty) return _cache;
   try { await ensureSeedData(env); } catch {}
-  // 并行加载所有表（15 个 SELECT 同时发出，不用串行等）
+  // 并行加载所有表（15 个 SELECT 同时发出）
   const results = await Promise.all(CACHED_TABLES.map(async t => {
     try { return [t, await dbAll(env, `SELECT * FROM ${t}`)]; }
     catch { return [t, []]; }
   }));
   _cache = Object.fromEntries(results);
+  _cacheDirty = false;
   return _cache;
 }
 
@@ -1024,9 +1028,18 @@ export async function onRequest(context) {
       if (!title || !content) return bad('标题和内容不能为空');
       const category = ART_CATS.includes(body.category) ? body.category : '其他';
       const tagsRaw = Array.isArray(body.tags) ? body.tags.slice(0, 8).map(t => clean(t, 20)).filter(Boolean) : [];
-      const a = { id: uid('a'), authorId: me.id, title, content, category, status: 'pending', views: 0, likes: [], tags: JSON.stringify(tagsRaw), createdAt: Date.now() };
+      const status = me.role === 'admin' ? 'approved' : 'pending';
+      const id = uid('a');
+      const now = Date.now();
+      // 直接 SQL INSERT（不同 isolate 间必须持久化）
+      try {
+        await env.DB.prepare(`INSERT INTO articles (id, author_id, title, content, category, status, views, likes, tags, created_at)
+          VALUES (?,?,?,?,?,?,?,?,?,?)`)
+          .bind(id, me.id, title, content, category, status, 0, '[]', JSON.stringify(tagsRaw), now).run();
+      } catch (e) { return bad('创建失败: ' + e.message); }
+      const a = { id, authorId: me.id, title, content, category, status, views: 0, likes: [], tags: JSON.stringify(tagsRaw), createdAt: now };
       db.articles.push(a);
-      await saveDB(env);
+      invalidateCache();
       return json({ article: articleOut(a, db) });
     }
 
@@ -1715,12 +1728,13 @@ export async function onRequest(context) {
       const me = await auth(request, env);
       if (!me || me.role !== 'admin') return bad('需要管理员权限', 403);
       const body = await request.json();
+      const status = body.action === 'approve' ? 'approved' : 'rejected';
+      // 直接 SQL UPDATE（不同 isolate 间必须持久化）
+      try { await env.DB.prepare(`UPDATE articles SET status = ?, reviewed_at = ? WHERE id = ?`).bind(status, Date.now(), m.id).run(); } catch (e) { return bad('审核失败: ' + e.message); }
       const a = db.articles.find(x => x.id === m.id);
-      if (!a) return bad('文章不存在', 404);
-      a.status = body.action === 'approve' ? 'approved' : 'rejected';
-      a.reviewedAt = Date.now();
-      await saveDB(env);
-      return json({ ok: true, status: a.status });
+      if (a) { a.status = status; a.reviewedAt = Date.now(); }
+      invalidateCache();
+      return json({ ok: true, status });
     }
 
     // ---- 后台审核：帖子列表 ----
@@ -1738,12 +1752,12 @@ export async function onRequest(context) {
       const me = await auth(request, env);
       if (!me || me.role !== 'admin') return bad('需要管理员权限', 403);
       const body = await request.json();
+      const status = body.action === 'approve' ? 'approved' : 'rejected';
+      try { await env.DB.prepare(`UPDATE posts SET status = ?, reviewed_at = ? WHERE id = ?`).bind(status, Date.now(), m.id).run(); } catch (e) { return bad('审核失败: ' + e.message); }
       const p = db.posts.find(x => x.id === m.id);
-      if (!p) return bad('帖子不存在', 404);
-      p.status = body.action === 'approve' ? 'approved' : 'rejected';
-      p.reviewedAt = Date.now();
-      await saveDB(env);
-      return json({ ok: true, status: p.status });
+      if (p) { p.status = status; p.reviewedAt = Date.now(); }
+      invalidateCache();
+      return json({ ok: true, status });
     }
 
     // ---- 后台审核：文件列表 ----
