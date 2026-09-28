@@ -838,7 +838,8 @@ export async function onRequest(context) {
     // ---- 用户详情 ----
     let m = match(path, 'users/:id');
     if (m && method === 'GET') {
-      const u = userById(env, m.id);
+      // 用内存 db 而不是 D1 查询（D1 可能列不全）
+      const u = userByIdSync(db, m.id);
       if (!u) return bad('用户不存在', 404);
       const me = await auth(request, env);
       const articles = db.articles.filter(a => a.authorId === u.id && a.status === 'approved');
@@ -855,8 +856,8 @@ export async function onRequest(context) {
         id: c.id, title: c.title, status: c.status || (Date.now() < c.startTime ? 'upcoming' : Date.now() > c.endTime ? 'ended' : 'ongoing'),
         startTime: c.startTime, endTime: c.endTime
       }));
-      // 关注列表 / 粉丝列表
-      const following = (u.following || []).map(id => pub(userById(env, id))).filter(Boolean);
+      // 关注列表 / 粉丝列表（也改 sync 版）
+      const following = (u.following || []).map(id => pub(userByIdSync(db, id))).filter(Boolean);
       const followers = db.users.filter(x => (x.following || []).includes(u.id)).map(pub);
       // 积分计算
       const articleCount = articles.length;
