@@ -58,6 +58,7 @@ let _cache = null;
 async function loadDB(env) {
   if (_cache) return _cache;
   const raw = await env.DATA.get(KV_KEY);
+  let changed = false;
   if (!raw) {
     _cache = initDB();
     await saveDB(env);
@@ -66,7 +67,7 @@ async function loadDB(env) {
     // 兼容旧数据
     _cache.messages = _cache.messages || [];
     for (const u of _cache.users) u.following = u.following || [];
-    if (!Array.isArray(_cache.problems)) { _cache.problems = []; seedProblems(); }
+    if (!Array.isArray(_cache.problems)) { _cache.problems = []; seedProblems(); changed = true; }
     for (const p of _cache.problems) if (!p.status) p.status = 'approved';
     _cache.practices = _cache.practices || [];
     for (const a of _cache.articles) if (!a.category) a.category = '其他';
@@ -81,6 +82,62 @@ async function loadDB(env) {
         ];
       }
     }
+
+    // ---- 自动补齐缺失的种子数据（兼容旧版本空 KV） ----
+    const now = Date.now();
+    const adminUser = _cache.users.find(u => u.role === 'admin');
+
+    // 补齐欢迎文章
+    if ((!_cache.articles || _cache.articles.length === 0) && adminUser) {
+      _cache.articles.push({
+        id: 'a_welcome', authorId: adminUser.id, title: '欢迎来到文洛 · 文章竞赛社区',
+        content: '## 这里可以做什么\n\n- **写文章**：点击侧边栏「我的文章」或主页「立即开始创作」，提交后由管理员审核，通过后进入文章库。\n- **逛论坛**：在「论坛广场」发帖交流，帖子同样需要审核。\n- **打比赛**：管理员会在「比赛广场」创建比赛，欢迎报名参加。\n- **文件投稿**：有文档想分享？通过「文件投稿」上传，审核通过后归档。\n\n## 社区公约\n\n1. 保持友善，尊重原创。\n2. 文章支持 `Markdown` 基础语法：**加粗**、`代码`、标题等。\n3. 违规内容将被拒绝并记录。\n\n祝大家玩得开心！',
+        category: '其他', status: 'approved', views: 128, likes: [], createdAt: now - 86400000, reviewedAt: now - 86000000
+      });
+      changed = true;
+    }
+
+    // 补齐新人报到帖
+    if ((!_cache.posts || _cache.posts.length === 0) && adminUser) {
+      _cache.posts.push({
+        id: 'p_hello', authorId: adminUser.id, title: '【置顶】新人报到帖',
+        content: '新来的同学在这里打个招呼吧！介绍一下自己擅长的领域 ~',
+        category: '其他', status: 'approved', createdAt: now - 43200000, comments: []
+      });
+      changed = true;
+    }
+
+    // 补齐 demo 比赛
+    if ((!_cache.contests || _cache.contests.length === 0) && adminUser) {
+      _cache.contests.push({
+        id: 'c_demo', title: '第一届「文洛杯」短文创作赛',
+        description: '## 比赛说明\n\n围绕主题「**代码与生活**」写一篇不超过 2000 字的短文。\n\n- 参赛作品请通过「我的文章 → 写文章」提交，标题前缀【文洛杯】。\n- 评审标准：立意 40%、文笔 40%、创意 20%。\n\n期待大家的作品！',
+        problems: [
+          { id: uid('q'), title: '主题创作', content: '围绕比赛主题，完成一篇原创作品。', wordLimit: 2000 },
+          { id: uid('q'), title: '自由发挥', content: '题材不限，展现你的创意与文笔。', wordLimit: 2000 },
+          { id: uid('q'), title: '我的社区故事', content: '写下你在社区里的经历或见闻。', wordLimit: 0 }
+        ],
+        startTime: now - 3600000, endTime: now + 7 * 86400000,
+        createdBy: adminUser.id, createdAt: now - 7200000,
+        participants: [], submissions: []
+      });
+      changed = true;
+    }
+
+    // 补齐题库
+    if (!_cache.problems || _cache.problems.length === 0) {
+      seedProblems();
+      changed = true;
+    }
+
+    // 补齐管理员密码占位符（如果缺失）
+    if (adminUser && (adminUser.salt === undefined || adminUser.hash === undefined)) {
+      adminUser.salt = 'seed_salt_placeholder';
+      adminUser.hash = 'seed_hash_placeholder';
+      changed = true;
+    }
+
+    if (changed) await saveDB(env);
   }
   return _cache;
 }
