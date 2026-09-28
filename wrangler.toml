@@ -1,15 +1,29 @@
 name = "wenluo-cloudflare"
 compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
 
 pages_build_output_dir = "public"
 
-# KV 命名空间绑定
+# D1 数据库（Cloudflare 原生 SQL）
+[[d1_databases]]
+binding = "DB"
+database_name = "wenluo-db"
+# ⚠️ 请在 Cloudflare Dashboard 创建 D1 后，把 database_id 填在这里
+# 创建方式：Dashboard → Workers & Pages → D1 → Create → 命名 "wenluo-db"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+
+# KV 命名空间绑定（保留用于迁移端点读取旧数据）
 [[kv_namespaces]]
 binding = "DATA"
 id = "cb14318386c34f3b9233eac196d7f4d7"
 
 [env.production]
 vars = { ENVIRONMENT = "production" }
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "wenluo-db"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
 
 [[env.production.kv_namespaces]]
 binding = "DATA"

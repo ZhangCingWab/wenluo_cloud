@@ -87,460 +87,110 @@ function bytesToHex(b) {
   return s;
 }
 
-/* ---------------- 数据库管理 ---------------- */
-const KV_KEY = 'database';
-let _cache = null;
 
-async function loadDB(env) {
-  if (_cache) return _cache;
-  const raw = await env.DATA.get(KV_KEY);
-  let changed = false;
-  if (!raw) {
-    _cache = await initDB();
-    await saveDB(env);
-  } else {
-    _cache = JSON.parse(raw);
-    // 兼容旧数据
-    _cache.messages = _cache.messages || [];
-    for (const u of _cache.users) u.following = u.following || [];
-    if (!Array.isArray(_cache.problems)) { _cache.problems = []; seedProblems(); changed = true; }
-    for (const p of _cache.problems) if (!p.status) p.status = 'approved';
-    _cache.practices = _cache.practices || [];
-    for (const a of _cache.articles) if (!a.category) a.category = '其他';
-    for (const p of _cache.posts) if (!p.category) p.category = '其他';
-    for (const c of _cache.contests) {
-      c.submissions = c.submissions || [];
-      if (!c.problems || !c.problems.length) {
-        c.problems = [
-          { id: uid('q'), title: '主题创作', content: '围绕比赛主题，完成一篇原创作品。', wordLimit: 2000 },
-          { id: uid('q'), title: '自由发挥', content: '题材不限，展现你的创意与文笔。', wordLimit: 2000 },
-          { id: uid('q'), title: '我的社区故事', content: '写下你在社区里的经历或见闻。', wordLimit: 0 }
-        ];
-      }
-    }
 
-    // ---- 自动补齐缺失的种子数据（兼容旧版本空 KV） ----
-    const now = Date.now();
-    const adminUser = _cache.users.find(u => u.role === 'admin');
-
-    // 补齐新字段
-    _cache.reviews = _cache.reviews || [];
-    _cache.checkins = _cache.checkins || [];
-    if (!Array.isArray(_cache.templates) || _cache.templates.length === 0) {
-      seedTemplates(_cache);
-      changed = true;
-    }
-    // 每日题目（每天自动换）
-    const today = new Date();
-    const dayKey = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
-    if (!_cache.dailyProblem || (_cache._dailyDayKey && _cache._dailyDayKey !== dayKey)) {
-      _cache.dailyProblem = pickDailyProblem(_cache);
-      _cache._dailyDayKey = dayKey;
-      changed = true;
-    }
-    // 用户勋章字段
-    for (const u of _cache.users) {
-      if (!Array.isArray(u.badges)) { u.badges = []; changed = true; }
-    }
-
-    if (!_cache.problems || _cache.problems.length === 0) {
-      seedProblems();
-      changed = true;
-    }
-
-    // 补齐欢迎文章
-    if ((!_cache.articles || _cache.articles.length === 0) && adminUser) {
-      _cache.articles.push({
-        id: 'a_welcome', authorId: adminUser.id, title: '欢迎来到文洛 · 文章竞赛社区',
-        content: '## 这里可以做什么\n\n- **写文章**：点击侧边栏「我的文章」或主页「立即开始创作」，提交后由管理员审核，通过后进入文章库。\n- **逛论坛**：在「论坛广场」发帖交流，帖子同样需要审核。\n- **打比赛**：管理员会在「比赛广场」创建比赛，欢迎报名参加。\n- **文件投稿**：有文档想分享？通过「文件投稿」上传，审核通过后归档。\n\n## 社区公约\n\n1. 保持友善，尊重原创。\n2. 文章支持 `Markdown` 基础语法：**加粗**、`代码`、标题等。\n3. 违规内容将被拒绝并记录。\n\n祝大家玩得开心！',
-        category: '其他', status: 'approved', views: 128, likes: [], createdAt: now - 86400000, reviewedAt: now - 86000000
-      });
-      changed = true;
-    }
-
-    // 补齐新人报到帖
-    if ((!_cache.posts || _cache.posts.length === 0) && adminUser) {
-      _cache.posts.push({
-        id: 'p_hello', authorId: adminUser.id, title: '【置顶】新人报到帖',
-        content: '新来的同学在这里打个招呼吧！介绍一下自己擅长的领域 ~',
-        category: '其他', status: 'approved', createdAt: now - 43200000, comments: []
-      });
-      changed = true;
-    }
-
-    // 补齐 demo 比赛
-    if ((!_cache.contests || _cache.contests.length === 0) && adminUser) {
-      _cache.contests.push({
-        id: 'c_demo', title: '第一届「文洛杯」短文创作赛',
-        description: '## 比赛说明\n\n围绕主题「**代码与生活**」写一篇不超过 2000 字的短文。\n\n- 参赛作品请通过「我的文章 → 写文章」提交，标题前缀【文洛杯】。\n- 评审标准：立意 40%、文笔 40%、创意 20%。\n\n期待大家的作品！',
-        problems: [
-          { id: uid('q'), title: '主题创作', content: '围绕比赛主题，完成一篇原创作品。', wordLimit: 2000 },
-          { id: uid('q'), title: '自由发挥', content: '题材不限，展现你的创意与文笔。', wordLimit: 2000 },
-          { id: uid('q'), title: '我的社区故事', content: '写下你在社区里的经历或见闻。', wordLimit: 0 }
-        ],
-        startTime: now - 3600000, endTime: now + 7 * 86400000,
-        createdBy: adminUser.id, createdAt: now - 7200000,
-        participants: [], submissions: []
-      });
-      changed = true;
-    }
-
-    // 补齐题库
-    if (!_cache.problems || _cache.problems.length === 0) {
-      seedProblems();
-      changed = true;
-    }
-
-    // 补齐管理员密码（旧数据是 placeholder 时强制重置为 admin123 真实 hash）
-    if (adminUser && (adminUser.salt === 'seed_salt_placeholder' || adminUser.hash === 'seed_hash_placeholder')) {
-      const pw = await hashPassword('admin123');
-      adminUser.salt = pw.salt;
-      adminUser.hash = pw.hash;
-      adminUser.loginFails = 0; adminUser.lockedUntil = 0;
-      changed = true;
-    }
-
-    if (changed) await saveDB(env);
-  }
-  return _cache;
-}
-
-async function saveDB(env) {
-  await env.DATA.put(KV_KEY, JSON.stringify(_cache, null, 2));
-}
-
-async function initDB() {
-  const now = Date.now();
-  const user = {
-    id: 'u_admin', username: 'admin', nickname: '站务管理员', role: 'admin',
-    bio: '本站管理员，负责文章、帖子与投稿审核。', createdAt: now,
-    badges: []
-  };
-  // admin 默认密码：admin123（真实 PBKDF2 hash，不再是 placeholder 任何人可绕过）
-  const pw = await hashPassword('admin123');
-  user.salt = pw.salt;
-  user.hash = pw.hash;
-  user.loginFails = 0; user.lockedUntil = 0;
-  const db = {
-    users: [user], articles: [], posts: [], contests: [],
-    files: [], messages: [], problems: [], practices: [],
-    reviews: [], checkins: [], templates: [], dailyProblem: null
-  };
-  db.articles.push({
-    id: 'a_welcome', authorId: 'u_admin', title: '欢迎来到文洛 · 文章竞赛社区',
-    content: '## 这里可以做什么\n\n- **写文章**：点击侧边栏「我的文章」或主页「立即开始创作」，提交后由管理员审核，通过后进入文章库。\n- **逛论坛**：在「论坛广场」发帖交流，帖子同样需要审核。\n- **打比赛**：管理员会在「比赛广场」创建比赛，欢迎报名参加。\n- **文件投稿**：有文档想分享？通过「文件投稿」上传，审核通过后归档。\n\n## 社区公约\n\n1. 保持友善，尊重原创。\n2. 文章支持 `Markdown` 基础语法：**加粗**、`代码`、标题等。\n3. 违规内容将被拒绝并记录。\n\n祝大家玩得开心！',
-    category: '其他', status: 'approved', views: 128, likes: [], createdAt: now - 86400000, reviewedAt: now - 86000000
-  });
-  db.posts.push({
-    id: 'p_hello', authorId: 'u_admin', title: '【置顶】新人报到帖',
-    content: '新来的同学在这里打个招呼吧！介绍一下自己擅长的领域 ~',
-    category: '其他', status: 'approved', createdAt: now - 43200000, comments: []
-  });
-  db.contests.push({
-    id: 'c_demo', title: '第一届「文洛杯」短文创作赛',
-    description: '## 比赛说明\n\n围绕主题「**代码与生活**」写一篇不超过 2000 字的短文。\n\n- 参赛作品请通过「我的文章 → 写文章」提交，标题前缀【文洛杯】。\n- 评审标准：立意 40%、文笔 40%、创意 20%。\n\n期待大家的作品！',
-    problems: [
-      { id: uid('q'), title: '主题创作', content: '围绕比赛主题，完成一篇原创作品。', wordLimit: 2000 },
-      { id: uid('q'), title: '自由发挥', content: '题材不限，展现你的创意与文笔。', wordLimit: 2000 },
-      { id: uid('q'), title: '我的社区故事', content: '写下你在社区里的经历或见闻。', wordLimit: 0 }
-    ],
-    startTime: now - 3600000, endTime: now + 7 * 86400000,
-    createdBy: 'u_admin', createdAt: now - 7200000,
-    participants: [], submissions: []
-  });
-  seedProblems(db);
-  seedTemplates(db);
-  // 设置每日题目
-  db.dailyProblem = pickDailyProblem(db);
-  // 管理员密码：admin123（哈希在 initTokens 中设置）
-  user.salt = 'seed_salt_placeholder';
-  user.hash = 'seed_hash_placeholder';
-  return db;
-}
-
-/* ---------------- 写作模板种子 ---------------- */
-function seedTemplates(db) {
-  if (db.templates && db.templates.length) return;
-  const now = Date.now();
-  db.templates = [
-    {
-      id: 't_argue', title: '议论文五段式', category: '议论文',
-      description: '经典的议论文结构，适合考场作文和思辨类文章',
-      content: `# 议论文五段式模板
-
-## 第一段 · 引入
-> 用一个生动的场景 / 一句名言 / 一个反问，引出你的中心论点。
-> 示例：「有人说……，但我认为……」
-
-## 第二段 · 分论点一
-**论点**：……
-**论据**：可以用历史典故、名人故事、数据统计等。
-**分析**：说明这个论据如何支撑你的观点。
-
-## 第三段 · 分论点二
-**论点**：……
-**论据**：……
-**分析**：……
-
-## 第四段 · 反面论证 / 补充论述
-> 从反面角度出发，说一下如果不这样会怎么样，或者补充一个不同角度的思考。
-
-## 第五段 · 总结
-> 升华主题，联系现实，给读者留下思考。`,
-      createdAt: now
-    },
-    {
-      id: 't_story', title: '短篇小说起承转合', category: '小说',
-      description: '经典小说结构，适合 1500-3000 字的短故事创作',
-      content: `# 短篇小说 · 起承转合模板
-
-## 起（开头 15%）
-- **人物**：主角出场，用行动 / 对话展示性格（不要直接介绍）
-- **场景**：时间、地点、氛围
-- **钩子**：一个小冲突 / 悬念，让读者想读下去
-
-## 承（发展 35%）
-- **事件展开**：主角遇到一系列困难 / 挑战
-- **人物关系**：和配角互动，揭示更多背景
-- **小高潮**：矛盾初步显现
-
-## 转（高潮 30%）
-- **重大转折**：意想不到的事件，打破平衡
-- **人物抉择**：主角面对核心冲突，做出关键选择
-- **情感爆发**：情绪最强烈的时刻
-
-## 合（结尾 20%）
-- **结局**：事件的最终走向
-- **余韵**：一个画面 / 一句话，留给读者回味
-- **不要解释**：让读者自己体会`,
-      createdAt: now
-    },
-    {
-      id: 't_poem', title: '现代自由诗', category: '诗歌',
-      description: '自由体诗的写法框架，注重意象和节奏',
-      content: `# 自由诗写作要点
-
-## 1. 找一个核心意象
-> 一棵树、一盏灯、一条河……选一个具体的东西作为诗的中心。
-
-## 2. 第一节 · 切入
-> 直接切入意象或场景，不要铺垫。
-
-## 3. 中间 · 展开与变化
-- 意象可以延伸、变形
-- 情绪可以转折
-- 每一节之间要有呼吸感
-
-## 4. 结尾 · 留白
-> 最后一两句给读者留下想象空间。
-
-## 技巧提示
-- 用具体的词，避免抽象（用"玻璃杯碎在地上"代替"心碎了"）
-- 注意断句和换行，留白也是节奏的一部分
-- 读出来听听，有节奏感才好`,
-      createdAt: now
-    },
-    {
-      id: 't_narrative', title: '记叙文六要素', category: '记叙文',
-      description: '适合写人记事类作文，清晰完整',
-      content: `# 记叙文 · 六要素模板
-
-## 六要素一览
-1. **时间**：什么时候？（具体或模糊）
-2. **地点**：在哪里？
-3. **人物**：谁？主角 / 配角
-4. **起因**：发生了什么？为什么开始？
-5. **经过**：过程如何？（重点！要详细）
-6. **结果**：最后怎样？你学到了什么？
-
-## 推荐结构
-### 开头
-- 一个画面 / 一个声音 / 一个感受开头
-- 快速把读者带入场景
-
-### 中间（核心）
-- 详细写"经过"：用动作、对话、心理描写
-- 制造小波澜：不要一帆风顺
-- 重点段落放慢节奏，详写
-
-### 结尾
-- 事件的结局
-- "我"的感受 / 成长 / 反思
-- 可以用一句意味深长的话收尾`,
-      createdAt: now
-    },
-    {
-      id: 't_essay', title: '随笔散文', category: '随笔',
-      description: '形散神不散，适合抒发个人感悟',
-      content: `# 随笔散文写作框架
-
-## 核心：一个情绪 / 一个感悟
-> 先想清楚：我这篇随笔最想表达的是什么感受？
-
-## 建议结构
-### 触发（10%）
-- 一个场景、一件小事、一个念头
-- "今天路过那家店的时候，突然想起……"
-
-### 联想（60%）
-- 围绕核心感受自由发散
-- 可以回忆往事、可以观察当下、可以读书思考
-- 像和朋友聊天一样自然
-
-### 收束（30%）
-- 回到当下，或者升华为对生活的理解
-- 不一定要有"标准答案"，真实就好
-
-## 随笔的灵魂
-- **真**：真诚，不装
-- **细**：有细节，不空泛
-- **自然**：像说话一样写`,
-      createdAt: now
-    },
-    {
-      id: 't_sci', title: '科幻短篇', category: '科幻',
-      description: '适合脑洞类短文，在有限篇幅内讲好一个科幻点子',
-      content: `# 科幻短篇 · 点子驱动模板
-
-## 第一步：一个核心设定
-> 选一个"如果"：如果人可以读取记忆？如果时间可以倒带 5 秒？
-
-## 第二步：让设定影响一个普通人
-> 不要写拯救世界，写一个普通人的日常被这个设定改变了。
-
-## 推荐结构
-### 日常 → 异变
-- 开头写主角的普通生活
-- 然后"那个设定"突然介入
-
-### 尝试 → 挫折
-- 主角尝试利用 / 适应这个设定
-- 遇到意料之外的问题
-
-### 抉择 → 结局
-- 主角必须做出一个选择
-- 结局可以是开放性的，但要有分量
-
-## 科幻的精髓
-- 设定要"自洽"（自己的规则要遵守）
-- 重点在"人"，而不是"道具"
-- 用科幻讲人的故事`,
-      createdAt: now
-    },
-    {
-      id: 't_hot', title: '公众号爆款结构', category: '随笔',
-      description: '适合写热点评论、干货分享，有传播力',
-      content: `# 公众号爆款文结构
-
-## 标题：制造好奇心
-- 数字："3 个步骤让你……"
-- 痛点："为什么你总是……"
-- 反差："我辞职了，因为……"
-
-## 开头（钩子）
-- 讲一个故事 / 一个场景，让读者有代入感
-- 3 秒内抓住注意力
-
-## 中间（价值）
-### 结构 A：痛点 → 方案 → 案例
-1. 戳中痛点（你是不是也这样？）
-2. 给出方案（怎么做）
-3. 真实案例（谁谁谁用了之后……）
-
-### 结构 B：观点 → 论证 → 升华
-1. 抛出一个反常识观点
-2. 用 2-3 个角度论证
-3. 联系读者的生活
-
-## 结尾（行动号召）
-- 总结 + 给读者一个"小行动"
-- 引导点赞 / 在看 / 评论`,
-      createdAt: now
-    },
-    {
-      id: 't_ai_chat', title: 'AI 对话写文', category: '其他',
-      description: '借助 AI 助手高效产出文章的工作流',
-      content: `# AI 辅助写作工作流
-
-## 第一步：用 AI 搭框架
-> 告诉 AI："帮我写一篇关于【主题】的文章，风格是【风格】，字数【大概】，给我大纲。"
-
-## 第二步：人工填充血肉
-> AI 给的大纲是骨架，你需要：
-- 把自己真实的故事 / 感受加进去
-- 改掉 AI 写得太笼统的地方
-- 加入具体的细节和例子
-
-## 第三步：用 AI 润色
-> 初稿完成后：
-- "帮我把这一段润色得更流畅"
-- "检查有没有错别字和不通顺的地方"
-- "帮我写一个更吸引人的开头"
-
-## 关键提醒
-- **AI 是工具，你才是作者**
-- 不要直接复制 AI 生成的大段文字
-- 用 AI 省时间，把精力放在思考和真实表达上`,
-      createdAt: now
-    }
-  ];
-}
-
-/* ---------------- 每日题目挑选 ---------------- */
-function pickDailyProblem(db) {
-  const approved = (db.problems || []).filter(p => (p.status || 'approved') === 'approved');
-  if (!approved.length) return null;
-  // 根据今天的日期挑一道（同一天稳定，明天自动换）
-  const today = new Date();
-  const dayKey = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
-  return approved[dayKey % approved.length].id;
-}
-
-function seedProblems(db) {
-  db = db || _cache;
-  if (!db.problems || db.problems.length) return;
-  const now = Date.now();
-  const mk = (type, title, content, difficulty, tags) => ({
-    id: uid('q'), type, title, content, difficulty, tags,
-    createdBy: 'u_admin', createdAt: now - 86400000, status: 'approved'
-  });
-  db.problems.push(
-    mk('theme', '以「时光」为题，写一篇文章', '## 要求\n\n- 以「时光」为题，体裁不限\n- 围绕时光流逝中的人和事展开，要有真情实感\n- 建议字数 600-1500 字', 2, ['记叙', '抒情']),
-    mk('theme', '以「窗外」为题，描写一个熟悉的场景', '## 要求\n\n- 以「窗外」为题\n- 选择一个你观察过的场景\n- 至少运用两种感官描写', 1, ['写景', '观察']),
-    mk('theme', '以「选择」为题，写一次难忘的抉择', '## 要求\n\n- 以「选择」为题，写一次让你纠结、难忘的抉择\n- 写清楚：两难在哪里？你为什么这样选？事后怎么看？', 3, ['记叙', '成长']),
-    mk('theme', '以「故乡」为题', '## 要求\n\n- 以「故乡」为题\n- 抓住故乡最有代表性的一两个意象\n- 避免空泛抒情，用具体细节承载情感', 2, ['散文', '乡情']),
-    mk('theme', '科幻微小说：一百年后的世界', '## 要求\n\n- 写一篇一百年后的世界为背景的微型小说\n- 必须有一个完整的小故事\n- 字数 1000 字以内', 4, ['科幻', '小说']),
-    mk('theme', '以「灯」为题', '## 要求\n\n- 以「灯」为题，可以写实也可以写虚\n- 让「灯」在文中承担象征意义', 3, ['象征', '散文']),
-    mk('skill', '用排比写一段风景', '## 要求\n\n- 写一段 150-300 字的风景描写\n- 至少包含一组三句以上的排比句', 2, ['排比', '写景']),
-    mk('skill', '用比喻描写「时间」', '## 要求\n\n- 写 3 个以上形容时间的比喻句\n- 不许用「时间像流水」这类常见比喻\n- 每个比喻配一句话展开', 1, ['比喻', '修辞']),
-    mk('skill', '不用「哭」字，写一个人悲伤的样子', '## 要求\n\n- 写 100-200 字的片段\n- 全文禁止出现「哭」「泪」「难过」「伤心」\n- 只靠动作、神态、环境来传递悲伤', 3, ['细节描写', '侧面烘托']),
-    mk('skill', '用「欲扬先抑」写一个人物', '## 要求\n\n- 写 300-500 字的人物片段\n- 先写缺点/不好的第一印象，再通过一件事反转\n- 反转要自然', 4, ['欲扬先抑', '人物']),
-    mk('skill', '用对话推动一个故事', '## 要求\n\n- 写 300 字左右的片段\n- 情节推进必须全部靠对话完成\n- 对话要有「潜台词」', 3, ['对话', '小说']),
-    mk('skill', '用环境描写烘托紧张气氛', '## 要求\n\n- 写 150 字左右\n- 人物正在等待一个重要结果\n- 只写环境，让读者自己紧张起来', 3, ['环境烘托', '气氛']),
-    mk('skill', '用倒叙写一件小事', '## 要求\n\n- 写 400 字左右\n- 必须从事件的结尾或高潮写起，再回溯\n- 倒叙切入要自然', 4, ['倒叙', '结构']),
-    mk('skill', '把「他跑得很快」扩写成 150 字', '## 要求\n\n- 把这句话扩写成 150 字左右的片段\n- 至少从三个角度展开\n- 不许出现「很快」「飞快」这两个词', 1, ['扩写', '描写'])
-  );
-}
-
-/* ---------------- Token 管理 ---------------- */
+/* ---------------- D1 Token 管理 ---------------- */
 async function createToken(env, userId) {
   const token = 'tk_' + uid('') + crypto.getRandomValues(new Uint8Array(8)).reduce((a, b) => a + b.toString(16).padStart(2, '0'), '');
-  await env.DATA.put('token:' + token, userId, { expirationTtl: 7 * 86400 });
+  const expiresAt = Math.floor(Date.now() / 1000) + 7 * 86400;
+  await env.DB.prepare('INSERT INTO tokens (token, user_id, expires_at) VALUES (?,?,?)').bind(token, userId, expiresAt).run();
   return token;
 }
 async function resolveToken(env, token) {
   if (!token) return null;
   const pure = token.startsWith('tk_') ? token : token.replace(/^Bearer\s+/i, '');
-  const id = await env.DATA.get('token:' + pure);
-  return id;
+  const row = await env.DB.prepare('SELECT user_id FROM tokens WHERE token = ? AND expires_at > ?').bind(pure, Math.floor(Date.now() / 1000)).first();
+  return row ? row.user_id : null;
 }
 async function deleteToken(env, token) {
   const pure = token.startsWith('tk_') ? token : token.replace(/^Bearer\s+/i, '');
-  await env.DATA.delete('token:' + pure);
+  await env.DB.prepare('DELETE FROM tokens WHERE token = ?').bind(pure).run();
+}
+
+/* ---------------- D1 数据库访问层 ---------------- */
+// D1 是主存储；内存 _cache 用于快速读（兼容旧端点 db.users.find(...)）
+// 所有写端点：先写 D1 (SQL)，再同步更新内存 _cache
+
+const CACHED_TABLES = ['users', 'articles', 'posts', 'contests', 'files', 'messages',
+  'problems', 'practices', 'reviews', 'checkins', 'templates'];
+
+let _cache = null;
+
+// 种子数据：D1 为空时自动创建 admin + 欢迎文章等
+async function ensureSeedData(env) {
+  let cnt;
+  try { cnt = await dbFirst(env, 'SELECT COUNT(*) as c FROM users'); }
+  catch { return; } // 表还没创建（用户没执行 schema.sql）
+  if (cnt && cnt.c > 0) return;
+
+  const now = Date.now();
+  const pw = await hashPassword('admin123');
+  await dbRun(env, `INSERT INTO users (id,username,nickname,role,bio,created_at,salt,hash,login_fails,locked_until,score,badges,following) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ['u_admin', 'admin', '站务管理员', 'admin', '本站管理员，负责文章、帖子与投稿审核。', now, pw.salt, pw.hash, 0, 0, 0, '[]', '[]']);
+
+  await dbRun(env, `INSERT INTO articles (id,author_id,title,content,category,status,views,likes,created_at,reviewed_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    ['a_welcome', 'u_admin', '欢迎来到文洛 · 文章竞赛社区',
+     '## 这里可以做什么\n\n- **写文章**：点击侧边栏「我的文章」或主页「立即开始创作」，提交后由管理员审核，通过后进入文章库。\n- **逛论坛**：在「论坛广场」发帖交流，帖子同样需要审核。\n- **打比赛**：管理员会在「比赛广场」创建比赛，欢迎报名参加。\n\n## 社区公约\n\n1. 保持友善，尊重原创。\n2. 文章支持 Markdown 基础语法。',
+     '其他', 'approved', 128, '[]', now - 86400000, now - 86000000]);
+
+  await dbRun(env, `INSERT INTO posts (id,author_id,title,content,category,status,created_at,comments) VALUES (?,?,?,?,?,?,?,?)`,
+    ['p_hello', 'u_admin', '【置顶】新人报到帖',
+     '新来的同学在这里打个招呼吧！介绍一下自己擅长的领域 ~',
+     '其他', 'approved', now - 43200000, '[]']);
+
+  await dbRun(env, `INSERT INTO contests (id,title,description,problems,start_time,end_time,created_by,created_at,participants,submissions) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    ['c_demo', '第一届「文洛杯」短文创作赛',
+     '## 比赛说明\n\n围绕主题「代码与生活」写一篇不超过 2000 字的短文。',
+     JSON.stringify([
+       { id: uid('q'), title: '主题创作', content: '围绕比赛主题，完成一篇原创作品。', wordLimit: 2000 },
+       { id: uid('q'), title: '自由发挥', content: '题材不限，展现你的创意与文笔。', wordLimit: 2000 }
+     ]),
+     now - 3600000, now + 7 * 86400000, 'u_admin', now - 7200000, '[]', '[]']);
+}
+
+async function loadDB(env) {
+  if (_cache) return _cache;
+  try { await ensureSeedData(env); } catch {}
+  _cache = {};
+  for (const t of CACHED_TABLES) {
+    try { _cache[t] = await dbAll(env, `SELECT * FROM ${t}`); }
+    catch { _cache[t] = []; }
+  }
+  return _cache;
+}
+
+// 迁移端点用：从旧 KV 读取完整 JSON（用于一次性灌入 D1）
+async function loadOldKV(env) {
+  try {
+    const raw = await env.DATA.get('database');
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+function toCamel(obj) {
+  if (!obj || typeof obj !== 'object') return obj;
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    const ck = k.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
+    if (typeof v === 'string' && (v.startsWith('[') || v.startsWith('{'))) {
+      try { out[ck] = JSON.parse(v); continue; } catch {}
+    }
+    out[ck] = v;
+  }
+  return out;
+}
+async function dbFirst(env, sql, binds = []) {
+  const r = await env.DB.prepare(sql).bind(...binds).first();
+  return r ? toCamel(r) : null;
+}
+async function dbAll(env, sql, binds = []) {
+  const r = await env.DB.prepare(sql).bind(...binds).all();
+  return (r.results || []).map(toCamel);
+}
+async function dbRun(env, sql, binds = []) {
+  return env.DB.prepare(sql).bind(...binds).run();
 }
 
 /* ---------------- 辅助函数 ---------------- */
-// pub() 严格脱敏：绝对不能泄露 salt/hash/loginFails/lockedUntil/score 内部数据
 const pub = (u) => {
   if (!u) return null;
   return {
@@ -553,7 +203,6 @@ const pub = (u) => {
   };
 };
 function pubFull(u) {
-  // 仅管理员 / 本人自己看自己的完整资料时用
   if (!u) return null;
   return {
     ...pub(u),
@@ -563,17 +212,24 @@ function pubFull(u) {
   };
 }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-const userById = (db, id) => db.users.find(u => u.id === id);
-const withAuthor = (item, db) => Object.assign({}, item, { author: pub(userById(db, item.authorId)) || { nickname: '已注销用户' } });
 
-function articleOut(a, db) {
-  const o = withAuthor(a, db);
+// userById: 从 D1 查询
+async function userById(env, id) {
+  return dbFirst(env, 'SELECT * FROM users WHERE id = ?', [id]);
+}
+async function withAuthor(env, item) {
+  const a = await userById(env, item.authorId);
+  return { ...item, author: pub(a) || { nickname: '已注销用户' } };
+}
+
+async function articleOut(env, a) {
+  const o = await withAuthor(env, a);
   o.likeCount = (a.likes || []).length;
   delete o.likes;
   return o;
 }
-function postOut(p, db) {
-  const o = withAuthor(p, db);
+async function postOut(env, p) {
+  const o = await withAuthor(env, p);
   o.commentCount = (p.comments || []).length;
   return o;
 }
@@ -581,7 +237,7 @@ function problemOut(p, db) {
   const ps = db.practices.filter(x => x.problemId === p.id);
   return Object.assign({}, p, {
     status: p.status || 'approved',
-    proposer: pub(userById(db, p.createdBy)) || { nickname: '已注销用户' },
+    proposer: pub(userById(env, p.createdBy)) || { nickname: '已注销用户' },
     practiceCount: ps.length,
     doerCount: new Set(ps.map(x => x.authorId)).size
   });
@@ -594,7 +250,7 @@ function contestOut(c, db) {
     problemCount: (c.problems || []).length,
     submissionCount: (c.submissions || []).length,
     participantCount: (c.participants || []).length,
-    creator: pub(userById(db, c.createdBy))
+    creator: pub(userById(env, c.createdBy))
   });
 }
 
@@ -604,7 +260,7 @@ function searchFilter(list, q, db) {
   return list.filter(x =>
     String(x.title || '').toLowerCase().includes(lq) ||
     String(x.content || '').toLowerCase().includes(lq) ||
-    String((userById(db, x.authorId) || {}).nickname || '').toLowerCase().includes(lq) ||
+    String((userById(env, x.authorId) || {}).nickname || '').toLowerCase().includes(lq) ||
     (x.tags || []).some(t => String(t).toLowerCase().includes(lq))
   );
 }
@@ -615,7 +271,7 @@ function validPassword(pw) {
 
 /* 简单作者信息（点评等场景用） */
 function withAuthorSimple(id, db) {
-  const u = userById(db, id);
+  const u = userById(env, id);
   if (!u) return { nickname: '已注销用户' };
   return { id: u.id, nickname: u.nickname, role: u.role };
 }
@@ -777,12 +433,12 @@ ${content ? `（基于你写的内容）\n\n> ${content.slice(-80)}……风停�
 }
 
 /* ---------------- 中间件 ---------------- */
-async function auth(request, env, db) {
+async function auth(request, env) {
   const header = request.headers.get('Authorization') || '';
   const token = header.replace(/^Bearer\s+/i, '');
   const userId = await resolveToken(env, token);
   if (!userId) return null;
-  return userById(db, userId);
+  return userById(env, userId);
 }
 
 /* ---------------- 路由匹配 ---------------- */
@@ -813,7 +469,7 @@ export async function onRequest(context) {
 
     // ---- 认证 ----
     if (match(path, 'me') && method === 'GET') {
-      const u = await auth(request, env, db);
+      const u = await auth(request, env);
       if (!u) return bad('未登录', 401);
       return json({ user: pubFull(u) });
     }
@@ -833,9 +489,12 @@ export async function onRequest(context) {
       if (!validPassword(password)) return bad('密码至少 8 位，且需同时包含字母和数字');
       if (db.users.some(u => u.username.toLowerCase() === username.toLowerCase())) return bad('用户名已被占用');
       const { salt, hash } = await hashPassword(password);
-      const user = { id: uid('u'), username, nickname, role: 'user', bio: '', createdAt: Date.now(), salt, hash };
+      const now = Date.now();
+      const user = { id: uid('u'), username, nickname, role: 'user', bio: '', createdAt: now, salt, hash, loginFails: 0, lockedUntil: 0, score: 0, badges: [], following: [] };
       db.users.push(user);
-      await saveDB(env);
+      // D1 同步写入
+      await dbRun(env, `INSERT INTO users (id,username,nickname,role,bio,created_at,salt,hash,login_fails,locked_until,score,badges,following) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [user.id, user.username, user.nickname, user.role, user.bio, user.createdAt, user.salt, user.hash, 0, 0, 0, '[]', '[]']);
       const token = await createToken(env, user.id);
       return json({ user: pub(user), token });
     }
@@ -860,12 +519,12 @@ export async function onRequest(context) {
           user.lockedUntil = Date.now() + 10 * 60000;
           user.loginFails = 0;
         }
-        await saveDB(env);
+        await dbRun(env, 'UPDATE users SET login_fails=?, locked_until=? WHERE id=?', [user.loginFails, user.lockedUntil, user.id]);
         await sleep(300); // 延时防暴力破解
         return bad(genericError);
       }
       user.loginFails = 0; user.lockedUntil = 0;
-      await saveDB(env);
+      await dbRun(env, 'UPDATE users SET login_fails=0, locked_until=0 WHERE id=?', [user.id]);
       const token = await createToken(env, user.id);
       return json({ user: pubFull(user), token });
     }
@@ -880,35 +539,35 @@ export async function onRequest(context) {
 
     // ---- 更新资料 ----
     if (match(path, 'me/profile') && method === 'PUT') {
-      const u = await auth(request, env, db);
+      const u = await auth(request, env);
       if (!u) return bad('请先登录', 401);
       const body = await request.json();
       const nickname = clean(body.nickname, 24);
       if (nickname) u.nickname = nickname;
       u.bio = clean(body.bio, 200);
-      await saveDB(env);
+      await dbRun(env, 'UPDATE users SET nickname=?, bio=? WHERE id=?', [u.nickname, u.bio, u.id]);
       return json({ user: pub(u) });
     }
 
     // ---- 修改密码 ----
     if (match(path, 'me/password') && method === 'PUT') {
-      const u = await auth(request, env, db);
+      const u = await auth(request, env);
       if (!u) return bad('请先登录', 401);
       const body = await request.json();
       if (!await verifyPassword(body.oldPassword || '', u)) return bad('原密码错误');
       if (!validPassword(body.newPassword)) return bad('新密码至少 8 位，且需同时包含字母和数字');
       const { salt, hash } = await hashPassword(body.newPassword);
       u.salt = salt; u.hash = hash;
-      await saveDB(env);
+      await dbRun(env, 'UPDATE users SET salt=?, hash=? WHERE id=?', [salt, hash, u.id]);
       return json({ ok: true });
     }
 
     // ---- 用户详情 ----
     let m = match(path, 'users/:id');
     if (m && method === 'GET') {
-      const u = userById(db, m.id);
+      const u = userById(env, m.id);
       if (!u) return bad('用户不存在', 404);
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       const articles = db.articles.filter(a => a.authorId === u.id && a.status === 'approved');
       const posts = db.posts.filter(p => p.authorId === u.id && p.status === 'approved');
       const likes = articles.reduce((s, a) => s + (a.likes || []).length, 0);
@@ -924,7 +583,7 @@ export async function onRequest(context) {
         startTime: c.startTime, endTime: c.endTime
       }));
       // 关注列表 / 粉丝列表
-      const following = (u.following || []).map(id => pub(userById(db, id))).filter(Boolean);
+      const following = (u.following || []).map(id => pub(userById(env, id))).filter(Boolean);
       const followers = db.users.filter(x => (x.following || []).includes(u.id)).map(pub);
       // 积分计算
       const articleCount = articles.length;
@@ -947,9 +606,9 @@ export async function onRequest(context) {
     // ---- 关注/取消 ----
     m = match(path, 'users/:id/follow');
     if (m && method === 'POST') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
-      const t = userById(db, m.id);
+      const t = userById(env, m.id);
       if (!t) return bad('用户不存在', 404);
       if (t.id === me.id) return bad('不能关注自己');
       me.following = me.following || [];
@@ -991,7 +650,7 @@ export async function onRequest(context) {
 
     // ---- 我的文章 ----
     if (match(path, 'articles/mine') && method === 'GET') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       return json({ articles: db.articles.filter(a => a.authorId === me.id).sort((a, b) => b.createdAt - a.createdAt).map(a => articleOut(a, db)) });
     }
@@ -1001,7 +660,7 @@ export async function onRequest(context) {
     if (m && method === 'GET') {
       const a = db.articles.find(x => x.id === m.id);
       if (!a) return bad('文章不存在', 404);
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       const canView = a.status === 'approved' || (me && (me.id === a.authorId || me.role === 'admin'));
       if (!canView) return bad('文章正在审核中', 403);
       if (!me || me.id !== a.authorId) { a.views = (a.views || 0) + 1; await saveDB(env); }
@@ -1012,7 +671,7 @@ export async function onRequest(context) {
 
     // ---- 创建文章 ----
     if (match(path, 'articles') && method === 'POST') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       const body = await request.json();
       const title = clean(body.title, 80);
@@ -1028,7 +687,7 @@ export async function onRequest(context) {
     // ---- 编辑文章 ----
     m = match(path, 'articles/:id');
     if (m && method === 'PUT') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       const a = db.articles.find(x => x.id === m.id);
       if (!a || a.authorId !== me.id) return bad('文章不存在或无权限', 404);
@@ -1044,7 +703,7 @@ export async function onRequest(context) {
     // ---- 删除文章 ----
     m = match(path, 'articles/:id');
     if (m && method === 'DELETE') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       const i = db.articles.findIndex(x => x.id === m.id);
       if (i < 0) return bad('文章不存在', 404);
@@ -1057,7 +716,7 @@ export async function onRequest(context) {
     // ---- 点赞 ----
     m = match(path, 'articles/:id/like');
     if (m && method === 'POST') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       const a = db.articles.find(x => x.id === m.id && x.status === 'approved');
       if (!a) return bad('文章不存在', 404);
@@ -1081,7 +740,7 @@ export async function onRequest(context) {
 
     // ---- 我的帖子 ----
     if (match(path, 'posts/mine') && method === 'GET') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       return json({ posts: db.posts.filter(p => p.authorId === me.id).sort((a, b) => b.createdAt - a.createdAt).map(p => postOut(p, db)) });
     }
@@ -1091,7 +750,7 @@ export async function onRequest(context) {
     if (m && method === 'GET') {
       const p = db.posts.find(x => x.id === m.id);
       if (!p) return bad('帖子不存在', 404);
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (p.status !== 'approved' && !(me && (me.id === p.authorId || me.role === 'admin'))) {
         return bad('帖子正在审核中', 403);
       }
@@ -1102,7 +761,7 @@ export async function onRequest(context) {
 
     // ---- 创建帖子 ----
     if (match(path, 'posts') && method === 'POST') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       const body = await request.json();
       const title = clean(body.title, 80);
@@ -1118,7 +777,7 @@ export async function onRequest(context) {
     // ---- 评论 ----
     m = match(path, 'posts/:id/comments');
     if (m && method === 'POST') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       const p = db.posts.find(x => x.id === m.id && x.status === 'approved');
       if (!p) return bad('帖子不存在', 404);
@@ -1134,7 +793,7 @@ export async function onRequest(context) {
     // ---- 删除帖子 ----
     m = match(path, 'posts/:id');
     if (m && method === 'DELETE') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       const i = db.posts.findIndex(x => x.id === m.id);
       if (i < 0) return bad('帖子不存在', 404);
@@ -1146,10 +805,10 @@ export async function onRequest(context) {
 
     // ---- 私信：发送 ----
     if (match(path, 'messages') && method === 'POST') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       const body = await request.json();
-      const to = userById(db, body.toId);
+      const to = userById(env, body.toId);
       if (!to) return bad('用户不存在', 404);
       if (to.id === me.id) return bad('不能给自己发私信');
       const content = clean(body.content, 2000);
@@ -1162,14 +821,14 @@ export async function onRequest(context) {
 
     // ---- 私信：未读数 ----
     if (match(path, 'messages/unread') && method === 'GET') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       return json({ count: db.messages.filter(m => m.toId === me.id && !m.read).length });
     }
 
     // ---- 私信：会话列表 ----
     if (match(path, 'messages/conversations') && method === 'GET') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       const map = new Map();
       for (const m of db.messages) {
@@ -1183,7 +842,7 @@ export async function onRequest(context) {
       const conversations = [...map.values()]
         .sort((a, b) => b.last.createdAt - a.last.createdAt)
         .map(c => ({
-          partner: pub(userById(db, c.partnerId)),
+          partner: pub(userById(env, c.partnerId)),
           lastContent: c.last.content, lastTime: c.last.createdAt,
           lastFromMe: c.last.fromId === me.id, unread: c.unread
         }))
@@ -1194,9 +853,9 @@ export async function onRequest(context) {
     // ---- 私信：与某人聊天 ----
     m = match(path, 'messages/with/:userId');
     if (m && method === 'GET') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
-      const other = userById(db, m.userId);
+      const other = userById(env, m.userId);
       if (!other) return bad('用户不存在', 404);
       const list = db.messages
         .filter(x => (x.fromId === me.id && x.toId === other.id) || (x.fromId === other.id && x.toId === me.id))
@@ -1233,9 +892,9 @@ export async function onRequest(context) {
       const c = db.contests.find(x => x.id === m.id);
       if (!c) return bad('比赛不存在', 404);
       const o = contestOut(c, db);
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       o.joined = !!(me && (c.participants || []).includes(me.id));
-      o.participantList = (c.participants || []).map(id => pub(userById(db, id))).filter(Boolean);
+      o.participantList = (c.participants || []).map(id => pub(userById(env, id))).filter(Boolean);
       delete o.participants;
       delete o.submissions;
       return json({ contest: o });
@@ -1243,7 +902,7 @@ export async function onRequest(context) {
 
     // ---- 创建比赛 ----
     if (match(path, 'contests') && method === 'POST') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       if (me.role !== 'admin') return bad('需要管理员权限', 403);
       const body = await request.json();
@@ -1271,7 +930,7 @@ export async function onRequest(context) {
     // ---- 报名比赛 ----
     m = match(path, 'contests/:id/join');
     if (m && method === 'POST') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       const c = db.contests.find(x => x.id === m.id);
       if (!c) return bad('比赛不存在', 404);
@@ -1286,7 +945,7 @@ export async function onRequest(context) {
     // ---- 比赛提交作品 ----
     m = match(path, 'contests/:id/submit');
     if (m && method === 'POST') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       const c = db.contests.find(x => x.id === m.id);
       if (!c) return bad('比赛不存在', 404);
@@ -1312,7 +971,7 @@ export async function onRequest(context) {
     // ---- 我的比赛提交 ----
     m = match(path, 'contests/:id/my-submissions');
     if (m && method === 'GET') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       const c = db.contests.find(x => x.id === m.id);
       if (!c) return bad('比赛不存在', 404);
@@ -1322,7 +981,7 @@ export async function onRequest(context) {
     // ---- 管理员：比赛提交列表 ----
     m = match(path, 'contests/:id/submissions');
     if (m && method === 'GET') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       if (me.role !== 'admin') return bad('需要管理员权限', 403);
       const c = db.contests.find(x => x.id === m.id);
@@ -1336,7 +995,7 @@ export async function onRequest(context) {
     // ---- 删除比赛 ----
     m = match(path, 'contests/:id');
     if (m && method === 'DELETE') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       if (me.role !== 'admin') return bad('需要管理员权限', 403);
       const i = db.contests.findIndex(x => x.id === m.id);
@@ -1366,7 +1025,7 @@ export async function onRequest(context) {
     if (m && method === 'GET') {
       const p = db.problems.find(x => x.id === m.id);
       if (!p) return bad('题目不存在', 404);
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if ((p.status || 'approved') !== 'approved' && !(me && (me.id === p.createdBy || me.role === 'admin'))) {
         return bad('题目正在审核中', 403);
       }
@@ -1381,7 +1040,7 @@ export async function onRequest(context) {
 
     // ---- 创建题目 ----
     if (match(path, 'problems') && method === 'POST') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       const body = await request.json();
       const title = clean(body.title, 80);
@@ -1400,7 +1059,7 @@ export async function onRequest(context) {
     // ---- 删除题目 ----
     m = match(path, 'problems/:id');
     if (m && method === 'DELETE') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       if (me.role !== 'admin') return bad('需要管理员权限', 403);
       const i = db.problems.findIndex(x => x.id === m.id);
@@ -1414,7 +1073,7 @@ export async function onRequest(context) {
     // ---- 提交练习 ----
     m = match(path, 'problems/:id/practice');
     if (m && method === 'POST') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       const p = db.problems.find(x => x.id === m.id);
       if (!p) return bad('题目不存在', 404);
@@ -1442,7 +1101,7 @@ export async function onRequest(context) {
     // ---- 我的练习 ----
     m = match(path, 'problems/:id/my-practice');
     if (m && method === 'GET') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       const s = db.practices.find(x => x.problemId === m.id && x.authorId === me.id);
       return json({ practice: s || null });
@@ -1450,7 +1109,7 @@ export async function onRequest(context) {
 
     // ---- 文件上传 ----
     if (match(path, 'files') && method === 'POST') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       const formData = await request.formData();
       const file = formData.get('file');
@@ -1472,7 +1131,7 @@ export async function onRequest(context) {
 
     // ---- 我的文件 ----
     if (match(path, 'files/mine') && method === 'GET') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       return json({ files: db.files.filter(f => f.authorId === me.id).sort((a, b) => b.createdAt - a.createdAt).map(f => withAuthor(f, db)) });
     }
@@ -1480,7 +1139,7 @@ export async function onRequest(context) {
     // ---- 文件下载 ----
     m = match(path, 'files/:id/download');
     if (m && method === 'GET') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       const f = db.files.find(x => x.id === m.id);
       if (!f) return bad('文件不存在', 404);
@@ -1517,7 +1176,7 @@ export async function onRequest(context) {
     // ---- 后台审核：文章列表 ----
     m = match(path, 'admin/articles');
     if (m && method === 'GET') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me || me.role !== 'admin') return bad('需要管理员权限', 403);
       const status = ['pending', 'approved', 'rejected'].includes(url.searchParams.get('status')) ? url.searchParams.get('status') : 'pending';
       return json({ articles: db.articles.filter(a => a.status === status).sort((a, b) => b.createdAt - a.createdAt).map(a => articleOut(a, db)) });
@@ -1526,7 +1185,7 @@ export async function onRequest(context) {
     // ---- 审核文章 ----
     m = match(path, 'admin/articles/:id/review');
     if (m && method === 'POST') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me || me.role !== 'admin') return bad('需要管理员权限', 403);
       const body = await request.json();
       const a = db.articles.find(x => x.id === m.id);
@@ -1540,7 +1199,7 @@ export async function onRequest(context) {
     // ---- 后台审核：帖子列表 ----
     m = match(path, 'admin/posts');
     if (m && method === 'GET') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me || me.role !== 'admin') return bad('需要管理员权限', 403);
       const status = ['pending', 'approved', 'rejected'].includes(url.searchParams.get('status')) ? url.searchParams.get('status') : 'pending';
       return json({ posts: db.posts.filter(p => p.status === status).sort((a, b) => b.createdAt - a.createdAt).map(p => postOut(p, db)) });
@@ -1549,7 +1208,7 @@ export async function onRequest(context) {
     // ---- 审核帖子 ----
     m = match(path, 'admin/posts/:id/review');
     if (m && method === 'POST') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me || me.role !== 'admin') return bad('需要管理员权限', 403);
       const body = await request.json();
       const p = db.posts.find(x => x.id === m.id);
@@ -1563,7 +1222,7 @@ export async function onRequest(context) {
     // ---- 后台审核：文件列表 ----
     m = match(path, 'admin/files');
     if (m && method === 'GET') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me || me.role !== 'admin') return bad('需要管理员权限', 403);
       const status = ['pending', 'approved', 'rejected'].includes(url.searchParams.get('status')) ? url.searchParams.get('status') : 'pending';
       return json({ files: db.files.filter(f => f.status === status).sort((a, b) => b.createdAt - a.createdAt).map(f => withAuthor(f, db)) });
@@ -1572,7 +1231,7 @@ export async function onRequest(context) {
     // ---- 审核文件 ----
     m = match(path, 'admin/files/:id/review');
     if (m && method === 'POST') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me || me.role !== 'admin') return bad('需要管理员权限', 403);
       const body = await request.json();
       const f = db.files.find(x => x.id === m.id);
@@ -1586,7 +1245,7 @@ export async function onRequest(context) {
     // ---- 后台审核：题目列表 ----
     m = match(path, 'admin/problems');
     if (m && method === 'GET') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me || me.role !== 'admin') return bad('需要管理员权限', 403);
       const status = ['pending', 'approved', 'rejected'].includes(url.searchParams.get('status')) ? url.searchParams.get('status') : 'pending';
       return json({ problems: db.problems.filter(p => (p.status || 'approved') === status).sort((a, b) => b.createdAt - a.createdAt).map(p => problemOut(p, db)) });
@@ -1595,7 +1254,7 @@ export async function onRequest(context) {
     // ---- 审核题目 ----
     m = match(path, 'admin/problems/:id/review');
     if (m && method === 'POST') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me || me.role !== 'admin') return bad('需要管理员权限', 403);
       const body = await request.json();
       const p = db.problems.find(x => x.id === m.id);
@@ -1609,7 +1268,7 @@ export async function onRequest(context) {
     // ---- AI 写作助手 ----
     m = match(path, 'ai/assist');
     if (m && method === 'POST') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       const body = await request.json().catch(() => ({}));
       const { task = 'outline', topic = '', content = '', style = '', extra = '' } = body;
@@ -1652,7 +1311,7 @@ export async function onRequest(context) {
     // ---- 提交点评 ----
     m = match(path, 'articles/:id/reviews');
     if (m && method === 'POST') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       const a = db.articles.find(x => x.id === m.id);
       if (!a) return bad('文章不存在', 404);
@@ -1678,7 +1337,7 @@ export async function onRequest(context) {
       const dailyId = db.dailyProblem;
       const daily = dailyId ? db.problems.find(p => p.id === dailyId) : null;
       let myCheckin = null;
-      const me = await auth(request, env, db).catch(() => null);
+      const me = await auth(request, env).catch(() => null);
       if (me) {
         const todayKey = new Date().toDateString();
         myCheckin = db.checkins.find(c => c.userId === me.id && new Date(c.createdAt).toDateString() === todayKey);
@@ -1707,7 +1366,7 @@ export async function onRequest(context) {
     // ---- 提交打卡 ----
     m = match(path, 'checkins');
     if (m && method === 'POST') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       const body = await request.json();
       const content = clean(body.content, 2000);
@@ -1746,7 +1405,7 @@ export async function onRequest(context) {
     // ---- 我的打卡记录 ----
     m = match(path, 'checkins/mine');
     if (m && method === 'GET') {
-      const me = await auth(request, env, db);
+      const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       const list = db.checkins.filter(c => c.userId === me.id).sort((a, b) => b.createdAt - a.createdAt).slice(0, 30);
       const out = list.map(c => ({
