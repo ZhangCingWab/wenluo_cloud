@@ -93,18 +93,23 @@ function bytesToHex(b) {
 async function createToken(env, userId) {
   const token = 'tk_' + uid('') + crypto.getRandomValues(new Uint8Array(8)).reduce((a, b) => a + b.toString(16).padStart(2, '0'), '');
   const expiresAt = Math.floor(Date.now() / 1000) + 7 * 86400;
-  await env.DB.prepare('INSERT INTO tokens (token, user_id, expires_at) VALUES (?,?,?)').bind(token, userId, expiresAt).run();
+  if (env.DB) {
+    try { await env.DB.prepare('INSERT INTO tokens (token, user_id, expires_at) VALUES (?,?,?)').bind(token, userId, expiresAt).run(); } catch {}
+  }
   return token;
 }
 async function resolveToken(env, token) {
-  if (!token) return null;
+  if (!token || !env.DB) return null;
   const pure = token.startsWith('tk_') ? token : token.replace(/^Bearer\s+/i, '');
-  const row = await env.DB.prepare('SELECT user_id FROM tokens WHERE token = ? AND expires_at > ?').bind(pure, Math.floor(Date.now() / 1000)).first();
-  return row ? row.user_id : null;
+  try {
+    const row = await env.DB.prepare('SELECT user_id FROM tokens WHERE token = ? AND expires_at > ?').bind(pure, Math.floor(Date.now() / 1000)).first();
+    return row ? row.user_id : null;
+  } catch { return null; }
 }
 async function deleteToken(env, token) {
+  if (!env.DB) return;
   const pure = token.startsWith('tk_') ? token : token.replace(/^Bearer\s+/i, '');
-  await env.DB.prepare('DELETE FROM tokens WHERE token = ?').bind(pure).run();
+  try { await env.DB.prepare('DELETE FROM tokens WHERE token = ?').bind(pure).run(); } catch {}
 }
 
 /* ---------------- D1 数据库访问层 ---------------- */
@@ -179,15 +184,22 @@ function toCamel(obj) {
   return out;
 }
 async function dbFirst(env, sql, binds = []) {
-  const r = await env.DB.prepare(sql).bind(...binds).first();
-  return r ? toCamel(r) : null;
+  if (!env.DB) return null;
+  try {
+    const r = await env.DB.prepare(sql).bind(...binds).first();
+    return r ? toCamel(r) : null;
+  } catch { return null; }
 }
 async function dbAll(env, sql, binds = []) {
-  const r = await env.DB.prepare(sql).bind(...binds).all();
-  return (r.results || []).map(toCamel);
+  if (!env.DB) return [];
+  try {
+    const r = await env.DB.prepare(sql).bind(...binds).all();
+    return (r.results || []).map(toCamel);
+  } catch { return []; }
 }
 async function dbRun(env, sql, binds = []) {
-  return env.DB.prepare(sql).bind(...binds).run();
+  if (!env.DB) return null;
+  try { return await env.DB.prepare(sql).bind(...binds).run(); } catch { return null; }
 }
 
 /* ---------------- 辅助函数 ---------------- */
