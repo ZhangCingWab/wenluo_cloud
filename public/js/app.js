@@ -1440,7 +1440,7 @@ async function adminReview(kind, st) {
           ${diffBadge(p.difficulty)}
           <span class="badge ${p.status}">${statusBadge(p.status)}</span>
         </div>
-        <div class="r-content">${esc(p.content)}</div>
+        <div class="r-content">${md(p.content)}</div>
         <div class="r-actions">
           <span class="hint">出题人：${esc(p.proposer.nickname)}（@${esc(p.proposer.username || '')}）· ${fmtTime(p.createdAt)}</span>
           <button class="btn green sm" data-r="approve" data-id="${p.id}">✔ 通过</button>
@@ -1469,7 +1469,7 @@ async function adminReview(kind, st) {
           <span class="r-title">${esc(p.title)}</span>
           <span class="badge ${p.status}">${statusBadge(p.status)}</span>
         </div>
-        <div class="r-content">${esc(p.content)}</div>
+        <div class="r-content">${md(p.content)}</div>
         <div class="r-actions">
           <span class="hint">投稿人：${esc(p.author.nickname)}（@${esc(p.author.username)}）· ${fmtTime(p.createdAt)}</span>
           <button class="btn green sm" data-r="approve" data-id="${p.id}">✔ 通过</button>
@@ -1483,7 +1483,7 @@ async function adminReview(kind, st) {
           <span class="r-title">${esc(a.title)}</span>
           <span class="badge ${a.status}">${statusBadge(a.status)}</span>
         </div>
-        <div class="r-content">${esc(a.content)}</div>
+        <div class="r-content">${md(a.content)}</div>
         <div class="r-actions">
           <span class="hint">作者：${esc(a.author.nickname)}（@${esc(a.author.username)}）· ${fmtTime(a.createdAt)}</span>
           <button class="btn green sm" data-r="approve" data-id="${a.id}">✔ 通过</button>

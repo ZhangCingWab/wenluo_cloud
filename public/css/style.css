@@ -354,8 +354,17 @@ table.rank tr:last-child td { border: none; }
 .review-item .r-content {
   background: #f8fafc; border-radius: 8px; padding: 10px 12px;
   font-size: 13.5px; line-height: 1.7; margin-bottom: 10px;
-  max-height: 220px; overflow-y: auto; white-space: pre-wrap;
+  max-height: 360px; overflow-y: auto;
 }
+.review-item .r-content h1, .review-item .r-content h2, .review-item .r-content h3 { margin: 8px 0 6px; }
+.review-item .r-content h2 { border-left: 3px solid var(--blue); padding-left: 8px; font-size: 15px; }
+.review-item .r-content p { margin: 6px 0; }
+.review-item .r-content pre { background: #28323c; color: #d7e2ea; padding: 8px 10px; border-radius: 6px; overflow-x: auto; font-size: 12.5px; margin: 8px 0; }
+.review-item .r-content code { background: #eef2f6; padding: 1px 5px; border-radius: 3px; font-size: 12.5px; font-family: Consolas, monospace; }
+.review-item .r-content pre code { background: none; padding: 0; }
+.review-item .r-content blockquote { border-left: 3px solid var(--blue); background: var(--blue-light); padding: 6px 10px; margin: 6px 0; border-radius: 0 6px 6px 0; color: #4a6382; }
+.review-item .r-content ul { padding-left: 18px; margin: 4px 0; }
+.review-item .r-content a { color: var(--blue); }
 .review-item .r-actions { display: flex; gap: 10px; align-items: center; }
 
 /* 个人主页 */
