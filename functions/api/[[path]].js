@@ -116,14 +116,48 @@ async function deleteToken(env, token) {
 // D1 是主存储；内存 _cache 用于快速读（兼容旧端点 db.users.find(...)）
 // 所有写端点：先写 D1 (SQL)，再同步更新内存 _cache
 
-const CACHED_TABLES = ['users', 'articles', 'posts', 'contests', 'files', 'messages',
-  'problems', 'practices', 'reviews', 'checkins', 'templates'];
+const CACHED_TABLES = ['users', 'tokens', 'articles', 'posts', 'contests', 'messages', 'files',
+  'problems', 'practices', 'reviews', 'checkins', 'templates', 'comments', 'favorites', 'notifications'];
 
 let _cache = null;
 
 // 分别检查每张表是否为空，分别补种子
 async function ensureSeedData(env) {
   const now = Date.now();
+
+  // 自动建表（幂等，已有表不会重复创建）
+  try {
+    await dbRun(env, `CREATE TABLE IF NOT EXISTS comments (
+      id TEXT PRIMARY KEY, target_type TEXT NOT NULL, target_id TEXT NOT NULL,
+      parent_id TEXT DEFAULT NULL, author_id TEXT NOT NULL,
+      content TEXT NOT NULL, likes TEXT DEFAULT '[]', created_at INTEGER
+    )`);
+    await dbRun(env, `CREATE INDEX IF NOT EXISTS idx_comments_target ON comments(target_type, target_id)`);
+    await dbRun(env, `CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_id)`);
+
+    // 收藏夹
+    await dbRun(env, `CREATE TABLE IF NOT EXISTS favorites (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL, item_type TEXT NOT NULL, item_id TEXT NOT NULL, created_at INTEGER
+    )`);
+    await dbRun(env, `CREATE UNIQUE INDEX IF NOT EXISTS idx_fav_unique ON favorites(user_id, item_type, item_id)`);
+
+    // 通知
+    await dbRun(env, `CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL, type TEXT, from_id TEXT,
+      target_type TEXT, target_id TEXT, content TEXT, read INTEGER DEFAULT 0, created_at INTEGER
+    )`);
+    await dbRun(env, `CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id, read)`);
+
+    // articles 加 tags 列（如果不存在）
+    try { await dbRun(env, `ALTER TABLE articles ADD COLUMN tags TEXT DEFAULT '[]'`); } catch {}
+    // users 加 email 列
+    try { await dbRun(env, `ALTER TABLE users ADD COLUMN email TEXT`); } catch {}
+    try { await dbRun(env, `ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0`); } catch {}
+    // reset_tokens 表
+    await dbRun(env, `CREATE TABLE IF NOT EXISTS reset_tokens (
+      token TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at INTEGER NOT NULL
+    )`);
+  } catch {}
 
   // Admin 用户（如果没的话）
   let uc = (await dbFirst(env, 'SELECT COUNT(*) as c FROM users'))?.c || 0;
@@ -561,6 +595,28 @@ function match(path, pattern) {
   return params;
 }
 
+/* 解析 URL query string 为对象 */
+function requestQuery(request) {
+  try {
+    const url = new URL(request.url);
+    const o = {};
+    for (const [k, v] of url.searchParams) o[k] = v;
+    return o;
+  } catch { return {}; }
+}
+
+/* 添加通知（写内存 + D1） */
+async function addNotif(env, db, fromUserId, type, toUserId, targetType, targetId, content) {
+  if (!toUserId || toUserId === fromUserId) return; // 不给自己发通知
+  if (!db || !db.notifications) return;
+  const n = { id: uid('n'), userId: toUserId, type, fromId: fromUserId, targetType, targetId, content, read: 0, createdAt: Date.now() };
+  db.notifications.push(n);
+  try {
+    await env.DB.prepare(`INSERT INTO notifications (id,user_id,type,from_id,target_type,target_id,content,read,created_at) VALUES (?,?,?,?,?,?,?,?,?)`)
+      .bind(n.id, n.userId, n.type, n.fromId, n.targetType, n.targetId, n.content, 0, n.createdAt).run();
+  } catch {}
+}
+
 /* ---------------- 主处理器 ---------------- */
 export async function onRequest(context) {
   const { request, env } = context;
@@ -908,6 +964,90 @@ export async function onRequest(context) {
       db.posts.splice(i, 1);
       await saveDB(env);
       return json({ ok: true });
+    }
+
+    // ========== 评论系统（楼中楼） ==========
+    // GET /api/comments?target_type=article&target_id=xxx
+    if (match(path, 'comments') && method === 'GET') {
+      const tt = clean(requestQuery(request).target_type, 16) || 'article';
+      const tid = clean(requestQuery(request).target_id, 64);
+      if (!tid) return bad('缺少 target_id');
+      const me = await auth(request, env);
+      const all = db.comments.filter(c => c.targetType === tt && c.targetId === tid).sort((a, b) => a.createdAt - b.createdAt);
+      // 构造楼中楼
+      const byId = {}; all.forEach(c => { byId[c.id] = { ...c, author: pub(userByIdSync(db, c.authorId)), replies: [], likeCount: (c.likes || []).length, liked: !!(me && (c.likes || []).includes(me.id)) }; });
+      const roots = [];
+      all.forEach(c => {
+        const node = byId[c.id];
+        if (c.parentId && byId[c.parentId]) byId[c.parentId].replies.push(node);
+        else roots.push(node);
+      });
+      return json({ comments: roots, total: all.length });
+    }
+
+    // POST /api/comments
+    if (match(path, 'comments') && method === 'POST') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const body = await request.json();
+      const targetType = clean(body.target_type, 16);
+      const targetId = clean(body.target_id, 64);
+      const parentId = clean(body.parent_id, 64) || null;
+      const content = clean(body.content, 2000);
+      if (!targetType || !targetId) return bad('缺少目标参数');
+      if (!['article', 'post'].includes(targetType)) return bad('target_type 只能是 article 或 post');
+      if (!content) return bad('评论内容不能为空');
+      // 目标必须存在且已审核通过
+      const target = targetType === 'article'
+        ? db.articles.find(a => a.id === targetId)
+        : db.posts.find(p => p.id === targetId);
+      if (!target) return bad('目标不存在', 404);
+      if (target.status !== 'approved' && me.role !== 'admin' && target.authorId !== me.id) return bad('内容暂不可评论', 403);
+      if (parentId) {
+        const parent = db.comments.find(c => c.id === parentId && c.targetType === targetType && c.targetId === targetId);
+        if (!parent) return bad('回复的评论不存在', 404);
+      }
+      const c = { id: uid('cm'), targetType, targetId, parentId, authorId: me.id, content, likes: [], createdAt: Date.now() };
+      db.comments.push(c);
+      await saveDB(env);
+      // 通知（如果有被回复的人或目标作者）
+      await addNotif(env, db, me.id, 'comment', me.id, targetType, targetId, `评论了${targetType === 'article' ? '文章' : '帖子'}`);
+      if (parentId) {
+        const parent = db.comments.find(x => x.id === parentId);
+        if (parent && parent.authorId !== me.id) {
+          await addNotif(env, db, me.id, 'reply', parent.authorId, 'comment', parentId, '回复了你的评论');
+        }
+      } else if (target.authorId !== me.id) {
+        await addNotif(env, db, me.id, 'comment', target.authorId, targetType, targetId, `评论了你的${targetType === 'article' ? '文章' : '帖子'}`);
+      }
+      const out = { ...c, author: pub(me), replies: [], likeCount: 0, liked: false };
+      return json({ comment: out }, 201);
+    }
+
+    // DELETE /api/comments/:id
+    m = match(path, 'comments/:id');
+    if (m && method === 'DELETE') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const i = db.comments.findIndex(c => c.id === m.id);
+      if (i < 0) return bad('评论不存在', 404);
+      if (db.comments[i].authorId !== me.id && me.role !== 'admin') return bad('无权限', 403);
+      db.comments.splice(i, 1);
+      await saveDB(env);
+      return json({ ok: true });
+    }
+
+    // POST /api/comments/:id/like
+    if (m && method === 'POST') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const c = db.comments.find(x => x.id === m.id);
+      if (!c) return bad('评论不存在', 404);
+      if (!c.likes) c.likes = [];
+      const idx = c.likes.indexOf(me.id);
+      if (idx >= 0) c.likes.splice(idx, 1); else c.likes.push(me.id);
+      await saveDB(env);
+      return json({ liked: idx < 0, likeCount: c.likes.length });
     }
 
     // ---- 私信：发送 ----
