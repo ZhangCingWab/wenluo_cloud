@@ -384,6 +384,31 @@ function pubFull(u) {
     score: u.score || 0
   };
 }
+
+/* 实时从 D1 计算用户积分（和排行榜同算法）*/
+async function computeScore(env, userId) {
+  try {
+    const [ar, pr, pcr, cr] = await Promise.all([
+      env.DB.prepare(`SELECT likes FROM articles WHERE author_id=? AND status='approved'`).bind(userId).all(),
+      env.DB.prepare(`SELECT comments FROM posts WHERE author_id=? AND status='approved'`).bind(userId).all(),
+      env.DB.prepare(`SELECT id FROM practices WHERE author_id=?`).bind(userId).all(),
+      env.DB.prepare(`SELECT id FROM checkins WHERE user_id=?`).bind(userId).all(),
+    ]);
+    const arts = ar.results || [];
+    const posts = pr.results || [];
+    const practices = (pcr.results || []).length;
+    const checkins = (cr.results || []).length;
+    let likes = 0, comments = 0;
+    for (const a of arts) try { likes += (JSON.parse(a.likes || '[]')).length; } catch {}
+    for (const p of posts) try { comments += (JSON.parse(p.comments || '[]')).length; } catch {}
+    return {
+      score: arts.length * 10 + posts.length * 5 + likes * 3 + comments * 2 + practices * 2 + checkins * 2,
+      articles: arts.length, posts: posts.length, likes, comments, practices, checkins
+    };
+  } catch {
+    return { score: 0, articles: 0, posts: 0, likes: 0, comments: 0, practices: 0, checkins: 0 };
+  }
+}
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // userById: 从 D1 查询
@@ -802,7 +827,10 @@ export async function onRequest(context) {
     if (match(path, 'me') && method === 'GET') {
       const u = await auth(request, env);
       if (!u) return bad('未登录', 401);
-      return json({ user: pubFull(u) });
+      const realtime = await computeScore(env, u.id);
+      const full = pubFull(u);
+      full.score = realtime.score;
+      return json({ user: full });
     }
 
     // ---- 健康检查 ----
@@ -893,20 +921,29 @@ export async function onRequest(context) {
       return json({ ok: true });
     }
 
-    // ---- 用户详情 ----
-    let m = match(path, 'users/:id');
+    // ---- 用户详情（score 用实时 SQL）----
+    m = match(path, 'users/:id');
     if (m && method === 'GET') {
-      // 用内存 db 而不是 D1 查询（D1 可能列不全）
       const u = userByIdSync(db, m.id);
       if (!u) return bad('用户不存在', 404);
       const me = await auth(request, env);
-      const articles = db.articles.filter(a => a.authorId === u.id && a.status === 'approved');
-      const posts = db.posts.filter(p => p.authorId === u.id && p.status === 'approved');
-      const likes = articles.reduce((s, a) => s + (a.likes || []).length, 0);
-      const followerCount = db.users.filter(x => (x.following || []).includes(u.id)).length;
-      const followingCount = (u.following || []).length;
-      const isFollowing = !!(me && (me.following || []).includes(u.id));
-      // 参加过的比赛（作为作者提交过作品）
+      // 实时 score + 统计数据 + approved 内容列表
+      const [realtime, ar, pr] = await Promise.all([
+        computeScore(env, u.id),
+        env.DB.prepare(`SELECT * FROM articles WHERE author_id=? AND status='approved' ORDER BY created_at DESC`).bind(u.id).all().catch(() => ({ results: [] })),
+        env.DB.prepare(`SELECT * FROM posts WHERE author_id=? AND status='approved' ORDER BY created_at DESC`).bind(u.id).all().catch(() => ({ results: [] })),
+      ]);
+      const articles = (ar.results || []).map(row => ({
+        id: row.id, authorId: row.author_id, title: row.title, content: row.content,
+        category: row.category, status: row.status, views: row.views, likes: JSON.parse(row.likes || '[]'),
+        tags: row.tags, createdAt: row.created_at
+      }));
+      const posts = (pr.results || []).map(row => ({
+        id: row.id, authorId: row.author_id, title: row.title, content: row.content,
+        category: row.category, status: row.status, createdAt: row.created_at,
+        comments: JSON.parse(row.comments || '[]')
+      }));
+      // 参加过的比赛
       const contests = db.contests.filter(c =>
         (c.participants || []).includes(u.id) ||
         (c.submissions || []).some(s => s.authorId === u.id)
@@ -914,23 +951,17 @@ export async function onRequest(context) {
         id: c.id, title: c.title, status: c.status || (Date.now() < c.startTime ? 'upcoming' : Date.now() > c.endTime ? 'ended' : 'ongoing'),
         startTime: c.startTime, endTime: c.endTime
       }));
-      // 关注列表 / 粉丝列表（也改 sync 版）
       const following = (u.following || []).map(id => pub(userByIdSync(db, id))).filter(Boolean);
       const followers = db.users.filter(x => (x.following || []).includes(u.id)).map(pub);
-      // 积分计算
-      const articleCount = articles.length;
-      const postCount = posts.length;
-      const reviewCount = db.reviews.filter(r => r.authorId === u.id).length;
-      const score = (u.score || 0) + articleCount * 10 + postCount * 5 + likes * 3 + reviewCount * 2;
-      // 返回的 user 对象要包含 badges
+      const isFollowing = !!(me && (me.following || []).includes(u.id));
       const userOut = pub(u);
       userOut.badges = u.badges || [];
       return json({
         user: userOut,
-        stats: { articles: articles.length, posts: posts.length, likes, followerCount, followingCount, score },
+        stats: { articles: realtime.articles, posts: realtime.posts, likes: realtime.likes, followerCount: followers.length, followingCount: following.length, score: realtime.score, practices: realtime.practices, checkins: realtime.checkins },
         isFollowing,
-        articles: articles.sort((a, b) => b.createdAt - a.createdAt).map(a => articleOut(a, db)),
-        posts: posts.sort((a, b) => b.createdAt - a.createdAt).map(p => postOut(p, db)),
+        articles: articles.map(a => articleOut(a, db)),
+        posts: posts.map(p => postOut(p, db)),
         contests, following, followers
       });
     }
@@ -1434,17 +1465,42 @@ export async function onRequest(context) {
       return json({ partner: pub(other), messages: list });
     }
 
-    // ---- 排行榜 ----
+    // ---- 排行榜（直接 SQL 查 D1 实时算，跨 isolate 一致）----
     if (match(path, 'rank') && method === 'GET') {
+      // 并行查所有 approved 内容 + 互动数据
+      let artRows = [], postRows = [], pracRows = [], checkRows = [];
+      try {
+        const [ar, pr, pcr, cr] = await Promise.all([
+          env.DB.prepare(`SELECT author_id, likes FROM articles WHERE status='approved'`).all(),
+          env.DB.prepare(`SELECT author_id, comments FROM posts WHERE status='approved'`).all(),
+          env.DB.prepare(`SELECT author_id FROM practices`).all(),
+          env.DB.prepare(`SELECT user_id FROM checkins`).all(),
+        ]);
+        artRows = ar.results || [];
+        postRows = pr.results || [];
+        pracRows = pcr.results || [];
+        checkRows = cr.results || [];
+      } catch {}
+      // 聚合每个用户的统计
+      const stats = {};
+      for (const u of db.users) stats[u.id] = { arts: 0, posts: 0, likes: 0, comments: 0, practices: 0, checkins: 0 };
+      for (const row of artRows) {
+        const s = stats[row.author_id] || (stats[row.author_id] = { arts:0, posts:0, likes:0, comments:0, practices:0, checkins:0 });
+        s.arts++;
+        try { s.likes += (JSON.parse(row.likes || '[]')).length; } catch {}
+      }
+      for (const row of postRows) {
+        const s = stats[row.author_id] || (stats[row.author_id] = { arts:0, posts:0, likes:0, comments:0, practices:0, checkins:0 });
+        s.posts++;
+        try { s.comments += (JSON.parse(row.comments || '[]')).length; } catch {}
+      }
+      for (const row of pracRows) { const s = stats[row.author_id]; if (s) s.practices++; }
+      for (const row of checkRows) { const s = stats[row.user_id]; if (s) s.checkins++; }
+
       const rows = db.users.map(u => {
-        const arts = db.articles.filter(a => a.authorId === u.id && a.status === 'approved');
-        const posts = db.posts.filter(p => p.authorId === u.id && p.status === 'approved');
-        const likes = arts.reduce((s, a) => s + (a.likes || []).length, 0);
-        const comments = posts.reduce((s, p) => s + (p.comments || []).length, 0);
-        const practices = db.practices.filter(x => x.authorId === u.id).length;
-        const checkins = db.checkins.filter(c => c.userId === u.id).length;
-        const score = arts.length * 10 + posts.length * 5 + likes * 3 + comments * 2 + practices * 2 + checkins * 2;
-        return { user: pub(u), score, articles: arts.length, posts: posts.length, likes, practices, checkins };
+        const s = stats[u.id] || { arts:0, posts:0, likes:0, comments:0, practices:0, checkins:0 };
+        const score = s.arts * 10 + s.posts * 5 + s.likes * 3 + s.comments * 2 + s.practices * 2 + s.checkins * 2;
+        return { user: pub(u), score, articles: s.arts, posts: s.posts, likes: s.likes, practices: s.practices, checkins: s.checkins };
       });
       rows.sort((a, b) => b.score - a.score);
       return json({ rank: rows.slice(0, 50), total: rows.length });
