@@ -967,9 +967,17 @@ export async function onRequest(context) {
       });
     }
 
-    // ---- 文章列表 ----
+    // ---- 文章列表（直接 SQL D1，跨 isolate 必拿到最新）----
     if (match(path, 'articles') && method === 'GET') {
-      let list = db.articles.filter(a => a.status === 'approved');
+      let list = [];
+      try {
+        const r = await env.DB.prepare(`SELECT * FROM articles WHERE status = 'approved' ORDER BY created_at DESC`).all();
+        list = (r.results || []).map(row => ({
+          id: row.id, authorId: row.author_id, title: row.title, content: row.content,
+          category: row.category, status: row.status, views: row.views, likes: JSON.parse(row.likes || '[]'),
+          tags: row.tags, createdAt: row.created_at, reviewedAt: row.reviewed_at
+        }));
+      } catch {}
       const qs = requestQuery(request);
       const cat = qs.category;
       const tag = qs.tag;
@@ -983,21 +991,33 @@ export async function onRequest(context) {
       list = searchFilter(list, q, db);
       if (sort === 'hot') list.sort((a, b) => ((b.likes || []).length * 5 + b.views) - ((a.likes || []).length * 5 + a.views));
       else list.sort((a, b) => b.createdAt - a.createdAt);
-      // 返回热门标签前 10 个
-      const allTags = {};
-      db.articles.forEach(a => {
-        const t = typeof a.tags === 'string' ? safeJSON(a.tags) : (a.tags || []);
-        t.forEach(x => allTags[x] = (allTags[x] || 0) + 1);
-      });
+      // 返回热门标签前 10 个（全量 D1 文章统计）
+      let allTags = {};
+      try {
+        const tr = await env.DB.prepare(`SELECT tags FROM articles`).all();
+        (tr.results || []).forEach(row => {
+          const t = typeof row.tags === 'string' ? safeJSON(row.tags) : (row.tags || []);
+          t.forEach(x => allTags[x] = (allTags[x] || 0) + 1);
+        });
+      } catch {}
       const hotTags = Object.entries(allTags).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([t]) => t);
       return json({ articles: list.map(a => articleOut(a, db)), hotTags });
     }
 
-    // ---- 我的文章 ----
+    // ---- 我的文章（直接 SQL，跨 isolate 看到最新审核状态）----
     if (match(path, 'articles/mine') && method === 'GET') {
       const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
-      return json({ articles: db.articles.filter(a => a.authorId === me.id).sort((a, b) => b.createdAt - a.createdAt).map(a => articleOut(a, db)) });
+      let rows = [];
+      try {
+        const r = await env.DB.prepare(`SELECT * FROM articles WHERE author_id = ? ORDER BY created_at DESC`).bind(me.id).all();
+        rows = (r.results || []).map(row => ({
+          id: row.id, authorId: row.author_id, title: row.title, content: row.content,
+          category: row.category, status: row.status, views: row.views, likes: JSON.parse(row.likes || '[]'),
+          tags: row.tags, createdAt: row.created_at, reviewedAt: row.reviewed_at
+        }));
+      } catch {}
+      return json({ articles: rows.map(a => articleOut(a, db)) });
     }
 
     // ---- 文章详情 ----
@@ -1089,9 +1109,17 @@ export async function onRequest(context) {
       return json({ liked: i < 0, likeCount: a.likes.length });
     }
 
-    // ---- 帖子列表 ----
+    // ---- 帖子列表（直接 SQL）----
     if (match(path, 'posts') && method === 'GET') {
-      let list = db.posts.filter(p => p.status === 'approved');
+      let list = [];
+      try {
+        const r = await env.DB.prepare(`SELECT * FROM posts WHERE status = 'approved' ORDER BY created_at DESC`).all();
+        list = (r.results || []).map(row => ({
+          id: row.id, authorId: row.author_id, title: row.title, content: row.content,
+          category: row.category, status: row.status, createdAt: row.created_at,
+          comments: JSON.parse(row.comments || '[]')
+        }));
+      } catch {}
       const cat = url.searchParams.get('category');
       const q = url.searchParams.get('q');
       if (cat) list = list.filter(p => (p.category || '其他') === cat);
@@ -1100,11 +1128,20 @@ export async function onRequest(context) {
       return json({ posts: list.map(p => postOut(p, db)) });
     }
 
-    // ---- 我的帖子 ----
+    // ---- 我的帖子（直接 SQL）----
     if (match(path, 'posts/mine') && method === 'GET') {
       const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
-      return json({ posts: db.posts.filter(p => p.authorId === me.id).sort((a, b) => b.createdAt - a.createdAt).map(p => postOut(p, db)) });
+      let rows = [];
+      try {
+        const r = await env.DB.prepare(`SELECT * FROM posts WHERE author_id = ? ORDER BY created_at DESC`).bind(me.id).all();
+        rows = (r.results || []).map(row => ({
+          id: row.id, authorId: row.author_id, title: row.title, content: row.content,
+          category: row.category, status: row.status, createdAt: row.created_at,
+          comments: JSON.parse(row.comments || '[]')
+        }));
+      } catch {}
+      return json({ posts: rows.map(p => postOut(p, db)) });
     }
 
     // ---- 帖子详情 ----
