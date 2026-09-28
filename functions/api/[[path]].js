@@ -97,14 +97,6 @@ async function createToken(env, userId) {
   }
   return token;
 }
-async function resolveToken(env, token) {
-  if (!token || !env.DB) return null;
-  const pure = token.startsWith('tk_') ? token : token.replace(/^Bearer\s+/i, '');
-  try {
-    const row = await env.DB.prepare('SELECT user_id FROM tokens WHERE token = ? AND expires_at > ?').bind(pure, Math.floor(Date.now() / 1000)).first();
-    return row ? row.user_id : null;
-  } catch { return null; }
-}
 async function deleteToken(env, token) {
   if (!env.DB) return;
   const pure = token.startsWith('tk_') ? token : token.replace(/^Bearer\s+/i, '');
