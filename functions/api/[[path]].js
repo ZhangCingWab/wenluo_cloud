@@ -232,11 +232,12 @@ async function ensureSeedData(env) {
 async function loadDB(env) {
   if (_cache) return _cache;
   try { await ensureSeedData(env); } catch {}
-  _cache = {};
-  for (const t of CACHED_TABLES) {
-    try { _cache[t] = await dbAll(env, `SELECT * FROM ${t}`); }
-    catch { _cache[t] = []; }
-  }
+  // 并行加载所有表（15 个 SELECT 同时发出，不用串行等）
+  const results = await Promise.all(CACHED_TABLES.map(async t => {
+    try { return [t, await dbAll(env, `SELECT * FROM ${t}`)]; }
+    catch { return [t, []]; }
+  }));
+  _cache = Object.fromEntries(results);
   return _cache;
 }
 
@@ -684,12 +685,32 @@ ${content ? `（基于你写的内容）\n\n> ${content.slice(-80)}……风停�
 }
 
 /* ---------------- 中间件 ---------------- */
+// Token → userId 内存缓存（避免每次 auth 都查 D1 tokens 表）
+const _tokenCache = new Map(); // token → { userId, expiresAt }
+async function resolveToken(env, token) {
+  if (!token) return null;
+  // 内存缓存命中
+  const cached = _tokenCache.get(token);
+  if (cached && cached.expiresAt > Date.now()) return cached.userId;
+  if (cached) _tokenCache.delete(token);
+  // 查 D1
+  try {
+    const row = await env.DB.prepare(`SELECT user_id, expires_at FROM tokens WHERE token = ?`).bind(token).first();
+    if (!row) return null;
+    if (row.expires_at < Date.now()) return null;
+    _tokenCache.set(token, { userId: row.user_id, expiresAt: row.expires_at });
+    return row.user_id;
+  } catch { return null; }
+}
+
 async function auth(request, env) {
   const header = request.headers.get('Authorization') || '';
   const token = header.replace(/^Bearer\s+/i, '');
   const userId = await resolveToken(env, token);
   if (!userId) return null;
-  return userById(env, userId);
+  // 用内存 db 查用户（dbAll 已经预加载了 users）
+  const db = await loadDB(env);
+  return userByIdSync(db, userId);
 }
 
 /* ---------------- 路由匹配 ---------------- */
