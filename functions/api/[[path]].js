@@ -387,8 +387,10 @@ function pubFull(u) {
 
 /* 实时从 D1 计算用户积分（和排行榜同算法）*/
 async function computeScore(env, userId) {
-  const pracAuthorCol = (_tableCols.practices || []).includes('author_id') ? 'author_id' : 'authorId';
-  const checkUserCol = (_tableCols.checkins || []).includes('user_id') ? 'user_id' : 'userId';
+  const pracCols = await getTableCols(env, 'practices');
+  const checkCols = await getTableCols(env, 'checkins');
+  const pracAuthorCol = pracCols.includes('author_id') ? 'author_id' : 'authorId';
+  const checkUserCol = checkCols.includes('user_id') ? 'user_id' : 'userId';
   let artRows = [], postRows = [], pracRows = [], checkRows = [];
   try { artRows = (await env.DB.prepare(`SELECT likes FROM articles WHERE author_id=? AND status='approved'`).bind(userId).all()).results || []; } catch {}
   try { postRows = (await env.DB.prepare(`SELECT comments FROM posts WHERE author_id=? AND status='approved'`).bind(userId).all()).results || []; } catch {}
@@ -1461,17 +1463,19 @@ export async function onRequest(context) {
 
     // ---- 排行榜（直接 SQL 查 D1 实时算，跨 isolate 一致）----
     if (match(path, 'rank') && method === 'GET') {
-      // 用 _tableCols 拿真实列名（旧 KV 迁移的表可能用 camelCase）
-      const pracAuthorCol = (_tableCols.practices || []).includes('author_id') ? 'author_id' : 'authorId';
-      const checkUserCol = (_tableCols.checkins || []).includes('user_id') ? 'user_id' : 'userId';
+      // 用 getTableCols 拿真实列名（旧 KV 迁移的表可能用 camelCase）
+      const pracCols = await getTableCols(env, 'practices');
+      const checkCols = await getTableCols(env, 'checkins');
+      const pracAuthorCol = pracCols.includes('author_id') ? 'author_id' : 'authorId';
+      const checkUserCol = checkCols.includes('user_id') ? 'user_id' : 'userId';
       let artRows = [];
       try { artRows = (await env.DB.prepare(`SELECT author_id, likes FROM articles WHERE status='approved'`).all()).results || []; } catch {}
       let postRows = [];
       try { postRows = (await env.DB.prepare(`SELECT author_id, comments FROM posts WHERE status='approved'`).all()).results || []; } catch {}
       let pracRows = [];
       try { pracRows = (await env.DB.prepare(`SELECT ${pracAuthorCol} as author_id FROM practices`).all()).results || []; } catch {}
-      let checkRows = [];
-      try { checkRows = (await env.DB.prepare(`SELECT ${checkUserCol} as user_id FROM checkins`).all()).results || []; } catch {}
+      let checkRows2 = [];
+      try { checkRows2 = (await env.DB.prepare(`SELECT ${checkUserCol} as user_id FROM checkins`).all()).results || []; } catch {}
       const stats = {};
       for (const u of db.users) stats[u.id] = { arts: 0, posts: 0, likes: 0, comments: 0, practices: 0, checkins: 0 };
       for (const row of artRows) {
@@ -1485,7 +1489,7 @@ export async function onRequest(context) {
         try { s.comments += (JSON.parse(row.comments || '[]')).length; } catch {}
       }
       for (const row of pracRows) { const s = stats[row.author_id]; if (s) s.practices++; }
-      for (const row of checkRows) { const s = stats[row.user_id]; if (s) s.checkins++; }
+      for (const row of checkRows2) { const s = stats[row.user_id]; if (s) s.checkins++; }
 
       const rows = db.users.map(u => {
         const s = stats[u.id] || { arts:0, posts:0, likes:0, comments:0, practices:0, checkins:0 };
