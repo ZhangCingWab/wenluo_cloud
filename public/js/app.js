@@ -873,11 +873,23 @@ async function viewWrite(editId) {
     try {
       const currentContent = document.getElementById('aContent').value;
       const r = await api('/api/ai/assist', { method: 'POST', body: { task: _aiTask, input, style, content: currentContent, title: aTitle.value } });
-      aiResult.innerHTML = md(r.result) || '<span class="hint">AI 没返回内容</span>';
-      aiApply.style.display = 'block';
+      let html = md(r.result) || '<span class="hint">AI 没返回内容</span>';
+      const tags = [];
+      if (r.source === 'ai') tags.push('<span class="ai-tag ai-tag-ai">✨ Workers AI</span>');
+      if (r.source === 'template') tags.push('<span class="ai-tag ai-tag-tpl">📝 模板回复</span>');
+      if (r.cached) tags.push('<span class="ai-tag ai-tag-cache">💾 缓存</span>');
+      if (r.limited) tags.push('<span class="ai-tag ai-tag-limit">⚠️ ' + esc(r.reason || '次数已用完') + '</span>');
+      if (typeof r.remaining === 'number' && r.remaining >= 0 && !r.limited) tags.push(`<span class="ai-tag ai-tag-count">剩余 ${r.remaining} 次/天</span>`);
+      if (tags.length) html = '<div class="ai-tags">' + tags.join('') + '</div>' + html;
+      aiResult.innerHTML = html;
+      aiApply.style.display = r.source !== 'template' || r.limited ? 'block' : 'block';
       aiApply.dataset.result = r.result || '';
+      btn.innerHTML = '<span class="ai-send-ico">⚡</span><span>让 AI 帮你写</span>';
+      btn.disabled = false;
     } catch (e) {
       aiResult.innerHTML = '<span style="color:var(--danger)">AI 暂时不可用：' + esc(e.message) + '</span>';
+      btn.innerHTML = '<span class="ai-send-ico">⚡</span><span>让 AI 帮你写</span>';
+      btn.disabled = false;
     }
     document.getElementById('aiSend').disabled = false;
     document.getElementById('aiSend').textContent = '🚀 让 AI 帮我';

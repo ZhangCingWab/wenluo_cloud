@@ -686,6 +686,15 @@ table.rank tr:last-child td { border: none; }
   animation: ai-spin .8s linear infinite;
 }
 @keyframes ai-spin { to { transform: rotate(360deg); } }
+.ai-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.ai-tag {
+  display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;
+}
+.ai-tag-ai { background: rgba(52,152,219,.12); color: var(--blue-dark); }
+.ai-tag-tpl { background: rgba(149,165,166,.15); color: #555; }
+.ai-tag-cache { background: rgba(46,204,113,.12); color: #27ae60; }
+.ai-tag-limit { background: rgba(231,76,60,.12); color: #c0392b; }
+.ai-tag-count { background: rgba(241,196,15,.15); color: #b7950b; }
 .notif-panel .np-item:hover { background: var(--bg-soft); }
 .notif-panel .np-item.unread { background: rgba(59,130,246,.06); }
 .notif-panel .np-item .np-from { font-weight: 600; color: var(--primary); }
