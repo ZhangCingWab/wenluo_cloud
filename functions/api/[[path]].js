@@ -1392,11 +1392,12 @@ export async function onRequest(context) {
         const likes = arts.reduce((s, a) => s + (a.likes || []).length, 0);
         const comments = posts.reduce((s, p) => s + (p.comments || []).length, 0);
         const practices = db.practices.filter(x => x.authorId === u.id).length;
-        const score = arts.length * 10 + posts.length * 5 + likes * 3 + comments * 2 + practices * 2;
-        return { user: pub(u), score, articles: arts.length, posts: posts.length, likes, practices };
-      }).filter(r => r.score > 0 || r.user.role === 'admin');
+        const checkins = db.checkins.filter(c => c.userId === u.id).length;
+        const score = arts.length * 10 + posts.length * 5 + likes * 3 + comments * 2 + practices * 2 + checkins * 2;
+        return { user: pub(u), score, articles: arts.length, posts: posts.length, likes, practices, checkins };
+      });
       rows.sort((a, b) => b.score - a.score);
-      return json({ rank: rows.slice(0, 50) });
+      return json({ rank: rows.slice(0, 50), total: rows.length });
     }
 
     // ---- 比赛列表 ----
