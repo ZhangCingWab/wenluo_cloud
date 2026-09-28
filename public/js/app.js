@@ -533,15 +533,15 @@ async function viewArticles() {
 }
 
 async function viewArticleDetail(id) {
-  hideAiFab();
-  showAiFab();
-  const [d, rd] = await Promise.all([api('/api/articles/' + id), api('/api/articles/' + id + '/reviews').catch(() => ({ reviews: [], avgRating: '0.0', count: 0 }))]);
+  hideAiFab(); showAiFab();
+  const [d, rd, cd] = await Promise.all([
+    api('/api/articles/' + id),
+    api('/api/articles/' + id + '/reviews').catch(() => ({ reviews: [], avgRating: '0.0', count: 0 })),
+    api('/api/comments?target_type=article&target_id=' + id).catch(() => ({ comments: [], total: 0 }))
+  ]);
   const a = d.article;
-  const stars = (n) => {
-    let s = '';
-    for (let i = 1; i <= 5; i++) s += i <= n ? '★' : '☆';
-    return s;
-  };
+  const stars = (n) => { let s = ''; for (let i = 1; i <= 5; i++) s += i <= n ? '★' : '☆'; return s; };
+  const tagsHtml = (a.tags && a.tags.length) ? `<div style="margin-top:8px">${a.tags.map(t => `<a class="tag-chip" href="#/articles?tag=${encodeURIComponent(t)}">#${esc(t)}</a>`).join('')}</div>` : '';
   $app.innerHTML = `
   <div class="container" style="max-width:820px">
     <div class="card">
@@ -549,6 +549,7 @@ async function viewArticleDetail(id) {
         <h1>${esc(a.title)}</h1>
         <div class="meta">
           <span class="type-badge">${esc(a.category || '其他')}</span>
+          ${tagsHtml}
           <span class="who">${avatarHtml(a.author, 'small')} ${esc(a.author.nickname)}</span>
           <span>${fmtTime(a.createdAt)}</span>
           <span>👁 ${a.views || 0}</span>
@@ -586,6 +587,16 @@ async function viewArticleDetail(id) {
           <div class="rc-text">${md(r.content)}</div>
         </div>
       </div>`).join('') || '<div class="empty">还没有点评，来当第一个吧！</div>'}
+    </div>
+
+    <div class="card">
+      <h2>💬 评论（${cd.total}）</h2>
+      ${state.me ? `
+      <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px dashed var(--border)">
+        <textarea id="cmInput" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;min-height:60px;font-size:13px;resize:vertical" placeholder="说点什么…"></textarea>
+        <button class="btn primary sm" id="cmSubmit" style="margin-top:6px">💬 发表评论</button>
+      </div>` : `<div class="empty" style="margin-bottom:12px"><a href="#/login">登录</a> 后参与评论</div>`}
+      <div id="cmList">${renderComments(cd.comments, 'article', id)}</div>
     </div>
   </div>`;
   if (state.me) {
@@ -626,6 +637,35 @@ async function viewArticleDetail(id) {
       lb.innerHTML = (r.liked ? '❤️ 已赞' : '🤍 点赞') + ' · ' + r.likeCount;
     } catch (e) { toast(e.message, 'err'); }
   };
+  // 评论提交
+  const cmBtn = document.getElementById('cmSubmit');
+  if (cmBtn) cmBtn.onclick = async () => {
+    const content = document.getElementById('cmInput').value.trim();
+    if (!content) return toast('评论内容不能为空', 'err');
+    try {
+      await api('/api/comments', { method: 'POST', body: { target_type: 'article', target_id: id, content } });
+      toast('评论成功'); route();
+    } catch (e) { toast(e.message, 'err'); }
+  };
+}
+
+/* 递归渲染楼中楼评论 */
+function renderComments(roots, targetType, targetId) {
+  if (!roots || !roots.length) return '<div class="empty">还没有评论，来抢沙发！</div>';
+  return roots.map(c => `
+  <div class="cm-item" data-id="${c.id}">
+    ${avatarHtml(c.author, 'small')}
+    <div class="cm-body">
+      <div class="cm-meta">
+        <b>${esc(c.author.nickname)}</b> · <span class="hint">${fmtTime(c.createdAt)}</span>
+        <span class="cm-like" data-cid="${c.id}">${c.liked ? '❤️' : '🤍'} ${c.likeCount || 0}</span>
+        <span class="cm-reply" data-cid="${c.id}">回复</span>
+        ${(state.me && (state.me.id === c.authorId || state.me.role === 'admin')) ? `<span class="cm-del" data-cid="${c.id}">删除</span>` : ''}
+      </div>
+      <div class="cm-text">${esc(c.content)}</div>
+      ${c.replies && c.replies.length ? `<div class="cm-replies">${renderComments(c.replies, targetType, targetId)}</div>` : ''}
+    </div>
+  </div>`).join('');
 }
 
 async function viewWrite(editId) {

@@ -520,6 +520,66 @@ table.rank tr:last-child td { border: none; }
   padding: 6px 14px; text-align: center; min-width: 80px;
 }
 .checkin-card .streak-badge .n { font-size: 20px; font-weight: 700; }
+
+/* ============ 新功能样式 ============ */
+.tag-chip {
+  display: inline-block; padding: 2px 10px; margin: 2px 3px;
+  background: var(--bg-soft); color: var(--primary); border-radius: 14px;
+  font-size: 12px; text-decoration: none; border: 1px solid var(--border);
+  transition: all .2s;
+}
+.tag-chip:hover { background: var(--primary); color: #fff; }
+.tag-chip.active { background: var(--primary); color: #fff; }
+
+/* 评论 */
+.cm-item {
+  display: flex; gap: 10px; padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.cm-item:last-child { border-bottom: none; }
+.cm-body { flex: 1; min-width: 0; }
+.cm-meta { font-size: 12px; margin-bottom: 4px; color: var(--text-2); }
+.cm-meta b { color: var(--text); margin-right: 6px; }
+.cm-text { font-size: 14px; line-height: 1.6; word-break: break-word; }
+.cm-like, .cm-reply, .cm-del {
+  cursor: pointer; margin-left: 10px; font-size: 12px; color: var(--text-2);
+  user-select: none;
+}
+.cm-like:hover { color: #e53e3e; }
+.cm-reply:hover { color: var(--primary); }
+.cm-del { color: var(--danger); }
+.cm-del:hover { text-decoration: underline; }
+.cm-replies {
+  margin-top: 8px; padding-left: 12px; border-left: 2px solid var(--border);
+}
+
+/* 通知角标 */
+.notif-badge {
+  position: absolute; top: -4px; right: -4px;
+  background: #e53e3e; color: #fff; font-size: 10px;
+  border-radius: 10px; padding: 1px 5px; min-width: 16px;
+  text-align: center; font-weight: 700;
+}
+
+/* 通知面板 */
+.notif-panel {
+  position: fixed; top: 60px; right: 20px; width: 340px;
+  max-height: 70vh; overflow-y: auto;
+  background: var(--bg); border-radius: 12px; box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border); z-index: 9999;
+}
+.notif-panel .np-header {
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  font-weight: 600; display: flex; justify-content: space-between; align-items: center;
+}
+.notif-panel .np-item {
+  padding: 10px 16px; border-bottom: 1px solid var(--border);
+  font-size: 13px; cursor: pointer;
+}
+.notif-panel .np-item:hover { background: var(--bg-soft); }
+.notif-panel .np-item.unread { background: rgba(59,130,246,.06); }
+.notif-panel .np-item .np-from { font-weight: 600; color: var(--primary); }
+.notif-panel .np-empty { padding: 30px; text-align: center; color: var(--text-2); }
 .checkin-card .streak-badge .l { font-size: 11px; opacity: .85; }
 .checkin-card .cc-problem { flex: 1; font-size: 13.5px; line-height: 1.5; }
 
