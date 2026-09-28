@@ -4,6 +4,12 @@ compatibility_flags = ["nodejs_compat"]
 
 pages_build_output_dir = "public"
 
+# D1 数据库
+[[d1_databases]]
+binding = "DB"
+database_name = "wenluo-db"
+database_id = "be2bc8e3-b89e-4721-b45a-9f6689c20dc2"
+
 # KV 命名空间绑定（保留用于迁移端点读取旧数据）
 [[kv_namespaces]]
 binding = "DATA"
@@ -12,11 +18,11 @@ id = "cb14318386c34f3b9233eac196d7f4d7"
 [env.production]
 vars = { ENVIRONMENT = "production" }
 
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "wenluo-db"
+database_id = "be2bc8e3-b89e-4721-b45a-9f6689c20dc2"
+
 [[env.production.kv_namespaces]]
 binding = "DATA"
 id = "cb14318386c34f3b9233eac196d7f4d7"
-
-# ⚠️ D1 数据库绑定请通过 Cloudflare Dashboard 配置：
-#    Settings → Bindings → Add → D1 database → Variable name 填 DB
-#    这样 Cloudflare 不会因为 ID 不对而拒绝部署
-#    代码里已经加了 try/catch 兼容：没有 D1 绑定时仍能运行（用 KV 读旧数据）
