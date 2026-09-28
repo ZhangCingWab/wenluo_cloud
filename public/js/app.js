@@ -872,7 +872,7 @@ async function viewWrite(editId) {
     aiApply.style.display = 'none';
     try {
       const currentContent = document.getElementById('aContent').value;
-      const r = await api('/api/ai/write', { method: 'POST', body: { task: _aiTask, input, style, content: currentContent, title: aTitle.value } });
+      const r = await api('/api/ai/assist', { method: 'POST', body: { task: _aiTask, input, style, content: currentContent, title: aTitle.value } });
       aiResult.innerHTML = md(r.result) || '<span class="hint">AI 没返回内容</span>';
       aiApply.style.display = 'block';
       aiApply.dataset.result = r.result || '';
