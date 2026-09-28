@@ -121,36 +121,79 @@ const CACHED_TABLES = ['users', 'articles', 'posts', 'contests', 'files', 'messa
 
 let _cache = null;
 
-// 种子数据：D1 为空时自动创建 admin + 欢迎文章等
+// 分别检查每张表是否为空，分别补种子
 async function ensureSeedData(env) {
-  let cnt;
-  try { cnt = await dbFirst(env, 'SELECT COUNT(*) as c FROM users'); }
-  catch { return; } // 表还没创建（用户没执行 schema.sql）
-  if (cnt && cnt.c > 0) return;
-
   const now = Date.now();
-  const pw = await hashPassword('admin123');
-  await dbRun(env, `INSERT INTO users (id,username,nickname,role,bio,created_at,salt,hash,login_fails,locked_until,score,badges,following) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    ['u_admin', 'admin', '站务管理员', 'admin', '本站管理员，负责文章、帖子与投稿审核。', now, pw.salt, pw.hash, 0, 0, 0, '[]', '[]']);
 
-  await dbRun(env, `INSERT INTO articles (id,author_id,title,content,category,status,views,likes,created_at,reviewed_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-    ['a_welcome', 'u_admin', '欢迎来到文洛 · 文章竞赛社区',
-     '## 这里可以做什么\n\n- **写文章**：点击侧边栏「我的文章」或主页「立即开始创作」，提交后由管理员审核，通过后进入文章库。\n- **逛论坛**：在「论坛广场」发帖交流，帖子同样需要审核。\n- **打比赛**：管理员会在「比赛广场」创建比赛，欢迎报名参加。\n\n## 社区公约\n\n1. 保持友善，尊重原创。\n2. 文章支持 Markdown 基础语法。',
-     '其他', 'approved', 128, '[]', now - 86400000, now - 86000000]);
+  // Admin 用户（如果没的话）
+  let uc = (await dbFirst(env, 'SELECT COUNT(*) as c FROM users'))?.c || 0;
+  if (uc === 0) {
+    const pw = await hashPassword('admin123');
+    await dbRun(env, `INSERT INTO users (id,username,nickname,role,bio,created_at,salt,hash,login_fails,locked_until,score,badges,following) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      ['u_admin', 'admin', '站务管理员', 'admin', '本站管理员，负责文章、帖子与投稿审核。', now, pw.salt, pw.hash, 0, 0, 0, '[]', '[]']);
+  }
 
-  await dbRun(env, `INSERT INTO posts (id,author_id,title,content,category,status,created_at,comments) VALUES (?,?,?,?,?,?,?,?)`,
-    ['p_hello', 'u_admin', '【置顶】新人报到帖',
-     '新来的同学在这里打个招呼吧！介绍一下自己擅长的领域 ~',
-     '其他', 'approved', now - 43200000, '[]']);
+  // 欢迎文章
+  let ac = (await dbFirst(env, 'SELECT COUNT(*) as c FROM articles'))?.c || 0;
+  if (ac === 0) {
+    await dbRun(env, `INSERT INTO articles (id,author_id,title,content,category,status,views,likes,created_at,reviewed_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      ['a_welcome', 'u_admin', '欢迎来到文洛 · 文章竞赛社区',
+       '## 这里可以做什么\n\n- **写文章**：点击侧边栏「我的文章」或主页「立即开始创作」。\n- **逛论坛**：在「论坛广场」发帖交流。\n- **打比赛**：在「比赛广场」报名参赛。\n\n祝大家玩得开心！',
+       '其他', 'approved', 128, '[]', now - 86400000, now - 86000000]);
+  }
 
-  await dbRun(env, `INSERT INTO contests (id,title,description,problems,start_time,end_time,created_by,created_at,participants,submissions) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-    ['c_demo', '第一届「文洛杯」短文创作赛',
-     '## 比赛说明\n\n围绕主题「代码与生活」写一篇不超过 2000 字的短文。',
-     JSON.stringify([
-       { id: uid('q'), title: '主题创作', content: '围绕比赛主题，完成一篇原创作品。', wordLimit: 2000 },
-       { id: uid('q'), title: '自由发挥', content: '题材不限，展现你的创意与文笔。', wordLimit: 2000 }
-     ]),
-     now - 3600000, now + 7 * 86400000, 'u_admin', now - 7200000, '[]', '[]']);
+  // 新人报到帖
+  let pc = (await dbFirst(env, 'SELECT COUNT(*) as c FROM posts'))?.c || 0;
+  if (pc === 0) {
+    await dbRun(env, `INSERT INTO posts (id,author_id,title,content,category,status,created_at,comments) VALUES (?,?,?,?,?,?,?,?)`,
+      ['p_hello', 'u_admin', '【置顶】新人报到帖', '新来的同学在这里打个招呼吧！', '其他', 'approved', now - 43200000, '[]']);
+  }
+
+  // Demo 比赛
+  let cc = (await dbFirst(env, 'SELECT COUNT(*) as c FROM contests'))?.c || 0;
+  if (cc === 0) {
+    await dbRun(env, `INSERT INTO contests (id,title,description,problems,start_time,end_time,created_by,created_at,participants,submissions) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      ['c_demo', '第一届「文洛杯」短文创作赛', '## 比赛说明\n\n围绕主题「代码与生活」写短文。',
+       JSON.stringify([
+         { id: 'q_demo1', title: '主题创作', content: '围绕比赛主题作文', wordLimit: 2000 },
+         { id: 'q_demo2', title: '自由发挥', content: '题材不限', wordLimit: 2000 }
+       ]),
+       now - 3600000, now + 7 * 86400000, 'u_admin', now - 7200000, '[]', '[]']);
+  }
+
+  // 题库（只在空表时插）
+  let qc = (await dbFirst(env, 'SELECT COUNT(*) as c FROM problems'))?.c || 0;
+  if (qc === 0) {
+    const seedProblems = [
+      ['q_t1', 'theme', '以「时光」为题，写一篇文章', '## 要求\n\n- 体裁不限，围绕时光流逝展开\n- 建议字数 600-1500 字', 2, JSON.stringify(['记叙','抒情']), 'u_admin', now - 86400000, 'approved'],
+      ['q_t2', 'theme', '以「窗外」为题描写一个熟悉场景', '## 要求\n\n- 选择一个你观察过的场景\n- 至少运用两种感官描写', 1, JSON.stringify(['写景','观察']), 'u_admin', now - 86400000, 'approved'],
+      ['q_t3', 'theme', '以「选择」为题写一次难忘的抉择', '## 要求\n\n- 写清楚两难在哪里、为什么这样选', 3, JSON.stringify(['记叙','成长']), 'u_admin', now - 86400000, 'approved'],
+      ['q_t4', 'theme', '科幻微小说：一百年后的世界', '## 要求\n\n- 微型小说，完整小故事\n- 1000 字以内', 4, JSON.stringify(['科幻','小说']), 'u_admin', now - 86400000, 'approved'],
+      ['q_t5', 'theme', '以「灯」为题', '## 要求\n\n- 灯在文中承担象征意义', 3, JSON.stringify(['象征','散文']), 'u_admin', now - 86400000, 'approved'],
+      ['q_t6', 'skill', '用排比写一段风景', '## 要求\n\n- 150-300 字，至少一组三句以上排比', 2, JSON.stringify(['排比','写景']), 'u_admin', now - 86400000, 'approved'],
+      ['q_t7', 'skill', '用比喻描写「时间」', '## 要求\n\n- 3 个以上比喻句，不许用常见比喻', 1, JSON.stringify(['比喻','修辞']), 'u_admin', now - 86400000, 'approved'],
+      ['q_t8', 'skill', '不用「哭」字写悲伤', '## 要求\n\n- 100-200 字，禁止出现哭/泪/难过/伤心', 3, JSON.stringify(['细节描写']), 'u_admin', now - 86400000, 'approved']
+    ];
+    for (const p of seedProblems) {
+      await dbRun(env, `INSERT INTO problems (id,type,title,content,difficulty,tags,created_by,created_at,status) VALUES (?,?,?,?,?,?,?,?,?)`, p);
+    }
+  }
+
+  // 模板（只在空表时插）
+  let tc = (await dbFirst(env, 'SELECT COUNT(*) as c FROM templates'))?.c || 0;
+  if (tc === 0) {
+    const seedTemplates = [
+      ['t_argue', '议论文五段式', '议论文', '经典五段式结构', '# 议论文五段式\n\n1.引入 2.分论点一 3.分论点二 4.反面论证 5.总结', now],
+      ['t_story', '短篇小说起承转合', '小说', '适合 1500-3000 字短故事', '# 起承转合\n\n起15%→承35%→转30%→合20%', now],
+      ['t_poem', '现代自由诗', '诗歌', '注重意象和节奏', '# 自由诗\n\n1.核心意象 2.切入 3.展开 4.留白', now],
+      ['t_narrative', '记叙文六要素', '记叙文', '清晰完整', '# 六要素\n\n时间/地点/人物/起因/经过/结果', now],
+      ['t_essay', '随笔散文', '随笔', '形散神不散', '# 随笔框架\n\n触发→联想→收束', now],
+      ['t_ai', 'AI 辅助写作', '其他', 'AI 省时间但保持创作主体', '# AI 辅助\n\n大纲/润色/资料可用，不要整篇复制', now]
+    ];
+    for (const t of seedTemplates) {
+      await dbRun(env, `INSERT INTO templates (id,title,category,description,content,created_at) VALUES (?,?,?,?,?,?)`, t);
+    }
+  }
 }
 
 async function loadDB(env) {
@@ -253,7 +296,7 @@ function problemOut(p, db) {
   const ps = db.practices.filter(x => x.problemId === p.id);
   return Object.assign({}, p, {
     status: p.status || 'approved',
-    proposer: pub(userById(env, p.createdBy)) || { nickname: '已注销用户' },
+    proposer: pub(userByIdSync(db, p.createdBy)) || { nickname: '已注销用户' },
     practiceCount: ps.length,
     doerCount: new Set(ps.map(x => x.authorId)).size
   });
@@ -266,7 +309,7 @@ function contestOut(c, db) {
     problemCount: (c.problems || []).length,
     submissionCount: (c.submissions || []).length,
     participantCount: (c.participants || []).length,
-    creator: pub(userById(env, c.createdBy))
+    creator: pub(userByIdSync(db, c.createdBy))
   });
 }
 
@@ -276,7 +319,7 @@ function searchFilter(list, q, db) {
   return list.filter(x =>
     String(x.title || '').toLowerCase().includes(lq) ||
     String(x.content || '').toLowerCase().includes(lq) ||
-    String((userById(env, x.authorId) || {}).nickname || '').toLowerCase().includes(lq) ||
+    String((userByIdSync(db, x.authorId) || {}).nickname || '').toLowerCase().includes(lq) ||
     (x.tags || []).some(t => String(t).toLowerCase().includes(lq))
   );
 }
@@ -287,7 +330,7 @@ function validPassword(pw) {
 
 /* 简单作者信息（点评等场景用） */
 function withAuthorSimple(id, db) {
-  const u = userById(env, id);
+  const u = userByIdSync(db, id);
   if (!u) return { nickname: '已注销用户' };
   return { id: u.id, nickname: u.nickname, role: u.role };
 }
