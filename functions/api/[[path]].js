@@ -203,26 +203,19 @@ async function ensureSeedData(env) {
       ['p_hello', 'u_admin', '【置顶】新人报到帖', '新来的同学在这里打个招呼吧！', '其他', 'approved', now - 43200000, '[]']);
   }
 
-  // Demo 比赛
-  let cc = (await dbFirst(env, 'SELECT COUNT(*) as c FROM contests'))?.c || 0;
-  if (cc === 0) {
-    await dbRun(env, `INSERT INTO contests (id,title,description,problems,start_time,end_time,created_by,created_at,participants,submissions) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-      ['c_demo', '第一届「文洛杯」短文创作赛', '## 比赛说明\n\n围绕主题「代码与生活」写短文。',
-       JSON.stringify([
-         { id: 'q_demo1', title: '主题创作', content: '围绕比赛主题作文', wordLimit: 2000 },
-         { id: 'q_demo2', title: '自由发挥', content: '题材不限', wordLimit: 2000 }
-       ]),
-       now - 3600000, now + 7 * 86400000, 'u_admin', now - 7200000, '[]', '[]']);
-  } else {
-    // 修 c_demo 可能被旧 saveDB 覆盖导致时间为 null 的问题
-    try {
-      const r = await dbFirst(env, `SELECT start_time FROM contests WHERE id='c_demo'`);
-      if (r && r.start_time === null) {
-        await dbRun(env, `UPDATE contests SET start_time=?, end_time=?, created_by=?, created_at=? WHERE id='c_demo'`,
-          [now - 3600000, now + 7 * 86400000, 'u_admin', now - 7200000]);
-      }
-    } catch {}
-  }
+  // Demo 比赛（同时修复旧 saveDB 覆盖导致的 null 时间）
+  await dbRun(env, `INSERT INTO contests (id,title,description,problems,start_time,end_time,created_by,created_at,participants,submissions) VALUES (?,?,?,?,?,?,?,?,?,?)
+    ON CONFLICT(id) DO UPDATE SET
+      start_time = COALESCE(excluded.start_time, contests.start_time),
+      end_time = COALESCE(excluded.end_time, contests.end_time),
+      created_by = COALESCE(excluded.created_by, contests.created_by),
+      created_at = COALESCE(excluded.created_at, contests.created_at)`,
+    ['c_demo', '第一届「文洛杯」短文创作赛', '## 比赛说明\n\n围绕主题「代码与生活」写短文。',
+     JSON.stringify([
+       { id: 'q_demo1', title: '主题创作', content: '围绕比赛主题作文', wordLimit: 2000 },
+       { id: 'q_demo2', title: '自由发挥', content: '题材不限', wordLimit: 2000 }
+     ]),
+     now - 3600000, now + 7 * 86400000, 'u_admin', now - 7200000, '[]', '[]']);
 
   // 题库（只在空表时插）
   let qc = (await dbFirst(env, 'SELECT COUNT(*) as c FROM problems'))?.c || 0;
