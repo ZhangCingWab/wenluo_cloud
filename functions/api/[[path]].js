@@ -1879,8 +1879,15 @@ export async function onRequest(context) {
     // ---- 今日打卡题目 ----
     m = match(path, 'checkins/today');
     if (m && method === 'GET') {
-      const dailyId = db.dailyProblem;
-      const daily = dailyId ? db.problems.find(p => p.id === dailyId) : null;
+      // 每日一题：用日期确定性从 problems 里选（零存储、同天所有人一样）
+      const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+      const daySeed = todayStr.split('-').reduce((a, b) => a + parseInt(b, 10), 0);
+      const available = db.problems.filter(p => p.status === 'approved');
+      let daily = null;
+      if (available.length > 0) {
+        const idx = daySeed % available.length;
+        daily = available[idx];
+      }
       let myCheckin = null;
       const me = await auth(request, env).catch(() => null);
       if (me) {
