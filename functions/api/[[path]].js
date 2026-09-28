@@ -1339,7 +1339,7 @@ export async function onRequest(context) {
       const conversations = [...map.values()]
         .sort((a, b) => b.last.createdAt - a.last.createdAt)
         .map(c => ({
-          partner: pub(userById(env, c.partnerId)),
+          partner: pub(userByIdSync(db, c.partnerId)),
           lastContent: c.last.content, lastTime: c.last.createdAt,
           lastFromMe: c.last.fromId === me.id, unread: c.unread
         }))
@@ -1352,14 +1352,35 @@ export async function onRequest(context) {
     if (m && method === 'GET') {
       const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
-      const other = userById(env, m.userId);
+      const other = userByIdSync(db, m.userId);
       if (!other) return bad('用户不存在', 404);
-      const list = db.messages
-        .filter(x => (x.fromId === me.id && x.toId === other.id) || (x.fromId === other.id && x.toId === me.id))
-        .sort((a, b) => a.createdAt - b.createdAt);
-      let changed = false;
-      for (const x of list) if (x.toId === me.id && !x.read) { x.read = true; changed = true; }
-      if (changed) await saveDB(env);
+      // 直接从 D1 读（不同 isolate 间内存不共享，必须持久化数据源）
+      let list = [];
+      try {
+        const rows = await env.DB.prepare(`SELECT * FROM messages WHERE 
+          (from_id = ? AND to_id = ?) OR (from_id = ? AND to_id = ?)
+          ORDER BY created_at ASC`)
+          .bind(me.id, other.id, other.id, me.id).all();
+        list = (rows.results || []).map(row => ({
+          id: row.id, fromId: row.from_id, toId: row.to_id,
+          content: row.content, createdAt: row.created_at, read: !!row.read
+        }));
+      } catch {}
+      // 同步内存 db.messages 保证最新
+      db.messages = db.messages || [];
+      for (const msg of list) {
+        if (!db.messages.find(x => x.id === msg.id)) db.messages.push(msg);
+      }
+      // 把已读消息标记为 read（直接 SQL UPDATE）
+      const unreadIds = list.filter(x => x.toId === me.id && !x.read).map(x => x.id);
+      if (unreadIds.length > 0) {
+        try {
+          const qmarks = unreadIds.map(() => '?').join(',');
+          await env.DB.prepare(`UPDATE messages SET \`read\` = 1 WHERE id IN (${qmarks})`).bind(...unreadIds).run();
+          for (const x of list) if (x.toId === me.id) x.read = true;
+          for (const x of db.messages) if (unreadIds.includes(x.id)) x.read = true;
+        } catch {}
+      }
       return json({ partner: pub(other), messages: list });
     }
 
