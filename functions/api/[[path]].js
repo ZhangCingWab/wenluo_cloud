@@ -1191,6 +1191,20 @@ export async function onRequest(context) {
         .map(n => ({ ...n, from: pub(userByIdSync(db, n.fromId)) }));
       return json({ notifications: list });
     }
+    // GET /api/notifications/unread（未读通知列表）
+    if (match(path, 'notifications/unread') && method === 'GET') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const list = db.notifications.filter(n => n.userId === me.id && !n.read).sort((a,b)=>b.createdAt-a.createdAt);
+      return json({ notifications: list, count: list.length });
+    }
+    // GET /api/notifications（全部通知列表）
+    if (match(path, 'notifications') && method === 'GET') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const list = db.notifications.filter(n => n.userId === me.id).sort((a,b)=>b.createdAt-a.createdAt).slice(0, 50);
+      return json({ notifications: list, total: list.length });
+    }
     // GET /api/notifications/unread-count
     if (match(path, 'notifications/unread-count') && method === 'GET') {
       const me = await auth(request, env);
@@ -1299,6 +1313,14 @@ export async function onRequest(context) {
     // ---- 比赛列表 ----
     if (match(path, 'contests') && method === 'GET') {
       return json({ contests: db.contests.slice().sort((a, b) => b.createdAt - a.createdAt).map(c => contestOut(c, db)) });
+    }
+
+    // ---- 我的比赛 ----
+    if (match(path, 'contests/mine') && method === 'GET') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const mine = db.contests.filter(c => c.authorId === me.id || (c.participants && c.participants.includes(me.id)));
+      return json({ contests: mine.map(c => contestOut(c, db)) });
     }
 
     // ---- 比赛详情 ----
@@ -1678,6 +1700,23 @@ export async function onRequest(context) {
       p.reviewedAt = Date.now();
       await saveDB(env);
       return json({ ok: true, status: p.status });
+    }
+    // GET /api/admin/stats
+    if (match(path, 'admin/stats') && method === 'GET') {
+      const me = await auth(request, env);
+      if (!me || me.role !== 'admin') return bad('需要管理员权限', 403);
+      return json({
+        users: db.users.length,
+        articles: db.articles.length,
+        posts: db.posts.length,
+        comments: db.comments?.length || 0,
+        pendingArticles: db.articles.filter(a => a.status === 'pending').length,
+        pendingPosts: db.posts.filter(p => p.status === 'pending').length,
+        contests: db.contests.length,
+        problems: db.problems.length,
+        checkins: db.checkins?.length || 0,
+        files: db.files?.length || 0
+      });
     }
 
     // ---- AI 写作助手 ----
