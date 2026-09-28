@@ -1713,13 +1713,26 @@ export async function onRequest(context) {
       }[e] || 'application/octet-stream';
     }
 
-    // ---- 后台审核：文章列表 ----
+    // ---- 后台审核：文章列表（直接 SQL，跨 isolate 必拿到最新）----
     m = match(path, 'admin/articles');
     if (m && method === 'GET') {
       const me = await auth(request, env);
       if (!me || me.role !== 'admin') return bad('需要管理员权限', 403);
       const status = ['pending', 'approved', 'rejected'].includes(url.searchParams.get('status')) ? url.searchParams.get('status') : 'pending';
-      return json({ articles: db.articles.filter(a => a.status === status).sort((a, b) => b.createdAt - a.createdAt).map(a => articleOut(a, db)) });
+      let rows = [];
+      try {
+        const r = await env.DB.prepare(`SELECT * FROM articles WHERE status = ? ORDER BY created_at DESC`).bind(status).all();
+        rows = (r.results || []).map(row => ({
+          id: row.id, authorId: row.author_id, title: row.title, content: row.content,
+          category: row.category, status: row.status, views: row.views, likes: JSON.parse(row.likes || '[]'),
+          tags: row.tags, createdAt: row.created_at, reviewedAt: row.reviewed_at
+        }));
+      } catch {}
+      // 用内存 db.articles 合并（同 isolate 里刚创建的内存项也包含）
+      const ids = new Set(rows.map(r => r.id));
+      const extra = (db.articles || []).filter(a => a.status === status && !ids.has(a.id));
+      rows = [...rows, ...extra].sort((a, b) => b.createdAt - a.createdAt);
+      return json({ articles: rows.map(a => articleOut(a, db)) });
     }
 
     // ---- 审核文章 ----
@@ -1737,13 +1750,22 @@ export async function onRequest(context) {
       return json({ ok: true, status });
     }
 
-    // ---- 后台审核：帖子列表 ----
+    // ---- 后台审核：帖子列表（直接 SQL）----
     m = match(path, 'admin/posts');
     if (m && method === 'GET') {
       const me = await auth(request, env);
       if (!me || me.role !== 'admin') return bad('需要管理员权限', 403);
       const status = ['pending', 'approved', 'rejected'].includes(url.searchParams.get('status')) ? url.searchParams.get('status') : 'pending';
-      return json({ posts: db.posts.filter(p => p.status === status).sort((a, b) => b.createdAt - a.createdAt).map(p => postOut(p, db)) });
+      let rows = [];
+      try {
+        const r = await env.DB.prepare(`SELECT * FROM posts WHERE status = ? ORDER BY created_at DESC`).bind(status).all();
+        rows = (r.results || []).map(row => ({
+          id: row.id, authorId: row.author_id, title: row.title, content: row.content,
+          category: row.category, status: row.status, createdAt: row.created_at,
+          comments: JSON.parse(row.comments || '[]')
+        }));
+      } catch {}
+      return json({ posts: rows.map(p => postOut(p, db)) });
     }
 
     // ---- 审核帖子 ----
