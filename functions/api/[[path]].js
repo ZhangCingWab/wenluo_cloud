@@ -1502,14 +1502,17 @@ export async function onRequest(context) {
 
     // ---- 比赛列表（直接 SQL D1）----
     if (match(path, 'contests') && method === 'GET') {
+      const cols = await getTableCols(env, 'contests');
+      const timeStart = cols.includes('start_time') ? 'start_time' : 'startTime';
+      const timeEnd = cols.includes('end_time') ? 'end_time' : 'endTime';
       let rows = [];
       try {
         const r = await env.DB.prepare(`SELECT * FROM contests ORDER BY created_at DESC`).all();
         rows = (r.results || []).map(row => ({
           id: row.id, title: row.title, description: row.description,
           problems: JSON.parse(row.problems || '[]'),
-          startTime: row.start_time, endTime: row.end_time,
-          createdBy: row.created_by, createdAt: row.created_at,
+          startTime: row[timeStart], endTime: row[timeEnd],
+          createdBy: row.created_by || row.createdBy, createdAt: row.created_at || row.createdAt,
           participants: JSON.parse(row.participants || '[]'),
           submissions: JSON.parse(row.submissions || '[]')
         }));
@@ -1528,6 +1531,9 @@ export async function onRequest(context) {
     // ---- 比赛详情 ----
     m = match(path, 'contests/:id');
     if (m && method === 'GET') {
+      const cols = await getTableCols(env, 'contests');
+      const timeStart = cols.includes('start_time') ? 'start_time' : 'startTime';
+      const timeEnd = cols.includes('end_time') ? 'end_time' : 'endTime';
       let c;
       try {
         const r = await env.DB.prepare(`SELECT * FROM contests WHERE id = ?`).bind(m.id).all();
@@ -1536,8 +1542,8 @@ export async function onRequest(context) {
           c = {
             id: row.id, title: row.title, description: row.description,
             problems: JSON.parse(row.problems || '[]'),
-            startTime: row.start_time, endTime: row.end_time,
-            createdBy: row.created_by, createdAt: row.created_at,
+            startTime: row[timeStart], endTime: row[timeEnd],
+            createdBy: row.created_by || row.createdBy, createdAt: row.created_at || row.createdAt,
             participants: JSON.parse(row.participants || '[]'),
             submissions: JSON.parse(row.submissions || '[]')
           };
@@ -1597,11 +1603,13 @@ export async function onRequest(context) {
       if (!me) return bad('请先登录', 401);
       // 直接 SQL 查 + 更新
       let c;
+      const cols = await getTableCols(env, 'contests');
+      const timeEnd = cols.includes('end_time') ? 'end_time' : 'endTime';
       try {
         const r = await env.DB.prepare(`SELECT * FROM contests WHERE id=?`).bind(m.id).all();
         const row = (r.results || [])[0];
         if (row) {
-          c = { participants: JSON.parse(row.participants || '[]'), endTime: row.end_time };
+          c = { participants: JSON.parse(row.participants || '[]'), endTime: row[timeEnd] };
         }
       } catch {}
       if (!c) return bad('比赛不存在', 404);
