@@ -831,7 +831,14 @@ export async function onRequest(context) {
 
     // ---- 健康检查 ----
     if (match(path, 'health') && method === 'GET') {
-      return json({ status: 'ok', users: db.users.length });
+      // DEBUG: 返回 contests 表结构
+      let contestsCols = [], c_demo_row = null;
+      try {
+        contestsCols = (await env.DB.prepare(`PRAGMA table_info(contests)`).all()).results.map(c => c.name);
+        const r = await env.DB.prepare(`SELECT * FROM contests WHERE id='c_demo'`).all();
+        c_demo_row = (r.results || [])[0];
+      } catch {}
+      return json({ status: 'ok', users: db.users.length, debug: { contestsCols, c_demo_row } });
     }
 
     // ---- 注册 ----
