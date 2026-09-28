@@ -1414,9 +1414,20 @@ async function adminNewContest() {
 async function adminReview(kind, st) {
   st = ['pending', 'approved', 'rejected'].includes(st) ? st : 'pending';
   const apiPath = { articles: 'articles', posts: 'posts', files: 'files', problems: 'problems' }[kind];
+  // 并行查三个状态的 count（标签上显示真实数字）
+  const [dp, da, dr] = await Promise.all([
+    api(`/api/admin/${apiPath}?status=pending`).catch(() => ({})),
+    api(`/api/admin/${apiPath}?status=approved`).catch(() => ({})),
+    api(`/api/admin/${apiPath}?status=rejected`).catch(() => ({})),
+  ]);
+  const counts = {
+    pending: (dp[apiPath] || []).length,
+    approved: (da[apiPath] || []).length,
+    rejected: (dr[apiPath] || []).length,
+  };
   const d = await api(`/api/admin/${apiPath}?status=${st}`);
   const title = { articles: '审核文章', posts: '审核帖子', files: '审核投稿', problems: '审核题目' }[kind];
-  const counts = { pending: '待审核', approved: '已通过', rejected: '已拒绝' };
+  const labels = { pending: '待审核', approved: '已通过', rejected: '已拒绝' };
   const dataMap = { articles: d.articles, posts: d.posts, files: d.files, problems: d.problems };
 
   let items = '';
@@ -1487,7 +1498,7 @@ async function adminReview(kind, st) {
     <a href="#/admin/${kind}/${st}" class="btn ghost">刷新</a></div>
     <div class="tabs">
       ${['pending', 'approved', 'rejected'].map(s => `
-      <span class="t ${st === s ? 'active' : ''}" data-s="${s}">${counts[s]}（${dataMap[kind].length}）</span>`).join('')}
+      <span class="t ${st === s ? 'active' : ''}" data-s="${s}">${labels[s]}（${counts[s]}）</span>`).join('')}
     </div>
     ${items || '<div class="card"><div class="empty">这里空空如也 🎉</div></div>'}
   </div>`;
