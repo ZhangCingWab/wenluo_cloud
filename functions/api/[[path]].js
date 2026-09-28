@@ -213,6 +213,15 @@ async function ensureSeedData(env) {
          { id: 'q_demo2', title: '自由发挥', content: '题材不限', wordLimit: 2000 }
        ]),
        now - 3600000, now + 7 * 86400000, 'u_admin', now - 7200000, '[]', '[]']);
+  } else {
+    // 修 c_demo 可能被旧 saveDB 覆盖导致时间为 null 的问题
+    try {
+      const r = await dbFirst(env, `SELECT start_time FROM contests WHERE id='c_demo'`);
+      if (r && r.start_time === null) {
+        await dbRun(env, `UPDATE contests SET start_time=?, end_time=?, created_by=?, created_at=? WHERE id='c_demo'`,
+          [now - 3600000, now + 7 * 86400000, 'u_admin', now - 7200000]);
+      }
+    } catch {}
   }
 
   // 题库（只在空表时插）
@@ -831,14 +840,7 @@ export async function onRequest(context) {
 
     // ---- 健康检查 ----
     if (match(path, 'health') && method === 'GET') {
-      // DEBUG: 返回 contests 表结构
-      let contestsCols = [], c_demo_row = null;
-      try {
-        contestsCols = (await env.DB.prepare(`PRAGMA table_info(contests)`).all()).results.map(c => c.name);
-        const r = await env.DB.prepare(`SELECT * FROM contests WHERE id='c_demo'`).all();
-        c_demo_row = (r.results || [])[0];
-      } catch {}
-      return json({ status: 'ok', users: db.users.length, debug: { contestsCols, c_demo_row } });
+      return json({ status: 'ok', users: db.users.length });
     }
 
     // ---- 注册 ----
