@@ -148,6 +148,27 @@ async function ensureSeedData(env) {
     await dbRun(env, `CREATE TABLE IF NOT EXISTS reset_tokens (
       token TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at INTEGER NOT NULL
     )`);
+    // tokens 表（登录 session——之前漏建了！导致每次 login 返回 200 但 token 根本没存）
+    await dbRun(env, `CREATE TABLE IF NOT EXISTS tokens (
+      token TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at INTEGER NOT NULL
+    )`);
+    // comments 表
+    await dbRun(env, `CREATE TABLE IF NOT EXISTS comments (
+      id TEXT PRIMARY KEY, target_type TEXT, target_id TEXT, author_id TEXT,
+      content TEXT, parent_id TEXT, likes TEXT, created_at INTEGER
+    )`);
+    // notifications 表
+    await dbRun(env, `CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY, user_id TEXT, type TEXT, target_id TEXT, target_type TEXT,
+      from_user_id TEXT, content TEXT, read INTEGER DEFAULT 0, created_at INTEGER
+    )`);
+    // ai_limits / ai_cache（之前在 ensureAiTables 里，挪过来）
+    await dbRun(env, `CREATE TABLE IF NOT EXISTS ai_limits (
+      user_id TEXT, day TEXT, count INTEGER DEFAULT 0, PRIMARY KEY (user_id, day)
+    )`);
+    await dbRun(env, `CREATE TABLE IF NOT EXISTS ai_cache (
+      hash TEXT PRIMARY KEY, result TEXT, source TEXT, created_at INTEGER
+    )`);
   } catch {}
 
   // Admin 用户（如果没的话）
@@ -698,12 +719,14 @@ async function resolveToken(env, token) {
   const cached = _tokenCache.get(token);
   if (cached && cached.expiresAt > Date.now()) return cached.userId;
   if (cached) _tokenCache.delete(token);
-  // 查 D1
+  // 查 D1（expires_at 存的是秒级时间戳）
   try {
     const row = await env.DB.prepare(`SELECT user_id, expires_at FROM tokens WHERE token = ?`).bind(token).first();
     if (!row) return null;
-    if (row.expires_at < Date.now()) return null;
-    _tokenCache.set(token, { userId: row.user_id, expiresAt: row.expires_at });
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (row.expires_at < nowSec) return null; // 秒 vs 秒
+    // 缓存用毫秒方便统一比较
+    _tokenCache.set(token, { userId: row.user_id, expiresAt: row.expires_at * 1000 });
     return row.user_id;
   } catch { return null; }
 }
