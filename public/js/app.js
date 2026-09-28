@@ -82,6 +82,76 @@ function excerpt(s, n = 90) {
   const t = String(s || '').replace(/[#*`>\n]/g, ' ').replace(/\s+/g, ' ').trim();
   return t.length > n ? t.slice(0, n) + '…' : t;
 }
+
+/* ---------- AI 助手面板 ---------- */
+let _aiPanel = null;
+function openAiPanel(defaultTask = 'outline', defaultInput = '') {
+  closeAiPanel();
+  _aiPanel = document.createElement('div');
+  _aiPanel.className = 'ai-panel open';
+  _aiPanel.innerHTML = `
+  <div class="ai-head">
+    <h3>🤖 AI 写作助手</h3>
+    <span class="ai-close" id="aiClose">✕</span>
+  </div>
+  <div class="ai-body">
+    <div class="ai-task-bar">
+      <button class="ai-task-btn active" data-t="outline">📋 大纲</button>
+      <button class="ai-task-btn" data-t="rewrite">✨ 润色</button>
+      <button class="ai-task-btn" data-t="continue">📖 续写</button>
+      <button class="ai-task-btn" data-t="review">📝 批改</button>
+    </div>
+    <div class="form-item"><label>主题 / 你的问题</label><textarea id="aiInput" class="ai-input" placeholder="${defaultTask === 'rewrite' || defaultTask === 'continue' || defaultTask === 'review' ? '把你的文字贴在这里…' : '写这篇文章是关于什么的？'}">${esc(defaultInput)}</textarea></div>
+    <div class="form-item"><label>风格 / 要求（可选）</label><input id="aiStyle" placeholder="例如：议论文、轻松幽默、简洁有力"></div>
+    <button class="ai-send" id="aiSend">🚀 让 AI 帮我</button>
+    <div id="aiResult"></div>
+  </div>`;
+  document.body.appendChild(_aiPanel);
+  _aiPanel.querySelector('#aiClose').onclick = closeAiPanel;
+  const taskBtns = _aiPanel.querySelectorAll('.ai-task-btn');
+  const setTask = (t) => taskBtns.forEach(b => b.classList.toggle('active', b.dataset.t === t));
+  taskBtns.forEach(b => b.onclick = () => setTask(b.dataset.t));
+  _aiPanel.querySelector('#aiSend').onclick = async () => {
+    if (!state.me) { toast('请先登录', 'err'); return; }
+    const activeBtn = _aiPanel.querySelector('.ai-task-btn.active');
+    const task = activeBtn ? activeBtn.dataset.t : 'outline';
+    const input = _aiPanel.querySelector('#aiInput').value;
+    const style = _aiPanel.querySelector('#aiStyle').value;
+    if (!input) { toast('请写点什么', 'err'); return; }
+    const sendBtn = _aiPanel.querySelector('#aiSend');
+    const result = _aiPanel.querySelector('#aiResult');
+    sendBtn.disabled = true; sendBtn.textContent = '思考中';
+    result.innerHTML = '<div class="ai-loader">AI 正在帮你想办法</div>';
+    try {
+      const d = await api('/api/ai/assist', { method: 'POST', body: { task, topic: input, content: input, style, extra: '' } });
+      result.innerHTML = `<div class="ai-result">${d.result.replace(/</g, '&lt;').replace(/\n/g, '<br>').replace(/&gt;/g, '>')}</div>
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button class="btn ghost sm" id="aiCopy">📋 复制</button>
+          <button class="btn ghost sm" id="aiAppend">➕ 加到编辑器</button>
+          <span class="hint" style="flex:1;text-align:right">${d.source === 'ai' ? 'AI 生成' : '本地模板'}</span>
+        </div>`;
+      document.getElementById('aiCopy').onclick = async () => {
+        await navigator.clipboard.writeText(d.result).catch(() => {});
+        toast('已复制到剪贴板');
+      };
+      document.getElementById('aiAppend').onclick = () => {
+        const ta = document.querySelector('textarea.tall, textarea#prContent');
+        if (ta) { ta.value = (ta.value ? ta.value + '\n\n' : '') + d.result; toast('已追加到编辑器'); }
+        else toast('当前没有找到编辑器', 'err');
+      };
+    } catch (e) { result.innerHTML = '<div class="ai-result" style="color:var(--red)">出错了：' + esc(e.message) + '</div>'; }
+    sendBtn.disabled = false; sendBtn.textContent = '🚀 让 AI 帮我';
+  };
+}
+function closeAiPanel() { if (_aiPanel) { _aiPanel.remove(); _aiPanel = null; } }
+function showAiFab() {
+  if (document.getElementById('aiFab')) return;
+  const fab = document.createElement('button');
+  fab.className = 'ai-fab'; fab.id = 'aiFab'; fab.innerHTML = '🤖'; fab.title = 'AI 写作助手';
+  fab.onclick = () => openAiPanel();
+  document.body.appendChild(fab);
+}
+function hideAiFab() { const f = document.getElementById('aiFab'); if (f) f.remove(); closeAiPanel(); }
 const avatarColor = (id) => {
   const cs = ['#3498db', '#9b59b6', '#1abc9c', '#e67e22', '#e74c3c', '#2c82c9', '#16a085'];
   let h = 0; for (const c of String(id || 'x')) h = (h * 31 + c.charCodeAt(0)) % 997;
@@ -109,9 +179,11 @@ function renderSidebar() {
   </div>
   <nav class="nav">
     ${link('/home', '🏠', '主页')}
+    ${link('/daily', '🔥', '每日打卡')}
     ${link('/forum', '💬', '论坛广场')}
     ${link('/articles', '📖', '文章库')}
     ${link('/problems', '📚', '题库')}
+    ${link('/templates', '📝', '写作模板')}
     ${link('/rank', '🏆', '排行榜')}
     ${link('/contests', '🏁', '比赛广场')}
     ${link('/submit', '📤', '文件投稿')}
@@ -194,7 +266,8 @@ const routes = {
   rank: viewRank, contests: viewContests, contest: viewContestDetail,
   submit: viewSubmit, mine: viewMine, user: viewProfile, settings: viewSettings,
   login: viewLogin, admin: viewAdmin, messages: viewMessages, chat: viewChat,
-  problems: viewProblems, problem: viewProblemDetail
+  problems: viewProblems, problem: viewProblemDetail,
+  templates: viewTemplates, daily: viewDaily
 };
 async function route() {
   closeMenu();
@@ -216,7 +289,11 @@ const go = (h) => { location.hash = h; };
 
 /* ---------- 主页 ---------- */
 async function viewHome() {
-  const d = await api('/api/home');
+  hideAiFab();
+  const [d, cd] = await Promise.all([
+    api('/api/home').catch(() => ({ stats: {}, latestArticles: [], latestPosts: [], activeContests: [] })),
+    state.me ? api('/api/checkins/today').catch(() => ({ daily: null, streak: 0, myCheckin: null })) : { daily: null, streak: 0, myCheckin: null }
+  ]);
   const itemList = (arr, type) => arr.map(x => `
     <div class="item">
       ${avatarHtml(x.author, 'xs')}
@@ -227,6 +304,22 @@ async function viewHome() {
         </div>
       </div>
     </div>`).join('') || '<div class="empty">暂无内容</div>';
+
+  const checkinCard = cd && cd.daily ? `
+    <div class="checkin-card" style="cursor:pointer" onclick="location.hash='#/daily'">
+      <h2>🔥 今日打卡 · 第 ${cd.streak || 1} 天</h2>
+      <div class="cc-sub">每天一题，坚持写作</div>
+      <div class="cc-row">
+        <div class="streak-badge">
+          <div class="n">${cd.streak || 0}</div>
+          <div class="l">连续天数</div>
+        </div>
+        <div class="cc-problem">
+          <b>📋 ${esc(cd.daily.title)}</b><br>
+          <span style="opacity:.85;font-size:12px">${cd.myCheckin ? '✅ 今天已打卡，点我看详情' : '👉 点我开始今天的练习！'}</span>
+        </div>
+      </div>
+    </div>` : '';
 
   $app.innerHTML = `
   <div class="container">
@@ -239,20 +332,21 @@ async function viewHome() {
         <button class="btn-hero ghost" id="hFile">📤 文件投稿</button>
       </div>
     </div>
+    ${checkinCard}
     <div class="stats">
-      <div class="stat"><div class="num">${d.stats.users}</div><div class="lab">注册用户</div></div>
-      <div class="stat"><div class="num">${d.stats.articles}</div><div class="lab">收录文章</div></div>
-      <div class="stat"><div class="num">${d.stats.posts}</div><div class="lab">论坛帖子</div></div>
-      <div class="stat"><div class="num">${d.stats.contests}</div><div class="lab">举办比赛</div></div>
+      <div class="stat"><div class="num">${d.stats.users || 0}</div><div class="lab">注册用户</div></div>
+      <div class="stat"><div class="num">${d.stats.articles || 0}</div><div class="lab">收录文章</div></div>
+      <div class="stat"><div class="num">${d.stats.posts || 0}</div><div class="lab">论坛帖子</div></div>
+      <div class="stat"><div class="num">${d.stats.contests || 0}</div><div class="lab">举办比赛</div></div>
     </div>
-    ${d.activeContests.length ? `
+    ${d.activeContests && d.activeContests.length ? `
     <div class="card">
       <h2>🏁 进行中的比赛</h2>
       ${d.activeContests.map(c => contestRow(c)).join('')}
     </div>` : ''}
     <div class="grid-2">
-      <div class="card"><h2>📖 最新文章</h2>${itemList(d.latestArticles, 'article')}</div>
-      <div class="card"><h2>💬 最新帖子</h2>${itemList(d.latestPosts, 'post')}</div>
+      <div class="card"><h2>📖 最新文章</h2>${itemList(d.latestArticles || [], 'article')}</div>
+      <div class="card"><h2>💬 最新帖子</h2>${itemList(d.latestPosts || [], 'post')}</div>
     </div>
   </div>`;
   document.getElementById('hWrite').onclick = () => needLogin() || go('#/write');
@@ -439,8 +533,15 @@ async function viewArticles() {
 }
 
 async function viewArticleDetail(id) {
-  const d = await api('/api/articles/' + id);
+  hideAiFab();
+  showAiFab();
+  const [d, rd] = await Promise.all([api('/api/articles/' + id), api('/api/articles/' + id + '/reviews').catch(() => ({ reviews: [], avgRating: '0.0', count: 0 }))]);
   const a = d.article;
+  const stars = (n) => {
+    let s = '';
+    for (let i = 1; i <= 5; i++) s += i <= n ? '★' : '☆';
+    return s;
+  };
   $app.innerHTML = `
   <div class="container" style="max-width:820px">
     <div class="card">
@@ -460,7 +561,56 @@ async function viewArticleDetail(id) {
         <button class="btn like-btn ${a.liked ? 'liked' : ''}" id="likeBtn">${a.liked ? '❤️ 已赞' : '🤍 点赞'} · ${a.likeCount}</button>
       </div>
     </div>
+
+    <div class="card">
+      <h2>⭐ 文章点评（${rd.count}）<span class="hint" style="font-weight:400">平均 ${rd.avgRating} 星</span></h2>
+      ${state.me ? `
+      <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px dashed var(--border)">
+        <div class="hint" style="margin-bottom:6px">给这篇文章打个分吧（点评 +10 积分）</div>
+        <div class="star-picker" id="starPicker">
+          ${[1,2,3,4,5].map(i => `<span class="s" data-v="${i}">${i <= (viewArticleDetail._sel || 0) ? '★' : '☆'}</span>`).join('')}
+          <span class="hint" style="margin-left:10px;font-size:12px" id="starHint">点击星星评分</span>
+        </div>
+        <textarea id="revContent" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-top:8px;min-height:70px;font-size:13px;resize:vertical" placeholder="说说你的感受…"></textarea>
+        <button class="btn primary sm" id="revSubmit" style="margin-top:6px">📤 提交点评</button>
+      </div>` : `<div class="empty" style="margin-bottom:12px"><a href="#/login">登录</a> 后参与点评（点评 +10 积分）</div>`}
+      ${rd.reviews.map(r => `
+      <div class="review-item-box">
+        ${avatarHtml(r.author, 'small')}
+        <div class="review-content">
+          <div class="rc-meta">
+            <b>${esc(r.author.nickname)}</b>
+            <span class="review-stars">${stars(r.rating)}</span>
+            · ${fmtTime(r.createdAt)}
+          </div>
+          <div class="rc-text">${md(r.content)}</div>
+        </div>
+      </div>`).join('') || '<div class="empty">还没有点评，来当第一个吧！</div>'}
+    </div>
   </div>`;
+  if (state.me) {
+    const sp = document.getElementById('starPicker');
+    if (sp) {
+      const refreshStars = (v) => {
+        sp.querySelectorAll('.s').forEach(el => el.classList.toggle('on', +el.dataset.v <= v));
+        document.getElementById('starHint').textContent = v ? `你选了 ${v} 星` : '点击星星评分';
+      };
+      sp.querySelectorAll('.s').forEach(el => {
+        el.onclick = () => { viewArticleDetail._sel = +el.dataset.v; refreshStars(+el.dataset.v); };
+        el.onmouseenter = () => refreshStars(+el.dataset.v);
+      });
+      sp.onmouseleave = () => refreshStars(viewArticleDetail._sel || 0);
+    }
+    document.getElementById('revSubmit').onclick = async () => {
+      if (!viewArticleDetail._sel) return toast('请先选星', 'err');
+      const content = document.getElementById('revContent').value.trim();
+      if (!content) return toast('请写点评内容', 'err');
+      try {
+        await api(`/api/articles/${id}/reviews`, { method: 'POST', body: { rating: viewArticleDetail._sel, content } });
+        toast('点评成功！+10 积分'); viewArticleDetail._sel = 0; route();
+      } catch (e) { toast(e.message, 'err'); }
+    };
+  }
   const del = document.getElementById('delArt');
   if (del) del.onclick = async () => {
     if (!confirm('确定删除该文章？')) return;
@@ -479,15 +629,41 @@ async function viewArticleDetail(id) {
 }
 
 async function viewWrite(editId) {
+  hideAiFab();
+  showAiFab();
   if (needLogin()) return;
   let a = null;
   if (editId) {
     const d = await api('/api/articles/' + editId);
     a = d.article;
   }
+  const tpls = await api('/api/templates').catch(() => ({ templates: [] }));
   $app.innerHTML = `
   <div class="container" style="max-width:860px">
-    <div class="page-title"><h1>${a ? '编辑文章' : '写文章'}</h1></div>
+    <div class="page-title">
+      <h1>${a ? '编辑文章' : '写文章'}</h1>
+      <div style="display:flex;gap:8px">
+        <button class="btn ghost sm" id="tplBtn">📝 选择模板</button>
+        <button class="btn primary sm" id="aiBtn">🤖 AI 助手</button>
+      </div>
+    </div>
+
+    <div id="tplPanel" style="display:none">
+      <div class="card">
+        <h2>📝 写作模板（点击应用到编辑器）</h2>
+        <div class="tpl-grid">
+          ${tpls.templates.map(t => `
+          <div class="tpl-card" data-tpl="${t.id}">
+            <div class="t-title">${esc(t.title)}</div>
+            <div class="t-desc">${esc(t.description)}</div>
+            <span class="t-cat">${esc(t.category)}</span>
+          </div>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <div id="tplDetail" style="display:none"></div>
+
     <div class="card">
       <div class="form-item"><label>标题</label><input id="aTitle" maxlength="80" value="${a ? esc(a.title) : ''}" placeholder="给你的文章起个标题"></div>
       <div class="form-item"><label>类别</label>
@@ -502,6 +678,38 @@ async function viewWrite(editId) {
       <span class="hint" style="margin-left:10px">审核通过后将在文章库展示</span>
     </div>
   </div>`;
+
+  document.getElementById('tplBtn').onclick = () => {
+    const p = document.getElementById('tplPanel');
+    const d = document.getElementById('tplDetail');
+    p.style.display = p.style.display === 'none' ? 'block' : 'none';
+    d.style.display = 'none';
+  };
+  document.querySelectorAll('.tpl-card').forEach(c => c.onclick = async () => {
+    const t = await api('/api/templates/' + c.dataset.tpl);
+    document.getElementById('tplDetail').innerHTML = `
+      <div class="card">
+        <h2>📄 ${esc(t.template.title)}</h2>
+        <div class="hint" style="margin-bottom:10px">${esc(t.template.description)}</div>
+        <div class="tpl-preview">${esc(t.template.content)}</div>
+        <button class="btn primary sm" id="applyTpl">✅ 应用到编辑器</button>
+        <button class="btn ghost sm" id="closeTpl" style="margin-left:8px">关闭</button>
+      </div>`;
+    document.getElementById('tplDetail').style.display = 'block';
+    document.getElementById('tplPanel').style.display = 'none';
+    document.getElementById('applyTpl').onclick = () => {
+      const ta = document.getElementById('aContent');
+      ta.value = (ta.value ? ta.value + '\n\n' : '') + t.template.content;
+      toast('模板已应用！');
+      document.getElementById('tplDetail').style.display = 'none';
+      document.getElementById('aContent').focus();
+    };
+    document.getElementById('closeTpl').onclick = () => { document.getElementById('tplDetail').style.display = 'none'; document.getElementById('tplPanel').style.display = 'block'; };
+  });
+  document.getElementById('aiBtn').onclick = () => {
+    const title = document.getElementById('aTitle').value;
+    openAiPanel(title ? 'outline' : 'outline', title);
+  };
   document.getElementById('aSubmit').onclick = async (e) => {
     e.target.disabled = true;
     try {
@@ -1294,6 +1502,244 @@ function openPracticeModal(pr, problem) {
   document.body.appendChild(mask);
   mask.onclick = (e) => { if (e.target === mask) mask.remove(); };
   mask.querySelector('#pmClose').onclick = () => mask.remove();
+}
+
+/* ---------- 写作模板库页面 ---------- */
+async function viewTemplates() {
+  hideAiFab();
+  showAiFab();
+  const d = await api('/api/templates').catch(() => ({ templates: [] }));
+  $app.innerHTML = `
+  <div class="container">
+    <div class="page-title">
+      <div><h1>📝 写作模板库</h1><div class="sub">8 套精选模板，帮你快速搭建文章结构</div></div>
+      <button class="btn primary" onclick="go('#/write')">✍️ 去写文章</button>
+    </div>
+    <div class="tpl-grid">
+      ${d.templates.map(t => `
+      <div class="tpl-card" data-tpl="${t.id}">
+        <div class="t-title">${esc(t.title)}</div>
+        <div class="t-desc">${esc(t.description)}</div>
+        <span class="t-cat">${esc(t.category)}</span>
+      </div>`).join('') || '<div class="empty" style="grid-column:span 2">模板库正在加载…</div>'}
+    </div>
+    <div id="tplDetail2" style="margin-top:16px"></div>
+  </div>`;
+  document.querySelectorAll('.tpl-card').forEach(c => c.onclick = async () => {
+    const t = await api('/api/templates/' + c.dataset.tpl);
+    document.getElementById('tplDetail2').innerHTML = `
+      <div class="card">
+        <h2>📄 ${esc(t.template.title)}</h2>
+        <div class="hint" style="margin-bottom:10px">${esc(t.template.description)}</div>
+        <div class="tpl-preview">${esc(t.template.content)}</div>
+        <button class="btn primary" onclick="go('#/write')">✅ 用这个模板去写文章</button>
+        <button class="btn ghost sm" id="closeTpl2" style="margin-left:8px">关闭</button>
+      </div>`;
+    document.getElementById('closeTpl2').onclick = () => { document.getElementById('tplDetail2').innerHTML = ''; };
+  });
+}
+
+/* ---------- 每日打卡页 ---------- */
+async function viewDaily() {
+  hideAiFab();
+  showAiFab();
+  if (needLogin()) return;
+  const [d, mine] = await Promise.all([
+    api('/api/checkins/today'),
+    api('/api/checkins/mine').catch(() => ({ checkins: [], streak: 0, total: 0 }))
+  ]);
+  const DIFF = { 1: ['入门', '#fe4c61'], 2: ['简单', '#f39c11'], 3: ['普通', '#ffc116'], 4: ['较难', '#52c41a'], 5: ['困难', '#3498db'], 6: ['挑战', '#9d3dcf'] };
+  $app.innerHTML = `
+  <div class="container" style="max-width:820px">
+    <div class="page-title"><div><h1>🔥 每日打卡</h1><div class="sub">每天一题，坚持写作 · 连续 ${mine.streak} 天</div></div></div>
+
+    <div class="checkin-card">
+      <h2>📋 今日题目</h2>
+      ${d.daily ? `
+      <div class="cc-row" style="flex-direction:column;align-items:flex-start;gap:10px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="diff-badge" style="background:${DIFF[d.daily.difficulty][1]}">${DIFF[d.daily.difficulty][0]}</span>
+          <b style="font-size:16px">${esc(d.daily.title)}</b>
+        </div>
+        <div style="font-size:13px;line-height:1.7;white-space:pre-wrap">${esc(d.daily.content)}</div>
+        <div class="streak-badge" style="align-self:flex-end">
+          <div class="n">${mine.streak}</div>
+          <div class="l">连续天数</div>
+        </div>
+      </div>` : '<div class="cc-problem">今天的题目正在准备中…</div>'}
+    </div>
+
+    <div class="card">
+      <h2>✍️ 写下你的练习</h2>
+      ${d.myCheckin ? `
+        <div class="hint" style="margin-bottom:8px">✅ 你今天已经打过卡了（+${d.myCheckin.points} 积分），明天再来吧！</div>
+        <div class="tpl-preview">${esc(d.myCheckin.content)}</div>
+      ` : d.daily ? `
+        <textarea id="chkContent" style="width:100%;min-height:180px;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:13px;resize:vertical" placeholder="围绕今天的题目写一段…（提交后 +20 积分起步，连续打卡还有额外加成）"></textarea>
+        <button class="btn primary" id="chkSubmit" style="margin-top:8px">📤 提交打卡</button>
+      ` : '<div class="empty">今天暂无题目</div>'}
+    </div>
+
+    <div class="card">
+      <h2>📅 我的打卡记录（共 ${mine.total} 次）</h2>
+      ${mine.checkins.length ? mine.checkins.map(c => `
+        <div class="item">
+          <div style="flex:1">
+            <div class="title">📋 ${esc(c.problem ? c.problem.title : '题目')}</div>
+            <div class="meta"><span>${fmtTime(c.createdAt)}</span><span class="hint">+${c.points} 积分</span></div>
+            <div class="meta"><span style="font-size:12.5px;color:var(--text2)">${esc(c.content).slice(0, 80)}${c.content.length > 80 ? '…' : ''}</span></div>
+          </div>
+        </div>
+      `).join('') : '<div class="empty">还没有打卡记录，从今天开始吧！</div>'}
+    </div>
+  </div>`;
+  const cs = document.getElementById('chkSubmit');
+  if (cs) cs.onclick = async () => {
+    const content = document.getElementById('chkContent').value.trim();
+    if (!content) return toast('写点什么吧', 'err');
+    try {
+      const r = await api('/api/checkins', { method: 'POST', body: { content } });
+      toast(`打卡成功！+${r.points} 积分，连续 ${r.streak} 天`); route();
+    } catch (e) { toast(e.message, 'err'); }
+  };
+}
+
+/* ---------- 个人作品集主页 ---------- */
+async function viewProfile(id) {
+  hideAiFab();
+  showAiFab();
+  const d = await api('/api/users/' + id);
+  const u = d.user;
+  const isMe = state.me && state.me.id === u.id;
+  const tab = viewProfile._t || 'a';
+
+  // 勋章 emoji 映射
+  const badgeEmoji = {
+    '热心点评员': '⭐',
+    '勤耕不辍': '🌱',
+    '一周达人': '🔥',
+    '月度冠军': '🏆',
+    '首篇文章': '📖',
+    '首个帖子': '💬',
+    '比赛勇士': '🎯'
+  };
+  const badges = u.badges || [];
+  const allBadges = [
+    { name: '热心点评员', reason: '点评 3 篇以上文章', icon: '⭐' },
+    { name: '勤耕不辍', reason: '连续打卡 3 天', icon: '🌱' },
+    { name: '一周达人', reason: '连续打卡 7 天', icon: '🔥' },
+    { name: '月度冠军', reason: '连续打卡 30 天', icon: '🏆' }
+  ];
+  const earned = new Set(badges.map(b => b.name));
+
+  let list = '';
+  if (tab === 'a') {
+    list = d.articles && d.articles.length ? d.articles.map(a => `
+      <div class="item"><div style="flex:1">
+        <div class="title"><a href="#/article/${a.id}">${esc(a.title)}</a></div>
+        <div class="meta"><span>${fmtTime(a.createdAt)}</span><span>👁 ${a.views || 0}</span><span>❤️ ${a.likeCount || 0}</span></div>
+      </div></div>`).join('') : '<div class="empty">暂无公开文章</div>';
+  } else if (tab === 'p') {
+    list = d.posts && d.posts.length ? d.posts.map(p => `
+      <div class="item"><div style="flex:1">
+        <div class="title"><a href="#/post/${p.id}">${esc(p.title)}</a></div>
+        <div class="meta"><span>${fmtTime(p.createdAt)}</span><span>💬 ${p.commentCount || 0}</span></div>
+      </div></div>`).join('') : '<div class="empty">暂无公开帖子</div>';
+  } else if (tab === 'b') {
+    list = `
+      <div class="badge-list" style="margin-top:8px">
+        ${allBadges.map(b => {
+          const got = earned.has(b.name);
+          const earnedDate = badges.find(x => x.name === b.name);
+          return `<div class="badge-item ${got ? '' : 'bi-gray'}">
+            <div class="bi-icon">${b.icon}</div>
+            <div class="bi-name">${esc(b.name)}</div>
+            <div class="hint" style="margin-top:4px;font-size:10px;text-align:center">${esc(b.reason)}</div>
+            ${got ? `<div class="hint" style="margin-top:2px;font-size:9px">${fmtTime(earnedDate.earnedAt).slice(0, 10)}</div>` : ''}
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="hint" style="margin-top:10px">已获得 ${badges.length} / ${allBadges.length} 个勋章</div>`;
+  } else if (tab === 'c') {
+    list = d.contests && d.contests.length ? d.contests.map(c => `
+      <div class="item"><div style="flex:1">
+        <div class="title"><a href="#/contest/${c.id}">${esc(c.title)}</a></div>
+        <div class="meta"><span>${fmtRange(c.startTime, c.endTime)}</span><span class="badge ${c.status || 'ongoing'}">${contestBadge(c.status || 'ongoing')}</span></div>
+      </div></div>`).join('') : '<div class="empty">还没有参加过比赛</div>';
+  } else if (tab === 'f') {
+    list = d.following && d.following.length ? d.following.map(u => `
+      <div class="item">${avatarHtml(u, 'xs')}<div style="flex:1">
+        <div class="title"><a href="#/user/${u.id}">${esc(u.nickname)}</a></div>
+        <div class="meta"><span>@${esc(u.username)}</span></div>
+      </div></div>`).join('') : '<div class="empty">还没有关注任何人</div>';
+  } else if (tab === 'w') {
+    list = d.followers && d.followers.length ? d.followers.map(u => `
+      <div class="item">${avatarHtml(u, 'xs')}<div style="flex:1">
+        <div class="title"><a href="#/user/${u.id}">${esc(u.nickname)}</a></div>
+        <div class="meta"><span>@${esc(u.username)}</span></div>
+      </div></div>`).join('') : '<div class="empty">还没有粉丝</div>';
+  }
+
+  $app.innerHTML = `
+  <div class="container" style="max-width:860px">
+    <div class="card">
+      <div class="portfolio-head">
+        ${avatarHtml(u, 'big')}
+        <div style="flex:1">
+          <h1 style="font-size:20px">${esc(u.nickname)} ${u.role === 'admin' ? '<span class="role-badge">管理员</span>' : ''}</h1>
+          <div class="meta" style="color:var(--text2);font-size:13px;margin-top:4px">@${esc(u.username)} · 加入于 ${fmtTime(u.createdAt)}</div>
+          <div style="margin-top:8px;font-size:13.5px;color:#556">${esc(u.bio || '这个人很懒，什么都没写')}</div>
+          ${!isMe && state.me ? `
+          <div style="margin-top:10px;display:flex;gap:8px">
+            <button class="btn ${d.isFollowing ? 'ghost' : 'primary'}" id="followBtn">${d.isFollowing ? '✅ 已关注' : '➕ 关注'}</button>
+            <button class="btn ghost" id="dmBtn">✉️ 发私信</button>
+          </div>` : ''}
+        </div>
+      </div>
+      <div class="profile-stats">
+        <div class="ps"><b>${d.stats.articles}</b><span class="hint">文章</span></div>
+        <div class="ps"><b>${d.stats.posts}</b><span class="hint">帖子</span></div>
+        <div class="ps"><b>${d.stats.likes}</b><span class="hint">获赞</span></div>
+        <div class="ps"><b>${d.stats.score || 0}</b><span class="hint">积分</span></div>
+        <div class="ps"><b>${d.stats.followingCount}</b><span class="hint">关注</span></div>
+        <div class="ps"><b>${d.stats.followerCount}</b><span class="hint">粉丝</span></div>
+      </div>
+      ${badges.length ? `
+      <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--border)">
+        <div class="hint" style="margin-bottom:6px">🎖️ 勋章墙（${badges.length}）</div>
+        <div class="badge-list">
+          ${badges.map(b => `<div class="badge-item">
+            <div class="bi-icon">${badgeEmoji[b.name] || '🏅'}</div>
+            <div class="bi-name">${esc(b.name)}</div>
+          </div>`).join('')}
+        </div>
+      </div>` : ''}
+    </div>
+
+    <div class="card">
+      <div class="portfolio-tabs">
+        <span class="pt ${tab === 'a' ? 'active' : ''}" data-t="a">📖 文章 ${d.stats.articles}</span>
+        <span class="pt ${tab === 'p' ? 'active' : ''}" data-t="p">💬 帖子 ${d.stats.posts}</span>
+        <span class="pt ${tab === 'b' ? 'active' : ''}" data-t="b">🎖️ 勋章</span>
+        <span class="pt ${tab === 'c' ? 'active' : ''}" data-t="c">🏁 比赛 ${(d.contests || []).length}</span>
+        <span class="pt ${tab === 'f' ? 'active' : ''}" data-t="f">➕ 关注 ${d.stats.followingCount}</span>
+        <span class="pt ${tab === 'w' ? 'active' : ''}" data-t="w">👥 粉丝 ${d.stats.followerCount}</span>
+      </div>
+      ${list}
+    </div>
+  </div>`;
+  document.querySelectorAll('.portfolio-tabs .pt').forEach(t => t.onclick = () => { viewProfile._t = t.dataset.t; route(); });
+  const fb = document.getElementById('followBtn');
+  if (fb) fb.onclick = async () => {
+    if (needLogin()) return;
+    try {
+      const r = await api(`/api/users/${id}/follow`, { method: 'POST' });
+      toast(r.followed ? '已关注 ' + u.nickname : '已取消关注');
+      route();
+    } catch (e) { toast(e.message, 'err'); }
+  };
+  const dm = document.getElementById('dmBtn');
+  if (dm) dm.onclick = () => { go('#/chat/' + u.id); };
 }
 
 /* ---------- 启动 ---------- */

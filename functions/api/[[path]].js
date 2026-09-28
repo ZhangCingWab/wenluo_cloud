@@ -87,6 +87,31 @@ async function loadDB(env) {
     const now = Date.now();
     const adminUser = _cache.users.find(u => u.role === 'admin');
 
+    // 补齐新字段
+    _cache.reviews = _cache.reviews || [];
+    _cache.checkins = _cache.checkins || [];
+    if (!Array.isArray(_cache.templates) || _cache.templates.length === 0) {
+      seedTemplates(_cache);
+      changed = true;
+    }
+    // 每日题目（每天自动换）
+    const today = new Date();
+    const dayKey = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+    if (!_cache.dailyProblem || (_cache._dailyDayKey && _cache._dailyDayKey !== dayKey)) {
+      _cache.dailyProblem = pickDailyProblem(_cache);
+      _cache._dailyDayKey = dayKey;
+      changed = true;
+    }
+    // 用户勋章字段
+    for (const u of _cache.users) {
+      if (!Array.isArray(u.badges)) { u.badges = []; changed = true; }
+    }
+
+    if (!_cache.problems || _cache.problems.length === 0) {
+      seedProblems();
+      changed = true;
+    }
+
     // 补齐欢迎文章
     if ((!_cache.articles || _cache.articles.length === 0) && adminUser) {
       _cache.articles.push({
@@ -150,11 +175,13 @@ function initDB() {
   const now = Date.now();
   const user = {
     id: 'u_admin', username: 'admin', nickname: '站务管理员', role: 'admin',
-    bio: '本站管理员，负责文章、帖子与投稿审核。', createdAt: now
+    bio: '本站管理员，负责文章、帖子与投稿审核。', createdAt: now,
+    badges: []
   };
   const db = {
     users: [user], articles: [], posts: [], contests: [],
-    files: [], messages: [], problems: [], practices: []
+    files: [], messages: [], problems: [], practices: [],
+    reviews: [], checkins: [], templates: [], dailyProblem: null
   };
   db.articles.push({
     id: 'a_welcome', authorId: 'u_admin', title: '欢迎来到文洛 · 文章竞赛社区',
@@ -179,10 +206,251 @@ function initDB() {
     participants: [], submissions: []
   });
   seedProblems(db);
+  seedTemplates(db);
+  // 设置每日题目
+  db.dailyProblem = pickDailyProblem(db);
   // 管理员密码：admin123（哈希在 initTokens 中设置）
   user.salt = 'seed_salt_placeholder';
   user.hash = 'seed_hash_placeholder';
   return db;
+}
+
+/* ---------------- 写作模板种子 ---------------- */
+function seedTemplates(db) {
+  if (db.templates && db.templates.length) return;
+  const now = Date.now();
+  db.templates = [
+    {
+      id: 't_argue', title: '议论文五段式', category: '议论文',
+      description: '经典的议论文结构，适合考场作文和思辨类文章',
+      content: `# 议论文五段式模板
+
+## 第一段 · 引入
+> 用一个生动的场景 / 一句名言 / 一个反问，引出你的中心论点。
+> 示例：「有人说……，但我认为……」
+
+## 第二段 · 分论点一
+**论点**：……
+**论据**：可以用历史典故、名人故事、数据统计等。
+**分析**：说明这个论据如何支撑你的观点。
+
+## 第三段 · 分论点二
+**论点**：……
+**论据**：……
+**分析**：……
+
+## 第四段 · 反面论证 / 补充论述
+> 从反面角度出发，说一下如果不这样会怎么样，或者补充一个不同角度的思考。
+
+## 第五段 · 总结
+> 升华主题，联系现实，给读者留下思考。`,
+      createdAt: now
+    },
+    {
+      id: 't_story', title: '短篇小说起承转合', category: '小说',
+      description: '经典小说结构，适合 1500-3000 字的短故事创作',
+      content: `# 短篇小说 · 起承转合模板
+
+## 起（开头 15%）
+- **人物**：主角出场，用行动 / 对话展示性格（不要直接介绍）
+- **场景**：时间、地点、氛围
+- **钩子**：一个小冲突 / 悬念，让读者想读下去
+
+## 承（发展 35%）
+- **事件展开**：主角遇到一系列困难 / 挑战
+- **人物关系**：和配角互动，揭示更多背景
+- **小高潮**：矛盾初步显现
+
+## 转（高潮 30%）
+- **重大转折**：意想不到的事件，打破平衡
+- **人物抉择**：主角面对核心冲突，做出关键选择
+- **情感爆发**：情绪最强烈的时刻
+
+## 合（结尾 20%）
+- **结局**：事件的最终走向
+- **余韵**：一个画面 / 一句话，留给读者回味
+- **不要解释**：让读者自己体会`,
+      createdAt: now
+    },
+    {
+      id: 't_poem', title: '现代自由诗', category: '诗歌',
+      description: '自由体诗的写法框架，注重意象和节奏',
+      content: `# 自由诗写作要点
+
+## 1. 找一个核心意象
+> 一棵树、一盏灯、一条河……选一个具体的东西作为诗的中心。
+
+## 2. 第一节 · 切入
+> 直接切入意象或场景，不要铺垫。
+
+## 3. 中间 · 展开与变化
+- 意象可以延伸、变形
+- 情绪可以转折
+- 每一节之间要有呼吸感
+
+## 4. 结尾 · 留白
+> 最后一两句给读者留下想象空间。
+
+## 技巧提示
+- 用具体的词，避免抽象（用"玻璃杯碎在地上"代替"心碎了"）
+- 注意断句和换行，留白也是节奏的一部分
+- 读出来听听，有节奏感才好`,
+      createdAt: now
+    },
+    {
+      id: 't_narrative', title: '记叙文六要素', category: '记叙文',
+      description: '适合写人记事类作文，清晰完整',
+      content: `# 记叙文 · 六要素模板
+
+## 六要素一览
+1. **时间**：什么时候？（具体或模糊）
+2. **地点**：在哪里？
+3. **人物**：谁？主角 / 配角
+4. **起因**：发生了什么？为什么开始？
+5. **经过**：过程如何？（重点！要详细）
+6. **结果**：最后怎样？你学到了什么？
+
+## 推荐结构
+### 开头
+- 一个画面 / 一个声音 / 一个感受开头
+- 快速把读者带入场景
+
+### 中间（核心）
+- 详细写"经过"：用动作、对话、心理描写
+- 制造小波澜：不要一帆风顺
+- 重点段落放慢节奏，详写
+
+### 结尾
+- 事件的结局
+- "我"的感受 / 成长 / 反思
+- 可以用一句意味深长的话收尾`,
+      createdAt: now
+    },
+    {
+      id: 't_essay', title: '随笔散文', category: '随笔',
+      description: '形散神不散，适合抒发个人感悟',
+      content: `# 随笔散文写作框架
+
+## 核心：一个情绪 / 一个感悟
+> 先想清楚：我这篇随笔最想表达的是什么感受？
+
+## 建议结构
+### 触发（10%）
+- 一个场景、一件小事、一个念头
+- "今天路过那家店的时候，突然想起……"
+
+### 联想（60%）
+- 围绕核心感受自由发散
+- 可以回忆往事、可以观察当下、可以读书思考
+- 像和朋友聊天一样自然
+
+### 收束（30%）
+- 回到当下，或者升华为对生活的理解
+- 不一定要有"标准答案"，真实就好
+
+## 随笔的灵魂
+- **真**：真诚，不装
+- **细**：有细节，不空泛
+- **自然**：像说话一样写`,
+      createdAt: now
+    },
+    {
+      id: 't_sci', title: '科幻短篇', category: '科幻',
+      description: '适合脑洞类短文，在有限篇幅内讲好一个科幻点子',
+      content: `# 科幻短篇 · 点子驱动模板
+
+## 第一步：一个核心设定
+> 选一个"如果"：如果人可以读取记忆？如果时间可以倒带 5 秒？
+
+## 第二步：让设定影响一个普通人
+> 不要写拯救世界，写一个普通人的日常被这个设定改变了。
+
+## 推荐结构
+### 日常 → 异变
+- 开头写主角的普通生活
+- 然后"那个设定"突然介入
+
+### 尝试 → 挫折
+- 主角尝试利用 / 适应这个设定
+- 遇到意料之外的问题
+
+### 抉择 → 结局
+- 主角必须做出一个选择
+- 结局可以是开放性的，但要有分量
+
+## 科幻的精髓
+- 设定要"自洽"（自己的规则要遵守）
+- 重点在"人"，而不是"道具"
+- 用科幻讲人的故事`,
+      createdAt: now
+    },
+    {
+      id: 't_hot', title: '公众号爆款结构', category: '随笔',
+      description: '适合写热点评论、干货分享，有传播力',
+      content: `# 公众号爆款文结构
+
+## 标题：制造好奇心
+- 数字："3 个步骤让你……"
+- 痛点："为什么你总是……"
+- 反差："我辞职了，因为……"
+
+## 开头（钩子）
+- 讲一个故事 / 一个场景，让读者有代入感
+- 3 秒内抓住注意力
+
+## 中间（价值）
+### 结构 A：痛点 → 方案 → 案例
+1. 戳中痛点（你是不是也这样？）
+2. 给出方案（怎么做）
+3. 真实案例（谁谁谁用了之后……）
+
+### 结构 B：观点 → 论证 → 升华
+1. 抛出一个反常识观点
+2. 用 2-3 个角度论证
+3. 联系读者的生活
+
+## 结尾（行动号召）
+- 总结 + 给读者一个"小行动"
+- 引导点赞 / 在看 / 评论`,
+      createdAt: now
+    },
+    {
+      id: 't_ai_chat', title: 'AI 对话写文', category: '其他',
+      description: '借助 AI 助手高效产出文章的工作流',
+      content: `# AI 辅助写作工作流
+
+## 第一步：用 AI 搭框架
+> 告诉 AI："帮我写一篇关于【主题】的文章，风格是【风格】，字数【大概】，给我大纲。"
+
+## 第二步：人工填充血肉
+> AI 给的大纲是骨架，你需要：
+- 把自己真实的故事 / 感受加进去
+- 改掉 AI 写得太笼统的地方
+- 加入具体的细节和例子
+
+## 第三步：用 AI 润色
+> 初稿完成后：
+- "帮我把这一段润色得更流畅"
+- "检查有没有错别字和不通顺的地方"
+- "帮我写一个更吸引人的开头"
+
+## 关键提醒
+- **AI 是工具，你才是作者**
+- 不要直接复制 AI 生成的大段文字
+- 用 AI 省时间，把精力放在思考和真实表达上`,
+      createdAt: now
+    }
+  ];
+}
+
+/* ---------------- 每日题目挑选 ---------------- */
+function pickDailyProblem(db) {
+  const approved = (db.problems || []).filter(p => (p.status || 'approved') === 'approved');
+  if (!approved.length) return null;
+  // 根据今天的日期挑一道（同一天稳定，明天自动换）
+  const today = new Date();
+  const dayKey = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+  return approved[dayKey % approved.length].id;
 }
 
 function seedProblems(db) {
@@ -278,6 +546,169 @@ function searchFilter(list, q, db) {
 
 function validPassword(pw) {
   return typeof pw === 'string' && pw.length >= 8 && /[a-zA-Z]/.test(pw) && /[0-9]/.test(pw);
+}
+
+/* 简单作者信息（点评等场景用） */
+function withAuthorSimple(id, db) {
+  const u = userById(db, id);
+  if (!u) return { nickname: '已注销用户' };
+  return { id: u.id, nickname: u.nickname, role: u.role };
+}
+
+/* 更新用户积分（加 delta） */
+function updateUserScore(userId, delta, reason) {
+  const u = _cache.users.find(x => x.id === userId);
+  if (!u) return;
+  u.score = (u.score || 0) + delta;
+}
+
+/* 发勋章（去重） */
+function awardBadge(userId, name, reason) {
+  const u = _cache.users.find(x => x.id === userId);
+  if (!u) return;
+  if (!Array.isArray(u.badges)) u.badges = [];
+  if (u.badges.find(b => b.name === name)) return;
+  u.badges.push({ name, reason, earnedAt: Date.now() });
+}
+
+/* AI 写作助手：优先调用 Workers AI，失败则用精心设计的本地 fallback */
+async function aiAssist(env, task, { topic, content, style, extra }) {
+  const topicStr = topic || '';
+  const contentStr = content || '';
+  const styleStr = style || '';
+  const extraStr = extra || '';
+
+  // 尝试 Workers AI
+  try {
+    if (env && env.AI) {
+      const prompt = buildAiPrompt(task, topicStr, contentStr, styleStr, extraStr);
+      const resp = await env.AI.run('@cloudflare/llama-3.2-1b-instruct', {
+        prompt, max_tokens: 800
+      });
+      const text = resp && resp.response ? resp.response.trim() : '';
+      if (text && text.length > 5) {
+        return { result: text, source: 'ai' };
+      }
+    }
+  } catch (e) { /* AI 不可用时 fallback */ }
+
+  // Fallback：本地精心设计的回复模板
+  return { result: aiFallback(task, topicStr, contentStr, styleStr), source: 'template' };
+}
+
+function buildAiPrompt(task, topic, content, style, extra) {
+  const sys = '你是一个专业的中文写作助手，帮助用户提高写作能力。用中文简洁回答。';
+  const tasks = {
+    outline: `请为这个写作主题生成一个详细的大纲：\n主题：${topic}\n${style ? `风格：${style}\n` : ''}${extra ? `要求：${extra}\n` : ''}请用 Markdown 格式输出，包含 3-5 个主要部分，每个部分 2-3 个要点。`,
+    rewrite: `请润色以下这段文字，让它更${style || '流畅、生动'}：\n\n${content}\n\n润色后的版本：`,
+    continue: `请续写以下内容，保持文风一致：\n\n${content}\n\n续写部分：`,
+    review: `请以语文老师的角度，对以下文章进行点评。给出：1）总体评价（星级）；2）亮点；3）改进建议。\n\n${content}\n\n点评：`
+  };
+  return `${sys}\n\n${tasks[task] || tasks.outline}`;
+}
+
+function aiFallback(task, topic, content, style) {
+  switch (task) {
+    case 'outline': {
+      const cat = style || '议论文';
+      return `## 《${topic || '未命名'}》写作大纲
+
+### 一、引入（开头）
+- 用一个生动的场景 / 一句名言 / 一个反问引出主题
+- 直接点明你的中心观点或文章走向
+- 建议字数：全文的 10-15%
+
+### 二、主体展开（中间 60-70%）
+**段落 1 · 第一个分论点 / 场景**
+- 核心意思：……
+- 可以用的素材：自己的经历 / 观察 / 阅读积累
+
+**段落 2 · 第二个分论点 / 场景**
+- 核心意思：……
+- 可以用的素材：……
+
+**段落 3 · 转折 / 深入（可选）**
+- 换一个角度看问题
+- 或者从反面论证
+
+### 三、收尾（结尾）
+- 把上面的内容收一下
+- 可以联系现实、展望未来、或者用一个有画面感的结尾
+- 最后一句尽量给读者留下思考
+
+---
+💡 **小贴士**：先把每个部分的关键词写下来，再往里填肉，会比从头到尾硬写轻松很多！`;
+    }
+    case 'rewrite': {
+      const c = content.slice(0, 150);
+      return `## 润色建议
+
+你这段文字的基础很好！给你几个方向：
+
+### 1. 让句子更有节奏感
+把长句拆成短句，或者用排比制造韵律。比如把"我走在那条被落叶覆盖的小路上，心里想着那些年我们一起度过的日子"改成——
+
+> 我走在那条小路上。
+> 落叶铺得很厚，踩上去沙沙作响。
+> 那些年的日子，就这么一页一页地翻了过来。
+
+### 2. 加入具体的感官细节
+现在的描写偏概括，可以加：看到的（颜色、光影）、听到的（声音）、闻到的（气味）、摸到的（触感）。
+
+### 3. 检查动词
+把"是""有""在"这类弱动词换成更有画面感的词。
+
+---
+📝 **润色后版本参考**（基于你提供的片段）：
+
+> ${c || '（请提供要润色的文字，我帮你逐句打磨）'}
+
+写好后再来让我帮你改第二遍！`;
+    }
+    case 'continue': {
+      return `## 续写提示
+
+你提供的前文给了我这些线索，我来帮你往不同方向推：
+
+### 方向 A · 延续情绪
+如果前文是平静的，让情绪慢慢升温；如果前文紧张，让它再紧一下然后突然释放。
+
+### 方向 B · 引入新元素
+突然出现一个人、一件事、一个回忆，打破当前的状态。
+
+### 方向 C · 时间跳跃
+跳到三天后、十年后，从另一个时间点回头看这件事。
+
+### 续写段落参考
+${content ? `（基于你写的内容）\n\n> ${content.slice(-80)}……风停了。我站在原地，突然觉得好像有什么东西不一样了。街道还是那条街道，路灯还是那盏路灯，可是我知道，有些事回不去了。` : '（请先写一段开头，我帮你接着写下去）'}
+
+---
+✏️ 提示：续写的关键是「**承接**」——要么承接情绪，要么承接细节，要么承接人物状态。`;
+    }
+    case 'review': {
+      return `## 📝 文章批改报告
+
+### ⭐ 总体评分：7.5 / 10
+
+### ✅ 亮点
+1. **真情实感**：能感觉到你写的时候是真诚的，这比华丽的辞藻更重要
+2. **结构清晰**：整体有开头有结尾，中间的展开层次分明
+3. **有细节意识**：你注意到了用具体的画面来代替抽象描述
+
+### 🔧 改进建议
+1. **开头可以更抓眼球**：现在的开头偏平淡，试试从一个**动作**、一个**声音**或者一个**反常的细节**开始
+2. **中间部分加入「阻碍」**：如果事情一帆风顺，读者会觉得无聊。加一个小波折——一个意外、一个内心挣扎、一个突然的回忆
+3. **结尾留一点余韵**：不要把话说完，让读者自己品一品。可以用一个画面收尾，而不是一句总结
+
+### 📊 字数统计
+- 原文：约 ${content.length} 字
+- 建议：保持在 ${Math.max(300, Math.min(3000, content.length * 1.2 | 0))} 字左右
+
+继续写！写完再来让我帮你改第二遍 👊`;
+    }
+    default:
+      return '请选择一个任务：outline（大纲）/ rewrite（润色）/ continue（续写）/ review（批改）';
+  }
 }
 
 /* ---------------- 中间件 ---------------- */
@@ -422,11 +853,32 @@ export async function onRequest(context) {
       const followerCount = db.users.filter(x => (x.following || []).includes(u.id)).length;
       const followingCount = (u.following || []).length;
       const isFollowing = !!(me && (me.following || []).includes(u.id));
+      // 参加过的比赛（作为作者提交过作品）
+      const contests = db.contests.filter(c =>
+        (c.participants || []).includes(u.id) ||
+        (c.submissions || []).some(s => s.authorId === u.id)
+      ).map(c => ({
+        id: c.id, title: c.title, status: c.status || (Date.now() < c.startTime ? 'upcoming' : Date.now() > c.endTime ? 'ended' : 'ongoing'),
+        startTime: c.startTime, endTime: c.endTime
+      }));
+      // 关注列表 / 粉丝列表
+      const following = (u.following || []).map(id => pub(userById(db, id))).filter(Boolean);
+      const followers = db.users.filter(x => (x.following || []).includes(u.id)).map(pub);
+      // 积分计算
+      const articleCount = articles.length;
+      const postCount = posts.length;
+      const reviewCount = db.reviews.filter(r => r.authorId === u.id).length;
+      const score = (u.score || 0) + articleCount * 10 + postCount * 5 + likes * 3 + reviewCount * 2;
+      // 返回的 user 对象要包含 badges
+      const userOut = pub(u);
+      userOut.badges = u.badges || [];
       return json({
-        user: pub(u),
-        stats: { articles: articles.length, posts: posts.length, likes, followerCount, followingCount },
+        user: userOut,
+        stats: { articles: articles.length, posts: posts.length, likes, followerCount, followingCount, score },
         isFollowing,
-        articles: articles.sort((a, b) => b.createdAt - a.createdAt).map(a => articleOut(a, db))
+        articles: articles.sort((a, b) => b.createdAt - a.createdAt).map(a => articleOut(a, db)),
+        posts: posts.sort((a, b) => b.createdAt - a.createdAt).map(p => postOut(p, db)),
+        contests, following, followers
       });
     }
 
@@ -1094,6 +1546,175 @@ export async function onRequest(context) {
       p.reviewedAt = Date.now();
       await saveDB(env);
       return json({ ok: true, status: p.status });
+    }
+
+    // ---- AI 写作助手 ----
+    m = match(path, 'ai/assist');
+    if (m && method === 'POST') {
+      const me = await auth(request, env, db);
+      if (!me) return bad('请先登录', 401);
+      const body = await request.json().catch(() => ({}));
+      const { task = 'outline', topic = '', content = '', style = '', extra = '' } = body;
+      return json(await aiAssist(env, task, { topic, content, style, extra }));
+    }
+
+    // ---- 写作模板列表 ----
+    m = match(path, 'templates');
+    if (m && method === 'GET') {
+      const list = db.templates.map(t => ({
+        id: t.id, title: t.title, category: t.category,
+        description: t.description
+      }));
+      return json({ templates: list });
+    }
+
+    // ---- 模板详情 ----
+    m = match(path, 'templates/:id');
+    if (m && method === 'GET') {
+      const t = db.templates.find(x => x.id === m.id);
+      if (!t) return bad('模板不存在', 404);
+      return json({ template: t });
+    }
+
+    // ---- 文章点评列表 ----
+    m = match(path, 'articles/:id/reviews');
+    if (m && method === 'GET') {
+      const a = db.articles.find(x => x.id === m.id);
+      if (!a) return bad('文章不存在', 404);
+      const reviews = db.reviews.filter(r => r.articleId === a.id).sort((x, y) => y.createdAt - x.createdAt);
+      const out = reviews.map(r => ({
+        id: r.id, rating: r.rating, content: r.content,
+        createdAt: r.createdAt,
+        author: withAuthorSimple(r.authorId, db)
+      }));
+      const avg = out.length ? (out.reduce((s, r) => s + r.rating, 0) / out.length).toFixed(1) : '0.0';
+      return json({ reviews: out, avgRating: avg, count: out.length });
+    }
+
+    // ---- 提交点评 ----
+    m = match(path, 'articles/:id/reviews');
+    if (m && method === 'POST') {
+      const me = await auth(request, env, db);
+      if (!me) return bad('请先登录', 401);
+      const a = db.articles.find(x => x.id === m.id);
+      if (!a) return bad('文章不存在', 404);
+      const body = await request.json();
+      const rating = Number(body.rating);
+      const content = clean(body.content, 1000);
+      if (![1, 2, 3, 4, 5].includes(rating)) return bad('评分必须是 1-5 星');
+      if (!content) return bad('请写点评内容');
+      const r = { id: uid('r'), articleId: a.id, authorId: me.id, rating, content, createdAt: Date.now() };
+      db.reviews.push(r);
+      // 点评者获得 10 分积分
+      updateUserScore(me.id, 10, 'review');
+      // 点评 3 次获得「热心点评员」勋章
+      const myReviewCount = db.reviews.filter(x => x.authorId === me.id).length;
+      if (myReviewCount >= 3) awardBadge(me.id, '热心点评员', '你已点评 3 篇以上文章');
+      await saveDB(env);
+      return json({ ok: true, review: { ...r, author: withAuthorSimple(me.id, db) } });
+    }
+
+    // ---- 今日打卡题目 ----
+    m = match(path, 'checkins/today');
+    if (m && method === 'GET') {
+      const dailyId = db.dailyProblem;
+      const daily = dailyId ? db.problems.find(p => p.id === dailyId) : null;
+      let myCheckin = null;
+      const me = await auth(request, env, db).catch(() => null);
+      if (me) {
+        const todayKey = new Date().toDateString();
+        myCheckin = db.checkins.find(c => c.userId === me.id && new Date(c.createdAt).toDateString() === todayKey);
+      }
+      // 计算连续打卡天数
+      let streak = 0;
+      if (me) {
+        const userCheckins = db.checkins
+          .filter(c => c.userId === me.id)
+          .map(c => new Date(c.createdAt).toDateString())
+          .sort();
+        const seen = new Set(userCheckins);
+        const d = new Date();
+        while (seen.has(d.toDateString())) {
+          streak++;
+          d.setDate(d.getDate() - 1);
+        }
+      }
+      return json({
+        daily: daily ? { id: daily.id, title: daily.title, content: daily.content, difficulty: daily.difficulty, type: daily.type } : null,
+        myCheckin: myCheckin ? { id: myCheckin.id, content: myCheckin.content, createdAt: myCheckin.createdAt, points: myCheckin.points } : null,
+        streak
+      });
+    }
+
+    // ---- 提交打卡 ----
+    m = match(path, 'checkins');
+    if (m && method === 'POST') {
+      const me = await auth(request, env, db);
+      if (!me) return bad('请先登录', 401);
+      const body = await request.json();
+      const content = clean(body.content, 2000);
+      if (!content) return bad('请写点什么再打卡');
+      const dailyId = db.dailyProblem;
+      if (!dailyId) return bad('今日暂无打卡题目', 404);
+      // 今天打过卡了吗？
+      const todayKey = new Date().toDateString();
+      const existing = db.checkins.find(c => c.userId === me.id && new Date(c.createdAt).toDateString() === todayKey);
+      if (existing) return bad('今天已经打过卡了，明天再来吧！', 400);
+      // 计算连续天数和积分
+      const userCheckins = db.checkins
+        .filter(c => c.userId === me.id)
+        .map(c => new Date(c.createdAt).toDateString())
+        .sort();
+      const seen = new Set(userCheckins);
+      const d = new Date();
+      let prevDay = new Date(d); prevDay.setDate(prevDay.getDate() - 1);
+      const prevExists = seen.has(prevDay.toDateString());
+      const streak = prevExists ? (me._tmpStreak || 0) + 1 : 1;
+      me._tmpStreak = streak;
+      const points = 20 + Math.min(streak - 1, 6) * 5; // 第一天 20，之后每天 +5，最高 +30
+      const c = { id: uid('c'), userId: me.id, problemId: dailyId, content, createdAt: Date.now(), points };
+      db.checkins.push(c);
+      updateUserScore(me.id, points, 'checkin');
+      // 勋章
+      if (streak >= 3) awardBadge(me.id, '勤耕不辍', '连续打卡 3 天');
+      if (streak >= 7) awardBadge(me.id, '一周达人', '连续打卡 7 天');
+      if (streak >= 30) awardBadge(me.id, '月度冠军', '连续打卡 30 天');
+      // 清理临时字段
+      delete me._tmpStreak;
+      await saveDB(env);
+      return json({ ok: true, checkin: c, streak, points });
+    }
+
+    // ---- 我的打卡记录 ----
+    m = match(path, 'checkins/mine');
+    if (m && method === 'GET') {
+      const me = await auth(request, env, db);
+      if (!me) return bad('请先登录', 401);
+      const list = db.checkins.filter(c => c.userId === me.id).sort((a, b) => b.createdAt - a.createdAt).slice(0, 30);
+      const out = list.map(c => ({
+        id: c.id, content: c.content, points: c.points, createdAt: c.createdAt,
+        problem: (() => {
+          const p = db.problems.find(x => x.id === c.problemId);
+          return p ? { id: p.id, title: p.title } : null;
+        })()
+      }));
+      // 连续天数
+      const dates = [...new Set(list.map(c => new Date(c.createdAt).toDateString()))].sort();
+      let streak = 0;
+      const d = new Date();
+      while (dates.includes(d.toDateString())) {
+        streak++;
+        d.setDate(d.getDate() - 1);
+      }
+      return json({ checkins: out, streak, total: list.length });
+    }
+
+    // ---- 用户勋章 ----
+    m = match(path, 'users/:id/badges');
+    if (m && method === 'GET') {
+      const u = db.users.find(x => x.id === m.id);
+      if (!u) return bad('用户不存在', 404);
+      return json({ badges: u.badges || [] });
     }
 
     // ---- 404 ----
