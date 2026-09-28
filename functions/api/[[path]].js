@@ -169,6 +169,11 @@ async function ensureSeedData(env) {
     await dbRun(env, `CREATE TABLE IF NOT EXISTS ai_cache (
       hash TEXT PRIMARY KEY, result TEXT, source TEXT, created_at INTEGER
     )`);
+    // messages 表（私信）
+    await dbRun(env, `CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY, from_id TEXT NOT NULL, to_id TEXT NOT NULL,
+      content TEXT, created_at INTEGER, \`read\` INTEGER DEFAULT 0
+    )`);
   } catch {}
 
   // Admin 用户（如果没的话）
@@ -1291,14 +1296,23 @@ export async function onRequest(context) {
       const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       const body = await request.json();
-      const to = userById(env, body.toId);
+      // 兼容 to_id 和 toId
+      const toId = body.toId || body.to_id;
+      const to = userByIdSync(db, toId);
       if (!to) return bad('用户不存在', 404);
       if (to.id === me.id) return bad('不能给自己发私信');
       const content = clean(body.content, 2000);
       if (!content) return bad('内容不能为空');
       const msg = { id: uid('m'), fromId: me.id, toId: to.id, content, createdAt: Date.now(), read: false };
+      // 直接同步写 D1（不同 isolate 间内存不共享，必须持久化）
+      try {
+        await env.DB.prepare(`INSERT INTO messages (id, from_id, to_id, content, created_at, \`read\`) VALUES (?,?,?,?,?,0)`)
+          .bind(msg.id, msg.fromId, msg.toId, msg.content, msg.createdAt).run();
+      } catch (e) {
+        return bad('发送失败: ' + e.message);
+      }
+      // 同步更新内存缓存（让同 isolate 后续 GET 能读到）
       db.messages.push(msg);
-      await saveDB(env);
       return json({ message: msg });
     }
 
