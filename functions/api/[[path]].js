@@ -822,6 +822,7 @@ export async function onRequest(context) {
     const url = new URL(request.url);
     const path = url.pathname.replace(/^\/api/, '').replace(/^\/+/, '');
     const method = request.method;
+    let m; // 统一声明 match 结果变量
 
     // ---- 认证 ----
     if (match(path, 'me') && method === 'GET') {
