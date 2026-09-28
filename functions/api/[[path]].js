@@ -1207,15 +1207,27 @@ export async function onRequest(context) {
     if (m && method === 'POST') {
       const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
-      const p = db.posts.find(x => x.id === m.id && x.status === 'approved');
+      // 直接 SQL 查帖子
+      let p;
+      try {
+        const r = await env.DB.prepare(`SELECT * FROM posts WHERE id=? AND status='approved'`).bind(m.id).all();
+        const row = (r.results || [])[0];
+        if (row) p = { id: row.id, comments: JSON.parse(row.comments || '[]') };
+      } catch {}
       if (!p) return bad('帖子不存在', 404);
       const body = await request.json();
       const content = clean(body.content, 2000);
       if (!content) return bad('评论不能为空');
       const c = { id: uid('c'), authorId: me.id, content, createdAt: Date.now() };
       p.comments.push(c);
-      await saveDB(env);
-      return json({ comment: withAuthor(c, db) });
+      // 直接 SQL UPDATE
+      try { await env.DB.prepare(`UPDATE posts SET comments=? WHERE id=?`).bind(JSON.stringify(p.comments), m.id).run(); }
+      catch (e) { return bad('评论失败: ' + e.message); }
+      invalidateCache();
+      // 同步更新内存
+      const memP = db.posts.find(x => x.id === m.id);
+      if (memP) { memP.comments = p.comments; }
+      return json({ comment: withAuthorSync(db, c) });
     }
 
     // ---- 删除帖子 ----
@@ -1238,8 +1250,15 @@ export async function onRequest(context) {
       const tid = clean(requestQuery(request).target_id, 64);
       if (!tid) return bad('缺少 target_id');
       const me = await auth(request, env);
-      const all = db.comments.filter(c => c.targetType === tt && c.targetId === tid).sort((a, b) => a.createdAt - b.createdAt);
-      // 构造楼中楼
+      let all = [];
+      try {
+        const r = await env.DB.prepare(`SELECT * FROM comments WHERE target_type=? AND target_id=? ORDER BY created_at ASC`).bind(tt, tid).all();
+        all = (r.results || []).map(row => ({
+          id: row.id, targetType: row.target_type, targetId: row.target_id, parentId: row.parent_id,
+          authorId: row.author_id, content: row.content, likes: JSON.parse(row.likes || '[]'), createdAt: row.created_at
+        }));
+      } catch {}
+      // 楼中楼
       const byId = {}; all.forEach(c => { byId[c.id] = { ...c, author: pub(userByIdSync(db, c.authorId)), replies: [], likeCount: (c.likes || []).length, liked: !!(me && (c.likes || []).includes(me.id)) }; });
       const roots = [];
       all.forEach(c => {
@@ -1262,28 +1281,31 @@ export async function onRequest(context) {
       if (!targetType || !targetId) return bad('缺少目标参数');
       if (!['article', 'post'].includes(targetType)) return bad('target_type 只能是 article 或 post');
       if (!content) return bad('评论内容不能为空');
-      // 目标必须存在且已审核通过
-      const target = targetType === 'article'
-        ? db.articles.find(a => a.id === targetId)
-        : db.posts.find(p => p.id === targetId);
-      if (!target) return bad('目标不存在', 404);
-      if (target.status !== 'approved' && me.role !== 'admin' && target.authorId !== me.id) return bad('内容暂不可评论', 403);
-      if (parentId) {
-        const parent = db.comments.find(c => c.id === parentId && c.targetType === targetType && c.targetId === targetId);
-        if (!parent) return bad('回复的评论不存在', 404);
-      }
+      // 目标必须存在且已审核通过（直接 SQL 查）
+      let target;
+      try {
+        const tbl = targetType === 'article' ? 'articles' : 'posts';
+        const r = await env.DB.prepare(`SELECT * FROM ${tbl} WHERE id=? AND status='approved'`).bind(targetId).all();
+        target = (r.results || [])[0];
+      } catch {}
+      if (!target) return bad('目标不存在或暂不可评论', 404);
       const c = { id: uid('cm'), targetType, targetId, parentId, authorId: me.id, content, likes: [], createdAt: Date.now() };
-      db.comments.push(c);
-      await saveDB(env);
-      // 通知（如果有被回复的人或目标作者）
+      // 直接 SQL INSERT
+      try {
+        await env.DB.prepare(`INSERT INTO comments (id, target_type, target_id, parent_id, author_id, content, likes, created_at)
+          VALUES (?,?,?,?,?,?,?,?)`)
+          .bind(c.id, c.targetType, c.targetId, c.parentId, c.authorId, c.content, '[]', c.createdAt).run();
+      } catch (e) { return bad('评论失败: ' + e.message); }
+      invalidateCache();
+      // 通知
       await addNotif(env, db, me.id, 'comment', me.id, targetType, targetId, `评论了${targetType === 'article' ? '文章' : '帖子'}`);
       if (parentId) {
         const parent = db.comments.find(x => x.id === parentId);
         if (parent && parent.authorId !== me.id) {
           await addNotif(env, db, me.id, 'reply', parent.authorId, 'comment', parentId, '回复了你的评论');
         }
-      } else if (target.authorId !== me.id) {
-        await addNotif(env, db, me.id, 'comment', target.authorId, targetType, targetId, `评论了你的${targetType === 'article' ? '文章' : '帖子'}`);
+      } else if (target.author_id && target.author_id !== me.id) {
+        await addNotif(env, db, me.id, 'comment', target.author_id, targetType, targetId, `评论了你的${targetType === 'article' ? '文章' : '帖子'}`);
       }
       const out = { ...c, author: pub(me), replies: [], likeCount: 0, liked: false };
       return json({ comment: out }, 201);
