@@ -1067,6 +1067,47 @@ export async function onRequest(context) {
       return json({ liked: idx < 0, likeCount: c.likes.length });
     }
 
+    // ========== 通知系统 ==========
+    // GET /api/notifications
+    if (match(path, 'notifications') && method === 'GET') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const qs = requestQuery(request);
+      const limit = Math.min(50, parseInt(qs.limit, 10) || 20);
+      const list = db.notifications
+        .filter(n => n.userId === me.id)
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .slice(0, limit)
+        .map(n => ({ ...n, from: pub(userByIdSync(db, n.fromId)) }));
+      return json({ notifications: list });
+    }
+    // GET /api/notifications/unread-count
+    if (match(path, 'notifications/unread-count') && method === 'GET') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const c = db.notifications.filter(n => n.userId === me.id && !n.read).length;
+      return json({ count: c });
+    }
+    // POST /api/notifications/read-all
+    if (match(path, 'notifications/read-all') && method === 'POST') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      db.notifications.forEach(n => { if (n.userId === me.id) n.read = 1; });
+      await saveDB(env);
+      return json({ ok: true });
+    }
+    // POST /api/notifications/:id/read
+    m = match(path, 'notifications/:id');
+    if (m && method === 'POST') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const n = db.notifications.find(x => x.id === m.id);
+      if (!n || n.userId !== me.id) return bad('不存在', 404);
+      n.read = 1;
+      await saveDB(env);
+      return json({ ok: true });
+    }
+
     // ---- 私信：发送 ----
     if (match(path, 'messages') && method === 'POST') {
       const me = await auth(request, env);
