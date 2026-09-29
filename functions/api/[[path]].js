@@ -992,7 +992,12 @@ export async function onRequest(context) {
         },
         latestArticles: db.articles.filter(a => a.status === 'approved').sort((a, b) => b.createdAt - a.createdAt).slice(0, 6).map(a => articleOut(a, db)),
         latestPosts: db.posts.filter(p => p.status === 'approved').sort((a, b) => b.createdAt - a.createdAt).slice(0, 6).map(p => postOut(p, db)),
-        activeContests: db.contests.filter(c => c.startTime <= now && now <= c.endTime).slice(0, 3)
+        activeContests: db.contests.map(c => ({
+          ...c,
+          problems: typeof c.problems === 'string' ? safeJSON(c.problems) : (c.problems || []),
+          participants: typeof c.participants === 'string' ? safeJSON(c.participants) : (c.participants || []),
+          submissions: typeof c.submissions === 'string' ? safeJSON(c.submissions) : (c.submissions || [])
+        })).filter(c => c.startTime <= now && now <= c.endTime).map(c => contestOut(c, db)).slice(0, 3)
       });
     }
 
