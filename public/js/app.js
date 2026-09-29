@@ -1264,57 +1264,6 @@ async function viewMine() {
   });
 }
 
-/* ---------- 个人主页 ---------- */
-async function viewProfile(id) {
-  const d = await api('/api/users/' + id);
-  const u = d.user;
-  const isMe = state.me && state.me.id === u.id;
-  $app.innerHTML = `
-  <div class="container" style="max-width:820px">
-    <div class="card">
-      <div class="profile-head">
-        ${avatarHtml(u, 'big')}
-        <div style="flex:1">
-          <h1 style="font-size:20px">${esc(u.nickname)} ${u.role === 'admin' ? '<span class="role-badge">管理员</span>' : ''}</h1>
-          <div class="meta" style="color:var(--text2);font-size:13px;margin-top:4px">@${esc(u.username)} · 加入于 ${fmtTime(u.createdAt)}</div>
-          <div style="margin-top:8px;font-size:13.5px;color:#556">${esc(u.bio || '这个人很懒，什么都没写')}</div>
-          ${!isMe && state.me ? `
-          <div style="margin-top:10px;display:flex;gap:8px">
-            <button class="btn ${d.isFollowing ? 'ghost' : 'primary'}" id="followBtn">${d.isFollowing ? '✅ 已关注' : '➕ 关注'}</button>
-            <button class="btn ghost" id="dmBtn">✉️ 发私信</button>
-          </div>` : ''}
-        </div>
-      </div>
-      <div class="profile-stats">
-        <div class="ps"><b>${d.stats.articles}</b><span class="hint">文章</span></div>
-        <div class="ps"><b>${d.stats.posts}</b><span class="hint">帖子</span></div>
-        <div class="ps"><b>${d.stats.likes}</b><span class="hint">获赞</span></div>
-        <div class="ps"><b>${d.stats.followingCount}</b><span class="hint">关注</span></div>
-        <div class="ps"><b>${d.stats.followerCount}</b><span class="hint">粉丝</span></div>
-      </div>
-    </div>
-    <div class="card">
-      <h2>TA 的文章</h2>
-      ${d.articles.map(a => `
-      <div class="item"><div style="flex:1">
-        <div class="title"><a href="#/article/${a.id}">${esc(a.title)}</a></div>
-        <div class="meta"><span>${fmtTime(a.createdAt)}</span><span>👁 ${a.views || 0}</span><span>❤️ ${a.likeCount || 0}</span></div>
-      </div></div>`).join('') || '<div class="empty">暂无公开文章</div>'}
-    </div>
-  </div>`;
-  const fb = document.getElementById('followBtn');
-  if (fb) fb.onclick = async () => {
-    if (needLogin()) return;
-    try {
-      const r = await api(`/api/users/${id}/follow`, { method: 'POST' });
-      toast(r.followed ? '已关注 ' + u.nickname : '已取消关注');
-      route();
-    } catch (e) { toast(e.message, 'err'); }
-  };
-  const dm = document.getElementById('dmBtn');
-  if (dm) dm.onclick = () => { go('#/chat/' + u.id); };
-}
-
 /* ---------- 偏好设置 ---------- */
 async function viewSettings() {
   if (needLogin()) return;
