@@ -469,6 +469,10 @@ async function viewNewPost() {
 async function viewPostDetail(id) {
   const d = await api('/api/posts/' + id);
   const p = d.post;
+  // 同时拉楼中楼评论
+  const cd = await api('/api/comments?target_type=post&target_id=' + id).catch(() => ({ comments: [], total: 0 }));
+  p._cmRoots = cd.comments || [];
+  p.commentCount = cd.total || (p.comments?.length || 0);
   $app.innerHTML = `
   <div class="container" style="max-width:820px">
     <div class="card">
@@ -486,16 +490,7 @@ async function viewPostDetail(id) {
     </div>
     <div class="card">
       <h2>全部回复（${p.commentCount}）</h2>
-      <div id="postComments">
-        ${p.comments.map(c => `
-        <div class="comment">
-          ${avatarHtml(c.author, 'small')}
-          <div class="c-body">
-            <div class="c-meta"><b>${esc(c.author.nickname)}</b> · ${fmtTime(c.createdAt)}</div>
-            <div>${md(c.content)}</div>
-          </div>
-        </div>`).join('') || '<div class="empty">还没有回复</div>'}
-      </div>
+      <div id="postComments">${renderComments(p._cmRoots || [], 'post', id)}</div>
       ${state.me ? `
       <div style="margin-top:14px" class="form-item">
         <textarea id="cInput" placeholder="友善回复，理性讨论…" style="min-height:80px"></textarea>
@@ -511,23 +506,27 @@ async function viewPostDetail(id) {
   };
   const cs = document.getElementById('cSubmit');
   if (cs) cs.onclick = async () => {
+    let content = document.getElementById('cInput').value.trim();
+    if (!content) return toast('评论内容不能为空', 'err');
+    // 提取 @昵称
+    content = content.replace(/^@\S+\s+/, '');
+    const parentId = viewPostDetail._replyParentId || null;
     try {
-      await api(`/api/posts/${id}/comments`, { method: 'POST', body: { content: cInput.value } });
-      cInput.value = '';
+      await api('/api/comments', { method: 'POST', body: { target_type: 'post', target_id: id, parent_id: parentId, content } });
+      document.getElementById('cInput').value = '';
+      viewPostDetail._replyParentId = null;
       toast('评论成功');
-      // 重新拉帖子详情更新评论区
-      const pd = await api('/api/posts/' + id);
-      const ps = pd.json.post;
-      if (ps) {
-        const cc = document.getElementById('postComments');
-        if (cc) cc.innerHTML = (ps.comments || []).map(c => {
-          const authorName = c.author?.nickname || c.author?.username || '匿名';
-          const authorAvatar = c.author ? avatarHtml(c.author, 'small') : '';
-          return `<div class="cm-item">${authorAvatar}<div class="cm-body"><b>${esc(authorName)}</b><div class="cm-text">${esc(c.content)}</div><div class="cm-meta">${fmtTime(c.createdAt)}</div></div></div>`;
-        }).join('') || '<div class="empty">暂无评论，来抢沙发！</div>';
+      // 局部刷新
+      const gc = await api('/api/comments?target_type=post&target_id=' + id);
+      const cc = document.getElementById('postComments');
+      if (cc) {
+        cc.innerHTML = renderComments(gc.comments, 'post', id) + `<div class="hint" style="margin-top:8px">共 ${gc.total} 条评论</div>`;
+        bindCommentEvents(cc);
       }
     } catch (err) { toast(err.message, 'err'); }
   };
+  // 初始绑定
+  bindCommentEvents(document.getElementById('postComments'));
 }
 
 /* ---------- 文章库 ---------- */
@@ -639,6 +638,8 @@ async function viewArticleDetail(id) {
       <div id="commentBox">${renderComments(cd.comments, 'article', id)}</div>
     </div>
   </div>`;
+  // 绑定评论区事件（回复/删除/点赞）
+  bindCommentEvents(document.getElementById('commentBox'));
   if (state.me) {
     const sp = document.getElementById('starPicker');
     if (sp) {
@@ -680,15 +681,24 @@ async function viewArticleDetail(id) {
   // 评论提交
   const cmBtn = document.getElementById('cmSubmit');
   if (cmBtn) cmBtn.onclick = async () => {
-    const content = document.getElementById('cmInput').value.trim();
+    let content = document.getElementById('cmInput').value.trim();
     if (!content) return toast('评论内容不能为空', 'err');
+    // 提取 @昵称（去掉它，保留真正内容）
+    const mentionMatch = content.match(/^@(\S+)\s+/);
+    content = content.replace(/^@\S+\s+/, '');
+    const parentId = viewArticleDetail._replyParentId || null;
     try {
-      await api('/api/comments', { method: 'POST', body: { target_type: 'article', target_id: id, content } });
+      await api('/api/comments', { method: 'POST', body: { target_type: 'article', target_id: id, parent_id: parentId, content } });
       toast('评论成功');
+      document.getElementById('cmInput').value = '';
+      viewArticleDetail._replyParentId = null;
       // 局部刷新评论区
       const gc = await api('/api/comments?target_type=article&target_id=' + id);
       const cn = document.getElementById('commentBox');
-      if (cn) cn.innerHTML = renderComments(gc.comments, 'article', id) + `<div class="hint" style="margin-top:8px">共 ${gc.total} 条评论</div>`;
+      if (cn) {
+        cn.innerHTML = renderComments(gc.comments, 'article', id) + `<div class="hint" style="margin-top:8px">共 ${gc.total} 条评论</div>`;
+        bindCommentEvents(cn);
+      }
     } catch (e) { toast(e.message, 'err'); }
   };
 }
@@ -702,14 +712,60 @@ function renderComments(roots, targetType, targetId) {
     <div class="cm-body">
       <div class="cm-meta">
         <b>${esc(c.author.nickname)}</b> · <span class="hint">${fmtTime(c.createdAt)}</span>
-        <span class="cm-like" data-cid="${c.id}">${c.liked ? '❤️' : '🤍'} ${c.likeCount || 0}</span>
-        <span class="cm-reply" data-cid="${c.id}">回复</span>
-        ${(state.me && (state.me.id === c.authorId || state.me.role === 'admin')) ? `<span class="cm-del" data-cid="${c.id}">删除</span>` : ''}
+        <span class="cm-like" data-cid="${c.id}" data-obj="${targetType === 'article' ? 'a' : 'p'}" data-tid="${targetId}">${c.liked ? '❤️' : '🤍'} ${c.likeCount || 0}</span>
+        <span class="cm-reply" data-cid="${c.id}" data-target="${targetType}" data-tid="${targetId}" data-replyto="${esc(c.author.nickname)}">回复</span>
+        ${(state.me && (state.me.id === c.authorId || state.me.role === 'admin')) ? `<span class="cm-del" data-cid="${c.id}" data-target="${targetType}" data-tid="${targetId}">删除</span>` : ''}
       </div>
       <div class="cm-text">${esc(c.content)}</div>
       ${c.replies && c.replies.length ? `<div class="cm-replies">${renderComments(c.replies, targetType, targetId)}</div>` : ''}
     </div>
   </div>`).join('');
+}
+
+/* 绑定评论区的回复/点赞/删除事件（每次局部刷新后调用）*/
+function bindCommentEvents(container) {
+  if (!container) return;
+  // 回复按钮
+  container.querySelectorAll('.cm-reply').forEach(btn => {
+    btn.onclick = () => {
+      const cid = btn.dataset.cid;
+      const target = btn.dataset.target;
+      const tid = btn.dataset.tid;
+      const replyTo = btn.dataset.replyto;
+      // 自动 @昵称 + 存 parentId（兼容文章 cmInput 和论坛 cInput）
+      const input = document.getElementById('cmInput') || document.getElementById('cInput');
+      if (input) {
+        input.focus();
+        input.value = `@${replyTo} `;
+        if (target === 'article') viewArticleDetail._replyParentId = cid;
+        else viewPostDetail._replyParentId = cid;
+      }
+    };
+  });
+  // 点赞评论（暂未实现，占位）
+  container.querySelectorAll('.cm-like').forEach(btn => {
+    btn.onclick = () => toast('评论点赞暂未开放 🙏');
+  });
+  // 删除评论
+  container.querySelectorAll('.cm-del').forEach(btn => {
+    btn.onclick = async () => {
+      if (!confirm('确定删除该评论？')) return;
+      const cid = btn.dataset.cid;
+      try {
+        await api('/api/comments/' + cid, { method: 'DELETE' });
+        toast('评论已删除');
+        // 局部刷新
+        const box = container.id === 'commentBox' ? container : container.closest('#commentBox, #postComments');
+        const targetType = btn.dataset.target;
+        const tid = btn.dataset.tid;
+        if (box && targetType) {
+          const gc = await api('/api/comments?target_type=' + targetType + '&target_id=' + tid);
+          box.innerHTML = renderComments(gc.comments, targetType, tid) + `<div class="hint" style="margin-top:8px">共 ${gc.total} 条评论</div>`;
+          bindCommentEvents(box);
+        }
+      } catch (e) { toast(e.message, 'err'); }
+    };
+  });
 }
 
 async function viewWrite(editId) {
