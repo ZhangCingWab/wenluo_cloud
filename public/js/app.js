@@ -318,6 +318,7 @@ const go = (h) => { location.hash = h; };
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-09-30 00:30', author: 'ZhangCing', items: ['文章库 / 论坛 / 题库新增分页（每页 10 条）'] },
   { date: '2026-09-29 23:30', author: 'ZhangCing', items: ['题库新增 100 道写作题，难度 1-6 全覆盖'] },
   { date: '2026-09-29 22:30', author: 'ZhangCing', items: ['修复主页比赛卡片显示 undefined', '评论系统升级：楼中楼回复、回复/删除按钮', '比赛报名名单显示用户昵称'] },
   { date: '2026-09-29', author: 'ZhangCing', items: ['审核系统全链路直接 SQL 持久化，审核状态不再丢失', '积分统一实时计算，个人主页与排行榜一致', 'Markdown 全站渲染适配', '比赛列表/详情/状态修复'] },
@@ -443,7 +444,16 @@ async function viewForum() {
       ${POST_CATS.map(c => `<span class="t ${cat === c ? 'active' : ''}" data-c="${c}">${c}</span>`).join('')}
     </div>
     <div class="card">
-      ${d.posts.map(p => `
+      <div id="postList"></div>
+      <div id="postPager"></div>
+    </div>
+  </div>`;
+  document.getElementById('newPostBtn').onclick = () => needLogin() || go('#/newpost');
+  document.querySelectorAll('.tabs .t').forEach(t => t.onclick = () => { viewForum._c = t.dataset.c; viewForum._page = 1; route(); });
+  bindSearch('fQ', (v) => { viewForum._q = v; viewForum._page = 1; route(); });
+  // 前端分页
+  const totalPages = Math.max(1, Math.ceil(d.posts.length / PAGE_SIZE));
+  const postItem = (p) => `
       <div class="item">
         ${avatarHtml(p.author, 'xs')}
         <div style="flex:1">
@@ -451,12 +461,20 @@ async function viewForum() {
           <div class="meta"><span>${esc(p.author.nickname)}</span><span>${fmtTime(p.createdAt)}</span>
           <span>💬 <span class="num">${p.commentCount}</span></span></div>
         </div>
-      </div>`).join('') || `<div class="empty">${q || cat ? '没有匹配条件的帖子' : '还没有帖子，来发第一帖吧！'}</div>`}
-    </div>
-  </div>`;
-  document.getElementById('newPostBtn').onclick = () => needLogin() || go('#/newpost');
-  document.querySelectorAll('.tabs .t').forEach(t => t.onclick = () => { viewForum._c = t.dataset.c; route(); });
-  bindSearch('fQ', (v) => { viewForum._q = v; route(); });
+      </div>`;
+  const renderPostPage = () => {
+    const pg = viewForum._page || 1;
+    document.getElementById('postList').innerHTML =
+      d.posts.slice((pg - 1) * PAGE_SIZE, pg * PAGE_SIZE).map(postItem).join('') ||
+      `<div class="empty">${q || cat ? '没有匹配条件的帖子' : '还没有帖子，来发第一帖吧！'}</div>`;
+    document.getElementById('postPager').innerHTML = pagerHtml(pg, totalPages, 'pgPost');
+  };
+  window.pgPost = (p) => {
+    viewForum._page = Math.min(Math.max(1, p), totalPages);
+    renderPostPage();
+    document.querySelector('.tabs').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  renderPostPage();
 }
 
 async function viewNewPost() {
@@ -561,7 +579,17 @@ async function viewArticles() {
       ${ART_CATS.map(c => `<span class="t ${cat === c ? 'active' : ''}" data-c="${c}">${c}</span>`).join('')}
     </div>
     <div class="card">
-      ${d.articles.map(a => `
+      <div id="artList"></div>
+      <div id="artPager"></div>
+    </div>
+  </div>`;
+  document.getElementById('wBtn').onclick = () => needLogin() || go('#/write');
+  document.querySelectorAll('.tabs .t[data-s]').forEach(t => t.onclick = () => { viewArticles._s = t.dataset.s; viewArticles._page = 1; route(); });
+  document.querySelectorAll('.tabs .t[data-c]').forEach(t => t.onclick = () => { viewArticles._c = t.dataset.c; viewArticles._page = 1; route(); });
+  bindSearch('aQ', (v) => { viewArticles._q = v; viewArticles._page = 1; route(); });
+  // 前端分页
+  const totalPages = Math.max(1, Math.ceil(d.articles.length / PAGE_SIZE));
+  const artItem = (a) => `
       <div class="item">
         ${avatarHtml(a.author, 'xs')}
         <div style="flex:1">
@@ -570,13 +598,20 @@ async function viewArticles() {
           <div class="meta"><span>${esc(a.author.nickname)}</span><span>${fmtTime(a.createdAt)}</span>
             <span>👁 <span class="num">${a.views || 0}</span></span><span>❤️ <span class="num">${a.likeCount || 0}</span></span></div>
         </div>
-      </div>`).join('') || `<div class="empty">${q || cat ? '没有匹配条件的文章' : '暂无文章'}</div>`}
-    </div>
-  </div>`;
-  document.getElementById('wBtn').onclick = () => needLogin() || go('#/write');
-  document.querySelectorAll('.tabs .t[data-s]').forEach(t => t.onclick = () => { viewArticles._s = t.dataset.s; route(); });
-  document.querySelectorAll('.tabs .t[data-c]').forEach(t => t.onclick = () => { viewArticles._c = t.dataset.c; route(); });
-  bindSearch('aQ', (v) => { viewArticles._q = v; route(); });
+      </div>`;
+  const renderArtPage = () => {
+    const pg = viewArticles._page || 1;
+    document.getElementById('artList').innerHTML =
+      d.articles.slice((pg - 1) * PAGE_SIZE, pg * PAGE_SIZE).map(artItem).join('') ||
+      `<div class="empty">${q || cat ? '没有匹配条件的文章' : '暂无文章'}</div>`;
+    document.getElementById('artPager').innerHTML = pagerHtml(pg, totalPages, 'pgArt');
+  };
+  window.pgArt = (p) => {
+    viewArticles._page = Math.min(Math.max(1, p), totalPages);
+    renderArtPage();
+    document.querySelector('.tabs').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  renderArtPage();
 }
 
 async function viewArticleDetail(id) {
@@ -1613,6 +1648,22 @@ const diffBadge = (d) => {
 };
 const tagChips = (tags) => (tags || []).map(t => `<span class="tag-chip">${esc(t)}</span>`).join('');
 
+/* 通用分页条（共 N 页 « ‹ 1 2 3 › »）*/
+const PAGE_SIZE = 10;
+function pagerHtml(page, total, fn) {
+  if (total <= 1) return '';
+  let start = Math.max(1, Math.min(page - 4, total - 9));
+  const end = Math.min(total, start + 9);
+  let btns = '';
+  for (let i = start; i <= end; i++) btns += `<button class="pg ${i === page ? 'cur' : ''}" onclick="${fn}(${i})">${i}</button>`;
+  return `<div class="pager"><span class="pg-info">共 ${total} 页</span>
+    <button class="pg" onclick="${fn}(1)" ${page <= 1 ? 'disabled' : ''}>«</button>
+    <button class="pg" onclick="${fn}(${page - 1})" ${page <= 1 ? 'disabled' : ''}>‹</button>
+    ${btns}
+    <button class="pg" onclick="${fn}(${page + 1})" ${page > total ? 'disabled' : ''}>›</button>
+    <button class="pg" onclick="${fn}(${total})" ${page >= total ? 'disabled' : ''}>»</button>
+  </div>`;
+}
 async function viewProblems() {
   const type = viewProblems._t || '';
   const diff = viewProblems._d || '';
@@ -1661,7 +1712,16 @@ async function viewProblems() {
       </div>
     </div>
     <div class="card">
-      ${d.problems.map(p => `
+      <div id="probList"></div>
+      <div id="probPager"></div>
+    </div>
+  </div>`;
+  document.querySelectorAll('.tabs .t').forEach(t => t.onclick = () => { viewProblems._t = t.dataset.t; viewProblems._page = 1; route(); });
+  document.getElementById('pDiff').onchange = (e) => { viewProblems._d = e.target.value; viewProblems._page = 1; route(); };
+  bindSearch('pQ', (v) => { viewProblems._q = v; viewProblems._page = 1; route(); });
+  // 前端分页（不重新请求）
+  const totalPages = Math.max(1, Math.ceil(d.problems.length / PAGE_SIZE));
+  const probItem = (p) => `
       <div class="item problem-item">
         <div style="flex:1;cursor:pointer" onclick="location.hash='#/problem/${p.id}'">
           <div class="title">${diffBadge(p.difficulty)} <a href="#/problem/${p.id}" onclick="event.stopPropagation()">${esc(p.title)}</a>
@@ -1669,12 +1729,20 @@ async function viewProblems() {
           <div class="meta"><span>${excerpt(p.content, 60)}</span></div>
           <div class="meta"><span>👥 ${p.doerCount} 人练过</span><span>📝 ${p.practiceCount} 篇练习</span>${tagChips(p.tags)}</div>
         </div>
-      </div>`).join('') || `<div class="empty">${q || diff || type ? '没有匹配条件的题目' : '该分类下暂无题目'}</div>`}
-    </div>
-  </div>`;
-  document.querySelectorAll('.tabs .t').forEach(t => t.onclick = () => { viewProblems._t = t.dataset.t; route(); });
-  document.getElementById('pDiff').onchange = (e) => { viewProblems._d = e.target.value; route(); };
-  bindSearch('pQ', (v) => { viewProblems._q = v; route(); });
+      </div>`;
+  const renderProbPage = () => {
+    const pg = viewProblems._page || 1;
+    document.getElementById('probList').innerHTML =
+      d.problems.slice((pg - 1) * PAGE_SIZE, pg * PAGE_SIZE).map(probItem).join('') ||
+      `<div class="empty">${q || diff || type ? '没有匹配条件的题目' : '该分类下暂无题目'}</div>`;
+    document.getElementById('probPager').innerHTML = pagerHtml(pg, totalPages, 'pgProb');
+  };
+  window.pgProb = (p) => {
+    viewProblems._page = Math.min(Math.max(1, p), totalPages);
+    renderProbPage();
+    document.querySelector('.tabs').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  renderProbPage();
   if (state.me) {
     document.getElementById('addProbBtn').onclick = () => {
       const w = document.getElementById('probFormWrap');
