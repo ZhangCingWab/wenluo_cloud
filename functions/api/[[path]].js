@@ -546,19 +546,19 @@ function userByIdSync(db, id) {
   if (!db || !db.users) return null;
   return db.users.find(u => u.id === id) || null;
 }
-function withAuthorSyncSync(db, item) {
+function withAuthorSync(db, item) {
   const a = userByIdSync(db, item.authorId);
   return { ...item, author: pub(a) || { nickname: '已注销用户' } };
 }
 function articleOut(a, db) {
-  const o = withAuthorSyncSync(db, a);
+  const o = withAuthorSync(db, a);
   o.likeCount = (a.likes || []).length;
   o.tags = typeof a.tags === 'string' ? safeJSON(a.tags) : (a.tags || []);
   delete o.likes;
   return o;
 }
 function postOut(p, db) {
-  const o = withAuthorSyncSync(db, p);
+  const o = withAuthorSync(db, p);
   o.commentCount = (p.comments || []).length;
   return o;
 }
@@ -1327,7 +1327,7 @@ export async function onRequest(context) {
         return bad('帖子正在审核中', 403);
       }
       const o = postOut(p, db);
-      o.comments = (p.comments || []).map(c => withAuthorSyncSync(db, c));
+      o.comments = (p.comments || []).map(c => withAuthorSync(db, c));
       return json({ post: o });
     }
 
@@ -1371,7 +1371,7 @@ export async function onRequest(context) {
       // 同步更新内存
       const memP = db.posts.find(x => x.id === m.id);
       if (memP) { memP.comments = p.comments; }
-      return json({ comment: withAuthorSyncSync(db, c) });
+      return json({ comment: withAuthorSync(db, c) });
     }
 
     // ---- 删除帖子 ----

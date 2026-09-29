@@ -318,6 +318,7 @@ const go = (h) => { location.hash = h; };
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-09-30 03:00', author: 'ZhangCing', items: ['每日打卡改用分屏工作台；修复文件投稿/比赛/我的练习的 withAuthorSync 未定义错误'] },
   { date: '2026-09-30 02:00', author: 'ZhangCing', items: ['分屏工作台编辑区支持 Markdown 预览；新增「上传文件」模块（.txt/.md 点击或拖入导入）'] },
   { date: '2026-09-30 01:30', author: 'ZhangCing', items: ['题目练习/比赛提交改为 Luogu 风格分屏工作台（可拖动调整，支持在线写作和粘贴导入）'] },
   { date: '2026-09-30 00:30', author: 'ZhangCing', items: ['文章库 / 论坛 / 题库新增分页（每页 10 条）'] },
@@ -1192,12 +1193,14 @@ async function viewWorkspace(arg) {
   if (needLogin()) return;
   hideAiFab();
   const [mode, id, qid] = (arg || '').split('/');
-  let problem, mine = null, wordLimit = 0, backHash = '', submitLabel = '开始练习';
+  let problem, mine = null, wordLimit = 0, backHash = '', submitLabel = '开始练习', submitBody, submitUrl;
   if (mode === 'problem') {
     const d = await api('/api/problems/' + id);
     problem = d.problem; mine = d.myPractice;
     backHash = '#/problem/' + id;
     if (!mine) mine = null;
+    submitUrl = `/api/problems/${id}/practice`;
+    submitBody = (title, content) => ({ title, content });
   } else if (mode === 'contest') {
     const d = await api('/api/contests/' + id);
     const c = d.contest;
@@ -1207,12 +1210,24 @@ async function viewWorkspace(arg) {
     backHash = '#/contest/' + id;
     submitLabel = '提交本题作品';
     try { mine = ((await api(`/api/contests/${id}/my-submissions`)).submissions || []).find(s => s.problemId === qid) || null; } catch (e) {}
+    submitUrl = `/api/contests/${id}/submit`;
+    submitBody = (title, content) => ({ problemId: qid, title, content });
+  } else if (mode === 'checkin') {
+    const d = await api('/api/checkins/today');
+    problem = d.daily;
+    if (!problem) { $app.innerHTML = '<div class="card"><div class="empty">😕 今天暂无题目</div></div>'; return; }
+    mine = d.myCheckin || null;
+    backHash = '#/daily';
+    submitLabel = '提交打卡';
+    submitUrl = '/api/checkins';
+    submitBody = (_title, content) => ({ content });
   } else { go('#/problems'); return; }
+  const needTitle = mode !== 'checkin';
   $app.innerHTML = `
   <div class="ws-wrap" id="wsWrap">
     <div class="ws-left" id="wsLeft">
       <div class="ws-head">
-        <a href="${backHash}" class="ws-back">← 返回题目</a>
+        <a href="${backHash}" class="ws-back">← 返回</a>
         <span class="ws-title">${diffBadge(problem.difficulty)} ${esc(problem.title)}</span>
         ${wordLimit ? `<span class="badge upcoming">限 ${wordLimit} 字</span>` : ''}
       </div>
@@ -1230,8 +1245,8 @@ async function viewWorkspace(arg) {
           <button class="mini cur" id="wsModeEdit">编辑</button>
           <button class="mini" id="wsModePrev">👁 预览</button>
         </div>
-        <input id="wsTitle" maxlength="80" placeholder="作品标题" value="${mine ? esc(mine.title) : (mode === 'problem' ? esc(state.me.nickname) + '的练习' : '')}">
-        <textarea id="wsContent" placeholder="支持 Markdown（# 标题、**加粗**、> 引用…）。也可以把写好的内容直接粘贴进来（Ctrl+V）…">${mine ? esc(mine.content) : ''}</textarea>
+        ${needTitle ? `<input id="wsTitle" maxlength="80" placeholder="作品标题" value="${mine ? esc(mine.title) : (mode === 'problem' ? esc(state.me.nickname) + '的练习' : '')}">` : ''}
+        <textarea id="wsContent" placeholder="${mode === 'checkin' ? '围绕今天的题目写一段打卡内容…' : '支持 Markdown（# 标题、**加粗**、> 引用…）。也可以把写好的内容直接粘贴进来（Ctrl+V）…'}">${mine ? esc(mine.content) : ''}</textarea>
         <div id="wsPreview" class="ws-preview doc-content" style="display:none"></div>
       </div>
       <div id="wsUploadPane" style="display:none;flex:1;min-height:0">
@@ -1275,7 +1290,8 @@ async function viewWorkspace(arg) {
     if (file.size > 1024 * 1024) return toast('文件过大（纯文本 ≤1MB）', 'err');
     const rd = new FileReader();
     rd.onload = () => {
-      if (!document.getElementById('wsTitle').value.trim()) document.getElementById('wsTitle').value = file.name.replace(/\.(txt|md|markdown)$/i, '');
+      const t = document.getElementById('wsTitle');
+      if (t && !t.value.trim()) t.value = file.name.replace(/\.(txt|md|markdown)$/i, '');
       ta.value = rd.result; updWc();
       switchTab(false); mE.click();
       toast(`已导入「${file.name}」，可预览后提交`);
@@ -1309,16 +1325,17 @@ async function viewWorkspace(arg) {
   };
   // 提交
   document.getElementById('wsSubmit').onclick = async (e) => {
-    const title = document.getElementById('wsTitle').value.trim(), content = ta.value;
-    if (!title) return toast('请填写标题', 'err');
+    const title = needTitle ? (document.getElementById('wsTitle').value || '').trim() : '';
+    const content = ta.value;
+    if (needTitle && !title) return toast('请填写标题', 'err');
     if (!content.trim()) return toast('内容不能为空', 'err');
     const n = content.replace(/\s/g, '').length;
     if (wordLimit && n > wordLimit) return toast(`超出字数上限（${n}/${wordLimit}）`, 'err');
     e.target.disabled = true;
     try {
-      if (mode === 'problem') await api(`/api/problems/${id}/practice`, { method: 'POST', body: { title, content } });
-      else await api(`/api/contests/${id}/submit`, { method: 'POST', body: { problemId: qid, title, content } });
-      toast(mode === 'problem' ? '练习已提交！' : '作品已保存提交！');
+      const r = await api(submitUrl, { method: 'POST', body: submitBody(title, content) });
+      if (mode === 'checkin') toast(`打卡成功！+${r.points} 积分，连续 ${r.streak || 0} 天`);
+      else toast(mode === 'problem' ? '练习已提交！' : '作品已保存提交！');
       go(backHash); route();
     } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
   };
@@ -2020,15 +2037,13 @@ async function viewDaily() {
       </div>` : '<div class="cc-problem">今天的题目正在准备中…</div>'}
     </div>
 
-    <div class="card">
-      <h2>✍️ 写下你的练习</h2>
-      ${d.myCheckin ? `
-        <div class="hint" style="margin-bottom:8px">✅ 你今天已经打过卡了（+${d.myCheckin.points} 积分），明天再来吧！</div>
-        <div class="tpl-preview">${esc(d.myCheckin.content)}</div>
-      ` : d.daily ? `
-        <textarea id="chkContent" style="width:100%;min-height:180px;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:13px;resize:vertical" placeholder="围绕今天的题目写一段…（提交后 +20 积分起步，连续打卡还有额外加成）"></textarea>
-        <button class="btn primary" id="chkSubmit" style="margin-top:8px">📤 提交打卡</button>
-      ` : '<div class="empty">今天暂无题目</div>'}
+    <div class="card" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <div style="flex:1;min-width:220px">
+        <h2 style="margin:0 0 4px">✍️ ${d.myCheckin ? '今日已打卡' : '开始今日打卡'}</h2>
+        <div class="hint">${d.myCheckin ? `已打卡：+${d.myCheckin.points} 积分，明天再来吧！` : '进入分屏工作台 —— 左边题目，右边写作，支持 Markdown / 粘贴 / 上传文件'}</div>
+      </div>
+      ${d.myCheckin ? '<span class="badge approved">✅ 今日已打卡</span>' : ''}
+      <button class="btn primary" id="goCheckin" ${!d.myCheckin ? '' : 'disabled'}>🚀 进入工作台</button>
     </div>
 
     <div class="card">
@@ -2044,15 +2059,8 @@ async function viewDaily() {
       `).join('') : '<div class="empty">还没有打卡记录，从今天开始吧！</div>'}
     </div>
   </div>`;
-  const cs = document.getElementById('chkSubmit');
-  if (cs) cs.onclick = async () => {
-    const content = document.getElementById('chkContent').value.trim();
-    if (!content) return toast('写点什么吧', 'err');
-    try {
-      const r = await api('/api/checkins', { method: 'POST', body: { content } });
-      toast(`打卡成功！+${r.points} 积分，连续 ${r.streak} 天`); route();
-    } catch (e) { toast(e.message, 'err'); }
-  };
+  const gc = document.getElementById('goCheckin');
+  if (gc) gc.onclick = () => go('#/work/checkin/today');
 }
 
 /* ---------- 个人作品集主页 ---------- */
