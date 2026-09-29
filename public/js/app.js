@@ -486,7 +486,7 @@ async function viewPostDetail(id) {
     </div>
     <div class="card">
       <h2>全部回复（${p.commentCount}）</h2>
-      <div id="cList">
+      <div id="postComments">
         ${p.comments.map(c => `
         <div class="comment">
           ${avatarHtml(c.author, 'small')}
@@ -512,8 +512,20 @@ async function viewPostDetail(id) {
   const cs = document.getElementById('cSubmit');
   if (cs) cs.onclick = async () => {
     try {
-      const r = await api(`/api/posts/${id}/comments`, { method: 'POST', body: { content: cInput.value } });
-      go('#/post/' + id); route();
+      await api(`/api/posts/${id}/comments`, { method: 'POST', body: { content: cInput.value } });
+      cInput.value = '';
+      toast('评论成功');
+      // 重新拉帖子详情更新评论区
+      const pd = await api('/api/posts/' + id);
+      const ps = pd.json.post;
+      if (ps) {
+        const cc = document.getElementById('postComments');
+        if (cc) cc.innerHTML = (ps.comments || []).map(c => {
+          const authorName = c.author?.nickname || c.author?.username || '匿名';
+          const authorAvatar = c.author ? avatarHtml(c.author, 'small') : '';
+          return `<div class="cm-item">${authorAvatar}<div class="cm-body"><b>${esc(authorName)}</b><div class="cm-text">${esc(c.content)}</div><div class="cm-meta">${fmtTime(c.createdAt)}</div></div></div>`;
+        }).join('') || '<div class="empty">暂无评论，来抢沙发！</div>';
+      }
     } catch (err) { toast(err.message, 'err'); }
   };
 }
@@ -624,7 +636,7 @@ async function viewArticleDetail(id) {
         <textarea id="cmInput" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;min-height:60px;font-size:13px;resize:vertical" placeholder="说点什么…"></textarea>
         <button class="btn primary sm" id="cmSubmit" style="margin-top:6px">💬 发表评论</button>
       </div>` : `<div class="empty" style="margin-bottom:12px"><a href="#/login">登录</a> 后参与评论</div>`}
-      <div id="cmList">${renderComments(cd.comments, 'article', id)}</div>
+      <div id="commentBox">${renderComments(cd.comments, 'article', id)}</div>
     </div>
   </div>`;
   if (state.me) {
@@ -672,7 +684,11 @@ async function viewArticleDetail(id) {
     if (!content) return toast('评论内容不能为空', 'err');
     try {
       await api('/api/comments', { method: 'POST', body: { target_type: 'article', target_id: id, content } });
-      toast('评论成功'); route();
+      toast('评论成功');
+      // 局部刷新评论区
+      const gc = await api('/api/comments?target_type=article&target_id=' + id);
+      const cn = document.getElementById('commentBox');
+      if (cn) cn.innerHTML = renderComments(gc.comments, 'article', id) + `<div class="hint" style="margin-top:8px">共 ${gc.total} 条评论</div>`;
     } catch (e) { toast(e.message, 'err'); }
   };
 }
@@ -1059,12 +1075,14 @@ async function viewContestDetail(id) {
       ${c.status === 'ended' ? '<div class="hint" style="margin-top:10px">🏁 比赛已结束，作品提交通道已关闭</div>' : ''}
     </div>
     <div class="card">
-      <h2>报名名单（${c.participantCount}）</h2>
+      <h2>报名名单（<span id="joinCount">${c.participantCount}</span>）</h2>
+      <div id="plist">
       ${c.participantList.map(u => `
       <div class="item">${avatarHtml(u, 'small')}
         <div style="align-self:center"><a href="#/user/${u.id}">${esc(u.nickname)}</a>
         <span class="meta">@${esc(u.username)}</span></div>
       </div>`).join('') || '<div class="empty">还没有人报名</div>'}
+      </div>
     </div>
   </div>`;
   const jb = document.getElementById('joinBtn');
@@ -1073,7 +1091,19 @@ async function viewContestDetail(id) {
     try {
       const r = await api(`/api/contests/${id}/join`, { method: 'POST' });
       toast(r.joined ? '报名成功！' : '已取消报名');
-      route();
+      // 局部更新按钮 + 报名人数 + 名单
+      const joined = r.joined;
+      jb.className = 'btn ' + (joined ? 'primary' : 'outline');
+      jb.innerHTML = joined ? '✓ 已报名' : '+ 我要报名';
+      const pcount = document.getElementById('joinCount');
+      if (pcount) pcount.textContent = r.participantCount;
+      const plist = document.getElementById('plist');
+      if (plist && joined) {
+        plist.insertAdjacentHTML('afterbegin', `<div class="part-item"><div class="avatar sm">${avatarLetter(state.me?.nickname || state.me?.username)}</div><div style="align-self:center"><a href="#/user/${state.me?.id}">${esc(state.me?.nickname || '')}</a><span class="meta">@${esc(state.me?.username || '')}</span></div></div>`);
+      } else if (plist && !joined) {
+        // 简单刷新一下
+        route();
+      }
     } catch (e) { toast(e.message, 'err'); }
   };
   document.querySelectorAll('[data-showsub]').forEach(b => b.onclick = () => {
@@ -1234,8 +1264,12 @@ async function viewProfile(id) {
     if (needLogin()) return;
     try {
       const r = await api(`/api/users/${id}/follow`, { method: 'POST' });
+      fb.className = 'btn ' + (r.followed ? 'following' : 'primary');
+      fb.innerHTML = r.followed ? '✓ 已关注' : '+ 关注';
       toast(r.followed ? '已关注 ' + u.nickname : '已取消关注');
-      route();
+      // 局部更新关注数
+      const fc = document.getElementById('followerCount');
+      if (fc) fc.textContent = (parseInt(fc.textContent) || 0) + (r.followed ? 1 : -1);
     } catch (e) { toast(e.message, 'err'); }
   };
   const dm = document.getElementById('dmBtn');
@@ -1847,7 +1881,12 @@ async function viewDaily() {
     if (!content) return toast('写点什么吧', 'err');
     try {
       const r = await api('/api/checkins', { method: 'POST', body: { content } });
-      toast(`打卡成功！+${r.points} 积分，连续 ${r.streak} 天`); route();
+      toast(`打卡成功！+${r.points} 积分，连续 ${r.streak} 天`);
+      // 局部更新打卡区
+      const btn = document.getElementById('ckBtn');
+      if (btn) { btn.disabled = true; btn.textContent = '今天已打卡 ✓'; btn.classList.remove('primary'); btn.classList.add('outline'); }
+      const totalEl = document.getElementById('ckTotal');
+      if (totalEl) totalEl.textContent = parseInt(totalEl.textContent || '0') + 1;
     } catch (e) { toast(e.message, 'err'); }
   };
 }
@@ -1982,8 +2021,12 @@ async function viewProfile(id) {
     if (needLogin()) return;
     try {
       const r = await api(`/api/users/${id}/follow`, { method: 'POST' });
+      fb.className = 'btn ' + (r.followed ? 'following' : 'primary');
+      fb.innerHTML = r.followed ? '✓ 已关注' : '+ 关注';
       toast(r.followed ? '已关注 ' + u.nickname : '已取消关注');
-      route();
+      // 局部更新关注数
+      const fc = document.getElementById('followerCount');
+      if (fc) fc.textContent = (parseInt(fc.textContent) || 0) + (r.followed ? 1 : -1);
     } catch (e) { toast(e.message, 'err'); }
   };
   const dm = document.getElementById('dmBtn');
