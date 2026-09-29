@@ -751,3 +751,27 @@ table.rank tr:last-child td { border: none; }
 .pager .pg:hover:not(:disabled):not(.cur) { border-color:#4f7cff; color:#4f7cff; }
 .pager .pg.cur { background:#4f7cff; border-color:#4f7cff; color:#fff; font-weight:600; }
 .pager .pg:disabled { opacity:.4; cursor:default; }
+
+/* 分屏写作工作台 */
+.ws-wrap { display:flex; height:calc(100vh - 96px); min-height:420px; background:#fff; border:1px solid var(--border); border-radius:14px; overflow:hidden; }
+.ws-left { width:46%; min-width:280px; overflow-y:auto; padding:20px 22px; }
+.ws-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+.ws-back { font-size:13px; color:#4f7cff; text-decoration:none; white-space:nowrap; }
+.ws-back:hover { text-decoration:underline; }
+.ws-title { font-weight:700; font-size:16px; }
+.ws-doc { font-size:14.5px; line-height:1.8; }
+.ws-bar { width:7px; cursor:col-resize; background:#f2f4f8; border-left:1px solid var(--border); border-right:1px solid var(--border); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.ws-bar:hover, .ws-bar.active { background:#e3ebff; }
+.ws-grip { width:3px; height:38px; border-radius:3px; background:#c7d2e8; }
+.ws-right { flex:1; display:flex; flex-direction:column; padding:14px 18px 16px; min-width:300px; }
+.ws-editor-head { display:flex; justify-content:space-between; align-items:center; font-size:13.5px; font-weight:600; color:#556; margin-bottom:8px; }
+.ws-right input { padding:9px 12px; border:1px solid var(--border); border-radius:9px; margin-bottom:10px; font-size:14px; }
+.ws-right textarea { flex:1; resize:none; border:1px solid var(--border); border-radius:10px; padding:13px 15px; font-size:14.5px; line-height:1.8; font-family:inherit; }
+.ws-right textarea:focus { outline:none; border-color:#4f7cff; }
+.ws-actions { display:flex; gap:10px; margin-top:10px; justify-content:flex-end; }
+@media (max-width: 800px) {
+  .ws-wrap { flex-direction:column; height:auto; }
+  .ws-left { width:100% !important; max-height:46vh; }
+  .ws-bar { display:none; }
+  .ws-right textarea { min-height:300px; }
+}

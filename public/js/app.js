@@ -294,7 +294,7 @@ const routes = {
   rank: viewRank, contests: viewContests, contest: viewContestDetail,
   submit: viewSubmit, mine: viewMine, user: viewProfile, settings: viewSettings,
   login: viewLogin, admin: viewAdmin, messages: viewMessages, chat: viewChat,
-  problems: viewProblems, problem: viewProblemDetail,
+  problems: viewProblems, problem: viewProblemDetail, work: viewWorkspace,
   templates: viewTemplates, daily: viewDaily
 };
 async function route() {
@@ -318,6 +318,7 @@ const go = (h) => { location.hash = h; };
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-09-30 01:30', author: 'ZhangCing', items: ['题目练习/比赛提交改为 Luogu 风格分屏工作台（可拖动调整，支持在线写作和粘贴导入）'] },
   { date: '2026-09-30 00:30', author: 'ZhangCing', items: ['文章库 / 论坛 / 题库新增分页（每页 10 条）'] },
   { date: '2026-09-29 23:30', author: 'ZhangCing', items: ['题库新增 100 道写作题，难度 1-6 全覆盖'] },
   { date: '2026-09-29 22:30', author: 'ZhangCing', items: ['修复主页比赛卡片显示 undefined', '评论系统升级：楼中楼回复、回复/删除按钮', '比赛报名名单显示用户昵称'] },
@@ -1149,16 +1150,7 @@ async function viewContestDetail(id) {
           <div class="hint" style="margin-bottom:8px">我的作品：<b style="color:var(--text)">${esc(mine.title)}</b> · ${mine.wordCount} 字 · ${fmtTime(mine.updatedAt || mine.createdAt)}</div>` : ''}
           ${canSubmit ? `
           <div class="r-actions">
-            <button class="btn primary sm" data-showsub="${q.id}">${mine ? '✏️ 修改我的作品' : '📝 提交本题作品'}</button>
-          </div>
-          <div id="sub-${q.id}" style="display:none;margin-top:12px">
-            <div class="form-item"><label>作品标题</label><input id="st-${q.id}" maxlength="80" value="${mine ? esc(mine.title) : ''}" placeholder="作品标题"></div>
-            <div class="form-item">
-              <label>作品内容</label>
-              <textarea id="sc-${q.id}" style="min-height:160px" oninput="document.getElementById('wc-${q.id}').textContent=this.value.replace(/\\s/g,'').length">${mine ? esc(mine.content) : ''}</textarea>
-              <div class="hint">当前字数：<b id="wc-${q.id}">${mine ? mine.wordCount : 0}</b>${q.wordLimit > 0 ? ' / 上限 ' + q.wordLimit + ' 字' : ''}</div>
-            </div>
-            <button class="btn green sm" data-send="${q.id}">📤 保存提交</button>
+            <button class="btn primary sm" onclick="go('#/work/contest/${id}/${q.id}')">${mine ? '✏️ 修改我的作品' : '� 提交本题作品'}</button>
           </div>` : (c.status === 'ongoing' && !c.joined ? '<div class="hint">报名后即可提交本题作品</div>' : '')}
         </div>`;
       }).join('') || '<div class="empty">该比赛暂无题目</div>'}
@@ -1185,20 +1177,97 @@ async function viewContestDetail(id) {
       route();
     } catch (e) { toast(e.message, 'err'); }
   };
-  document.querySelectorAll('[data-showsub]').forEach(b => b.onclick = () => {
-    const f = document.getElementById('sub-' + b.dataset.showsub);
-    f.style.display = f.style.display === 'none' ? 'block' : 'none';
-  });
-  document.querySelectorAll('[data-send]').forEach(b => b.onclick = async () => {
-    const qid = b.dataset.send;
+  document.querySelectorAll('[data-view]').forEach(b => b.onclick = async () => {
+    const pid = b.dataset.view;
     try {
-      await api(`/api/contests/${id}/submit`, {
-        method: 'POST',
-        body: { problemId: qid, title: document.getElementById('st-' + qid).value, content: document.getElementById('sc-' + qid).value }
-      });
-      toast('作品已保存提交！'); route();
+      const r = await api(`/api/problems/${id}/practice/${pid}`);
+      openPracticeModal(r.practice, p);
     } catch (e) { toast(e.message, 'err'); }
   });
+}
+
+/* ---------- 分屏写作工作台（Luogu 风格） ---------- */
+async function viewWorkspace(arg) {
+  if (needLogin()) return;
+  hideAiFab();
+  const [mode, id, qid] = (arg || '').split('/');
+  let problem, mine = null, wordLimit = 0, backHash = '', submitLabel = '开始练习';
+  if (mode === 'problem') {
+    const d = await api('/api/problems/' + id);
+    problem = d.problem; mine = d.myPractice;
+    backHash = '#/problem/' + id;
+    if (!mine) mine = null;
+  } else if (mode === 'contest') {
+    const d = await api('/api/contests/' + id);
+    const c = d.contest;
+    problem = (c.problems || []).find(q => q.id === qid);
+    if (!problem) { $app.innerHTML = '<div class="card"><div class="empty">😕 题目不存在</div></div>'; return; }
+    wordLimit = problem.wordLimit || 0;
+    backHash = '#/contest/' + id;
+    submitLabel = '提交本题作品';
+    try { mine = ((await api(`/api/contests/${id}/my-submissions`)).submissions || []).find(s => s.problemId === qid) || null; } catch (e) {}
+  } else { go('#/problems'); return; }
+  $app.innerHTML = `
+  <div class="ws-wrap" id="wsWrap">
+    <div class="ws-left" id="wsLeft">
+      <div class="ws-head">
+        <a href="${backHash}" class="ws-back">← 返回题目</a>
+        <span class="ws-title">${diffBadge(problem.difficulty)} ${esc(problem.title)}</span>
+        ${wordLimit ? `<span class="badge upcoming">限 ${wordLimit} 字</span>` : ''}
+      </div>
+      <div class="ws-doc doc-content">${md(problem.content)}</div>
+    </div>
+    <div class="ws-bar" id="wsBar" title="拖动调整分屏大小"><div class="ws-grip"></div></div>
+    <div class="ws-right">
+      <div class="ws-editor-head">
+        <span>${mine ? '✏️ 修改我的' + (mode === 'problem' ? '练习' : '作品') : '📝 ' + submitLabel}</span>
+        <span class="hint">字数：<b id="wsWc">0</b>${wordLimit ? ' / 上限 ' + wordLimit : ''}</span>
+      </div>
+      <input id="wsTitle" maxlength="80" placeholder="作品标题" value="${mine ? esc(mine.title) : (mode === 'problem' ? esc(state.me.nickname) + '的练习' : '')}">
+      <textarea id="wsContent" placeholder="在这里在线写作，也可以把写好的内容直接粘贴进来（Ctrl+V）…">${mine ? esc(mine.content) : ''}</textarea>
+      <div class="ws-actions">
+        <button class="btn ghost sm" id="wsPaste">📋 粘贴导入</button>
+        <button class="btn green" id="wsSubmit">📤 ${mine ? '保存修改' : '提交'}</button>
+      </div>
+    </div>
+  </div>`;
+  // 字数统计
+  const ta = document.getElementById('wsContent'), wc = document.getElementById('wsWc');
+  const updWc = () => { wc.textContent = ta.value.replace(/\s/g, '').length; };
+  ta.oninput = updWc; updWc();
+  // 拖动分隔条
+  const wrap = document.getElementById('wsWrap'), left = document.getElementById('wsLeft');
+  let dragging = false;
+  document.getElementById('wsBar').onmousedown = (e) => { dragging = true; e.preventDefault(); };
+  document.onmousemove = (e) => {
+    if (!dragging) return;
+    const r = wrap.getBoundingClientRect();
+    const pct = Math.min(78, Math.max(22, (e.clientX - r.left) / r.width * 100));
+    left.style.width = pct + '%';
+  };
+  document.onmouseup = () => { dragging = false; };
+  // 粘贴导入
+  document.getElementById('wsPaste').onclick = async () => {
+    try {
+      const t = await navigator.clipboard.readText();
+      if (t) { ta.value += (ta.value ? '\n\n' : '') + t; updWc(); toast('已从剪贴板导入'); }
+    } catch (e) { toast('浏览器未授权剪贴板，请在编辑区 Ctrl+V', 'err'); }
+  };
+  // 提交
+  document.getElementById('wsSubmit').onclick = async (e) => {
+    const title = document.getElementById('wsTitle').value.trim(), content = ta.value;
+    if (!title) return toast('请填写标题', 'err');
+    if (!content.trim()) return toast('内容不能为空', 'err');
+    const n = content.replace(/\s/g, '').length;
+    if (wordLimit && n > wordLimit) return toast(`超出字数上限（${n}/${wordLimit}）`, 'err');
+    e.target.disabled = true;
+    try {
+      if (mode === 'problem') await api(`/api/problems/${id}/practice`, { method: 'POST', body: { title, content } });
+      else await api(`/api/contests/${id}/submit`, { method: 'POST', body: { problemId: qid, title, content } });
+      toast(mode === 'problem' ? '练习已提交！' : '作品已保存提交！');
+      go(backHash); route();
+    } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
+  };
 }
 
 /* ---------- 文件投稿 ---------- */
@@ -1784,15 +1853,12 @@ async function viewProblemDetail(id) {
       <div class="doc-content">${md(p.content)}</div>
     </div>
     ${state.me ? `
-    <div class="card">
-      <h2>✍️ ${mine ? '修改我的练习' : '开始练习'}</h2>
-      <div class="form-item"><label>练习标题</label><input id="prTitle" maxlength="80" value="${mine ? esc(mine.title) : esc(state.me.nickname) + '的练习'}"></div>
-      <div class="form-item">
-        <label>练习内容</label>
-        <textarea id="prContent" style="min-height:200px" placeholder="在这里完成这道题…">${mine ? esc(mine.content) : ''}</textarea>
-        <div class="hint">当前字数：<b id="prWc">${mine ? mine.wordCount : 0}</b></div>
+    <div class="card" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <div style="flex:1;min-width:220px">
+        <h2 style="margin:0 0 4px">✍️ ${mine ? '继续练习' : '开始练习'}</h2>
+        <div class="hint">${mine ? `已有作品：${esc(mine.title)} · ${mine.wordCount} 字` : '进入分屏工作台 —— 左边看题，右边写作'}</div>
       </div>
-      <button class="btn green" id="prSubmit">📤 提交练习</button>
+      <button class="btn green" id="goWorkspace">${mine ? '✏️ 修改我的练习' : '� 开始练习'}</button>
     </div>` : `<div class="card"><div class="empty"><a href="#/login">登录</a> 后开始练习</div></div>`}
     <div class="card">
       <h2>练习作品（${p.practiceCount}）</h2>
@@ -1807,16 +1873,8 @@ async function viewProblemDetail(id) {
       </div>`).join('') || '<div class="empty">还没有人交练习，做第一个吧！</div>'}
     </div>
   </div>`;
-  const prc = document.getElementById('prContent');
-  if (prc) prc.oninput = () => { document.getElementById('prWc').textContent = prc.value.replace(/\s/g, '').length; };
-  const ps = document.getElementById('prSubmit');
-  if (ps) ps.onclick = async (e) => {
-    e.target.disabled = true;
-    try {
-      await api(`/api/problems/${id}/practice`, { method: 'POST', body: { title: document.getElementById('prTitle').value, content: prc.value } });
-      toast('练习已提交！'); route();
-    } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
-  };
+  const gw = document.getElementById('goWorkspace');
+  if (gw) gw.onclick = () => go('#/work/problem/' + id);
   document.querySelectorAll('[data-view]').forEach(b => b.onclick = async () => {
     const pid = b.dataset.view;
     try {
