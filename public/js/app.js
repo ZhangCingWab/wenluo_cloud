@@ -513,16 +513,8 @@ async function viewPostDetail(id) {
     const parentId = viewPostDetail._replyParentId || null;
     try {
       await api('/api/comments', { method: 'POST', body: { target_type: 'post', target_id: id, parent_id: parentId, content } });
-      document.getElementById('cInput').value = '';
-      viewPostDetail._replyParentId = null;
       toast('评论成功');
-      // 局部刷新
-      const gc = await api('/api/comments?target_type=post&target_id=' + id);
-      const cc = document.getElementById('postComments');
-      if (cc) {
-        cc.innerHTML = renderComments(gc.comments, 'post', id) + `<div class="hint" style="margin-top:8px">共 ${gc.total} 条评论</div>`;
-        bindCommentEvents(cc);
-      }
+      route();
     } catch (err) { toast(err.message, 'err'); }
   };
   // 初始绑定
@@ -690,15 +682,7 @@ async function viewArticleDetail(id) {
     try {
       await api('/api/comments', { method: 'POST', body: { target_type: 'article', target_id: id, parent_id: parentId, content } });
       toast('评论成功');
-      document.getElementById('cmInput').value = '';
-      viewArticleDetail._replyParentId = null;
-      // 局部刷新评论区
-      const gc = await api('/api/comments?target_type=article&target_id=' + id);
-      const cn = document.getElementById('commentBox');
-      if (cn) {
-        cn.innerHTML = renderComments(gc.comments, 'article', id) + `<div class="hint" style="margin-top:8px">共 ${gc.total} 条评论</div>`;
-        bindCommentEvents(cn);
-      }
+      route();
     } catch (e) { toast(e.message, 'err'); }
   };
 }
