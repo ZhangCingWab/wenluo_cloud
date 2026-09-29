@@ -316,6 +316,11 @@ async function route() {
 const go = (h) => { location.hash = h; };
 
 /* ---------- 主页 ---------- */
+/* 站点更新说明（每次部署时追加最新一条在最上面）*/
+const CHANGELOG = [
+  { date: '2026-09-29 22:30', author: 'ZhangCing', items: ['修复主页比赛卡片显示 undefined', '评论系统升级：楼中楼回复、回复/删除按钮', '比赛报名名单显示用户昵称'] },
+  { date: '2026-09-29', author: 'ZhangCing', items: ['审核系统全链路直接 SQL 持久化，审核状态不再丢失', '积分统一实时计算，个人主页与排行榜一致', 'Markdown 全站渲染适配', '比赛列表/详情/状态修复'] },
+];
 async function viewHome() {
   hideAiFab();
   const [d, cd] = await Promise.all([
@@ -375,6 +380,16 @@ async function viewHome() {
     <div class="grid-2">
       <div class="card"><h2>📖 最新文章</h2>${itemList(d.latestArticles || [], 'article')}</div>
       <div class="card"><h2>💬 最新帖子</h2>${itemList(d.latestPosts || [], 'post')}</div>
+    </div>
+    <div class="card">
+      <h2>📝 更新说明</h2>
+      ${CHANGELOG.map(e => `
+      <div class="item">
+        <div style="flex:1">
+          <div class="title" style="font-size:13.5px">${e.items.map(esc).join('；')}</div>
+          <div class="meta"><span>👤 ${esc(e.author)}</span><span>🕒 ${esc(e.date)}</span></div>
+        </div>
+      </div>`).join('')}
     </div>
   </div>`;
   document.getElementById('hWrite').onclick = () => needLogin() || go('#/write');
