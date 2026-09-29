@@ -1,4 +1,4 @@
-/* ============ 文洛 · 前端 SPA ============ */
+﻿/* ============ 文汇 · 前端 SPA ============ */
 const $app = document.getElementById('app');
 const $sidebar = document.getElementById('sidebar');
 const state = { me: null, token: localStorage.getItem('token') || null };
@@ -203,7 +203,7 @@ function renderSidebar() {
   let html = `
   <div class="logo">
     <div class="logo-mark">文</div>
-    <div><span class="logo-name">文洛</span><span class="logo-sub">WENLUO</span></div>
+    <div><span class="logo-name">文汇</span><span class="logo-sub">WENHUI</span></div>
   </div>
   <nav class="nav">
     ${link('/home', '🏠', '主页')}
@@ -318,6 +318,7 @@ const go = (h) => { location.hash = h; };
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-09-30 03:30', author: 'ZhangCing', items: ['网站更名：文洛 → 文汇（logo、标题、欢迎语、杯赛名、Schema 注释全量替换）'] },
   { date: '2026-09-30 03:00', author: 'ZhangCing', items: ['每日打卡改用分屏工作台；修复文件投稿/比赛/我的练习的 withAuthorSync 未定义错误'] },
   { date: '2026-09-30 02:00', author: 'ZhangCing', items: ['分屏工作台编辑区支持 Markdown 预览；新增「上传文件」模块（.txt/.md 点击或拖入导入）'] },
   { date: '2026-09-30 01:30', author: 'ZhangCing', items: ['题目练习/比赛提交改为 Luogu 风格分屏工作台（可拖动调整，支持在线写作和粘贴导入）'] },
@@ -362,7 +363,7 @@ async function viewHome() {
   $app.innerHTML = `
   <div class="container">
     <div class="hero">
-      <h1>文洛 · 文章竞赛社区</h1>
+      <h1>文汇 · 文章竞赛社区</h1>
       <p>写作、交流、比赛 —— 一个简洁流畅的创作家园</p>
       <div class="hero-btns">
         <button class="btn-hero solid" id="hWrite">✍️ 立即开始创作</button>
@@ -1515,7 +1516,7 @@ function viewLogin() {
         state.me = d.user;
         state.token = d.token;
         localStorage.setItem('token', d.token);
-        toast('注册成功，欢迎加入文洛！'); go('#/home'); route();
+        toast('注册成功，欢迎加入文汇！'); go('#/home'); route();
       } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
     };
   };
@@ -1545,7 +1546,7 @@ async function adminNewContest() {
   <div class="container" style="max-width:860px">
     <div class="page-title"><div><h1>创建比赛</h1><div class="sub">发布后会出现在比赛广场，用户报名后按题目提交作品</div></div></div>
     <div class="card">
-      <div class="form-item"><label>比赛标题</label><input id="ctTitle" maxlength="80" placeholder="例如：第二届「文洛杯」创作赛"></div>
+      <div class="form-item"><label>比赛标题</label><input id="ctTitle" maxlength="80" placeholder="例如：第二届「文汇杯」创作赛"></div>
       <div class="form-item"><label>比赛说明（支持 Markdown）</label><textarea id="ctDesc" style="min-height:120px" placeholder="主题、规则、评分标准…"></textarea></div>
       <div class="grid-2">
         <div class="form-item"><label>开始时间</label><input type="datetime-local" id="ctStart"></div>

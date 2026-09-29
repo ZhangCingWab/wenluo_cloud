@@ -1,5 +1,5 @@
--- ============================================================
--- 文洛社区 D1 数据库 Schema
+﻿-- ============================================================
+-- 文汇社区 D1 数据库 Schema
 -- Cloudflare D1 (SQLite 兼容)
 -- 使用方法：Cloudflare Dashboard → Workers & Pages → D1 → 你的数据库 → Query
 -- 或：wrangler d1 execute <db-name> --remote --file migrations/schema.sql

@@ -1,5 +1,5 @@
 /*
- * Cloudflare Pages Functions - 文洛·文章竞赛社区 完整 API
+ * Cloudflare Pages Functions - 文汇·文章竞赛社区 完整 API
  * 数据存储：Cloudflare KV (DATA)
  * 认证方式：Bearer Token（KV 存储 token→userId）
  * 密码哈希：Web Crypto API PBKDF2 (100000次 + SHA-256 + 16字节随机salt)
@@ -302,7 +302,7 @@ async function ensureSeedData(env) {
   let ac = (await dbFirst(env, 'SELECT COUNT(*) as c FROM articles'))?.c || 0;
   if (ac === 0) {
     await dbRun(env, `INSERT INTO articles (id,author_id,title,content,category,status,views,likes,created_at,reviewed_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-      ['a_welcome', 'u_admin', '欢迎来到文洛 · 文章竞赛社区',
+      ['a_welcome', 'u_admin', '欢迎来到文汇 · 文章竞赛社区',
        '## 这里可以做什么\n\n- **写文章**：点击侧边栏「我的文章」或主页「立即开始创作」。\n- **逛论坛**：在「论坛广场」发帖交流。\n- **打比赛**：在「比赛广场」报名参赛。\n\n祝大家玩得开心！',
        '其他', 'approved', 128, '[]', now - 86400000, now - 86000000]);
   }
@@ -321,7 +321,7 @@ async function ensureSeedData(env) {
       end_time = COALESCE(excluded.end_time, contests.end_time),
       created_by = COALESCE(excluded.created_by, contests.created_by),
       created_at = COALESCE(excluded.created_at, contests.created_at)`,
-    ['c_demo', '第一届「文洛杯」短文创作赛', '## 比赛说明\n\n围绕主题「代码与生活」写短文。',
+    ['c_demo', '第一届「文汇杯」短文创作赛', '## 比赛说明\n\n围绕主题「代码与生活」写短文。',
      JSON.stringify([
        { id: 'q_demo1', title: '主题创作', content: '围绕比赛主题作文', wordLimit: 2000 },
        { id: 'q_demo2', title: '自由发挥', content: '题材不限', wordLimit: 2000 }

@@ -1,4 +1,4 @@
--- 文洛社区 D1 Schema（Cloudflare Dashboard Console 粘贴执行）
+﻿-- 文汇社区 D1 Schema（Cloudflare Dashboard Console 粘贴执行）
 -- 13 张表 + 索引
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, nickname TEXT, role TEXT DEFAULT 'user',

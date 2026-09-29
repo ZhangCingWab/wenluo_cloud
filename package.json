@@ -1,7 +1,7 @@
-{
-  "name": "wenluo-cloudflare",
+﻿{
+  "name": "WENHUI-cloudflare",
   "version": "1.0.0",
-  "description": "文洛文章竞赛社区 - Cloudflare Pages 版本",
+  "description": "文汇文章竞赛社区 - Cloudflare Pages 版本",
   "main": "index.js",
   "type": "module",
   "scripts": {
