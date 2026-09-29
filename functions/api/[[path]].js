@@ -288,6 +288,10 @@ async function ensureSeedData(env) {
       id TEXT PRIMARY KEY, from_id TEXT NOT NULL, to_id TEXT NOT NULL,
       content TEXT, created_at INTEGER, \`read\` INTEGER DEFAULT 0
     )`);
+    await dbRun(env, `CREATE TABLE IF NOT EXISTS invite_codes (
+      code TEXT PRIMARY KEY, purpose TEXT NOT NULL, created_by TEXT NOT NULL,
+      created_at INTEGER NOT NULL, used INTEGER DEFAULT 0, used_by TEXT, used_at INTEGER
+    )`);
   } catch {}
 
   // Admin 用户（如果没的话）
@@ -1731,7 +1735,6 @@ export async function onRequest(context) {
     if (match(path, 'contests') && method === 'POST') {
       const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
-      if (me.role !== 'admin') return bad('需要管理员权限', 403);
       const body = await request.json();
       const title = clean(body.title, 80);
       const description = clean(body.description, 20000);
@@ -1748,6 +1751,19 @@ export async function onRequest(context) {
         wordLimit: Math.max(0, parseInt(p.wordLimit, 10) || 0)
       })).filter(p => p.title && p.content);
       if (!problems.length) return bad('每道题目的标题和内容不能为空');
+      // 权限：admin 直接创建；普通用户需要有效的一次性邀请码
+      let creatorId = me.id;
+      if (me.role !== 'admin') {
+        const inviteCode = clean(body.inviteCode, 32);
+        if (!inviteCode) return bad('需要一次性邀请码', 403);
+        let row;
+        try { row = (await env.DB.prepare(`SELECT * FROM invite_codes WHERE code=? AND purpose='contest'`).bind(inviteCode).all()).results[0]; }
+        catch (e) { return bad('系统错误，请稍后再试'); }
+        if (!row) return bad('邀请码无效', 403);
+        if (row.used) return bad('邀请码已被使用过了', 403);
+        try { await env.DB.prepare(`UPDATE invite_codes SET used=1, used_by=?, used_at=? WHERE code=?`).bind(me.id, Date.now(), inviteCode).run(); }
+        catch (e) {}
+      }
       const id = uid('c');
       const now = Date.now();
       const participants = [];
@@ -1756,9 +1772,9 @@ export async function onRequest(context) {
       try {
         await env.DB.prepare(`INSERT INTO contests (id, title, description, problems, start_time, end_time, created_by, created_at, participants, submissions)
           VALUES (?,?,?,?,?,?,?,?,?,?)`)
-          .bind(id, title, description, JSON.stringify(problems), startTime, endTime, me.id, now, '[]', '[]').run();
+          .bind(id, title, description, JSON.stringify(problems), startTime, endTime, creatorId, now, '[]', '[]').run();
       } catch (e) { return bad('创建失败: ' + e.message); }
-      const c = { id, title, description, problems, startTime, endTime, createdBy: me.id, createdAt: now, participants, submissions };
+      const c = { id, title, description, problems, startTime, endTime, createdBy: creatorId, createdAt: now, participants, submissions };
       db.contests.push(c);
       invalidateCache();
       return json({ contest: contestOut(c, db) });
@@ -2151,6 +2167,34 @@ export async function onRequest(context) {
         checkins: db.checkins?.length || 0,
         files: db.files?.length || 0
       });
+    }
+
+    // ---- admin 生成一次性邀请码 ----
+    if (match(path, 'admin/invite/generate') && method === 'POST') {
+      const me = await auth(request, env);
+      if (!me || me.role !== 'admin') return bad('需要管理员权限', 403);
+      const purpose = clean((await request.json().catch(() => ({}))).purpose || 'contest', 32);
+      const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+      let code;
+      do { code = Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join(''); }
+      while ((await dbFirst(env, `SELECT 1 FROM invite_codes WHERE code=?`, code)));
+      await dbRun(env, `INSERT INTO invite_codes (code,purpose,created_by,created_at,used) VALUES (?,?,?,?,0)`,
+        [code, purpose, me.id, Date.now()]);
+      return json({ code, purpose });
+    }
+
+    // ---- admin 查看邀请码列表 ----
+    if (match(path, 'admin/invite/list') && method === 'GET') {
+      const me = await auth(request, env);
+      if (!me || me.role !== 'admin') return bad('需要管理员权限', 403);
+      const rows = (await env.DB.prepare(`SELECT * FROM invite_codes ORDER BY created_at DESC LIMIT 50`).all()).results || [];
+      const codes = rows.map(r => ({
+        code: r.code, purpose: r.purpose,
+        used: !!r.used,
+        createdBy: r.created_by, createdAt: r.created_at,
+        usedBy: r.used_by, usedAt: r.used_at
+      }));
+      return json({ codes });
     }
 
     // ---- AI 写作助手 ----

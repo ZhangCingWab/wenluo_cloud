@@ -219,11 +219,12 @@ function renderSidebar() {
     ${me ? link('/messages', '✉️', '私信', '<span class="msg-badge" id="msgBadge" style="display:none">0</span>') : ''}
     ${me && me.role === 'admin' ? `
       <div class="nav-label">后台管理</div>
-      ${link('/admin/contest', '🛠️', '创建比赛')}
       ${link('/admin/articles', '✅', '审核文章')}
       ${link('/admin/posts', '📋', '审核帖子')}
       ${link('/admin/problems', '📚', '审核题目')}
-      ${link('/admin/files', '📁', '审核投稿')}` : ''}
+      ${link('/admin/files', '📁', '审核投稿')}
+      ${link('/admin/invite', '🔑', '邀请码管理')}
+      ${link('/admin/contest', '🏁', '创建比赛')}` : ''}
   </nav>
   <div class="user-zone" id="userZone">`;
   if (me) {
@@ -295,7 +296,7 @@ const routes = {
   submit: viewSubmit, mine: viewMine, user: viewProfile, settings: viewSettings,
   login: viewLogin, admin: viewAdmin, messages: viewMessages, chat: viewChat,
   problems: viewProblems, problem: viewProblemDetail, work: viewWorkspace,
-  templates: viewTemplates, daily: viewDaily
+  templates: viewTemplates, daily: viewDaily, 'contest-create': contestCreate
 };
 async function route() {
   closeMenu();
@@ -314,10 +315,19 @@ async function route() {
   window.scrollTo(0, 0);
 }
 const go = (h) => { location.hash = h; };
+// 全局：比赛邀请码申请
+window.applyContestInvite = function () {
+  if (needLogin()) return;
+  const code = prompt('请输入管理员给你的一次性邀请码：', '');
+  if (!code) return;
+  localStorage.setItem('contestInviteCode', code.trim().toUpperCase());
+  go('#/contest-create');
+};
 
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-09-30 04:00', author: 'ZhangCing', items: ['比赛创建支持一次性邀请码：admin 在后台生成 → 发给对方 → 对方输入即可创建（用完立即失效）', '新增 #/admin/invite 邀请码管理页（生成 / 列表）'] },
   { date: '2026-09-30 03:30', author: 'ZhangCing', items: ['网站更名：文洛 → 文汇（logo、标题、欢迎语、杯赛名、Schema 注释全量替换）'] },
   { date: '2026-09-30 03:00', author: 'ZhangCing', items: ['每日打卡改用分屏工作台；修复文件投稿/比赛/我的练习的 withAuthorSync 未定义错误'] },
   { date: '2026-09-30 02:00', author: 'ZhangCing', items: ['分屏工作台编辑区支持 Markdown 预览；新增「上传文件」模块（.txt/.md 点击或拖入导入）'] },
@@ -1096,7 +1106,7 @@ async function viewContests() {
   <div class="container">
     <div class="page-title">
       <div><h1>比赛广场</h1><div class="sub">共 ${d.contests.length} 场比赛</div></div>
-      ${state.me && state.me.role === 'admin' ? '<button class="btn primary" onclick="go(\'#/admin/contest\')">＋ 创建比赛</button>' : ''}
+      ${state.me && state.me.role === 'admin' ? '<button class="btn primary" onclick="go(\'#/admin/contest\')">＋ 创建比赛</button>' : (state.me ? '<button class="btn ghost" onclick="window.applyContestInvite()">📝 申请创建比赛</button>' : '')}
     </div>
     ${d.contests.map(c => `
     <div class="card contest" style="cursor:pointer" onclick="location.hash='#/contest/${c.id}'">
@@ -1535,17 +1545,34 @@ async function viewAdmin(sub) {
     return;
   }
   const [kind, st] = (sub || '').split('/');
-  if (kind === 'contest') return adminNewContest();
+  if (kind === 'contest') return contestCreate();
+  if (kind === 'invite') return adminInviteManager();
   const map = { articles: 'articles', posts: 'posts', files: 'files', problems: 'problems' };
   if (map[kind]) return adminReview(map[kind], st);
   return adminReview('articles', st);
 }
 
-async function adminNewContest() {
+async function contestCreate() {
+  if (needLogin()) return;
+  const isAdmin = state.me.role === 'admin';
+  let inviteCode = '';
+  if (!isAdmin) {
+    inviteCode = localStorage.getItem('contestInviteCode') || '';
+    if (!inviteCode) {
+      // 没邀请码 → 弹窗让输入
+      const code = prompt('请输入管理员给你的一次性邀请码：', '');
+      if (!code) return go('#/contests');
+      localStorage.setItem('contestInviteCode', code.trim().toUpperCase());
+      inviteCode = code.trim().toUpperCase();
+    }
+  }
   $app.innerHTML = `
   <div class="container" style="max-width:860px">
-    <div class="page-title"><div><h1>创建比赛</h1><div class="sub">发布后会出现在比赛广场，用户报名后按题目提交作品</div></div></div>
+    <div class="page-title"><div><h1>创建比赛</h1><div class="sub">${isAdmin ? '管理员直接发布' : '使用一次性邀请码创建（比赛归你所有）'}</div></div>
+      <button class="btn ghost sm" onclick="go('#/contests')">← 返回比赛广场</button>
+    </div>
     <div class="card">
+      ${!isAdmin ? `<div class="hint" style="margin-bottom:10px">🔑 邀请码：<code>${inviteCode}</code> <button class="btn ghost sm" id="changeInvite" style="margin-left:8px">换一个</button></div>` : ''}
       <div class="form-item"><label>比赛标题</label><input id="ctTitle" maxlength="80" placeholder="例如：第二届「文汇杯」创作赛"></div>
       <div class="form-item"><label>比赛说明（支持 Markdown）</label><textarea id="ctDesc" style="min-height:120px" placeholder="主题、规则、评分标准…"></textarea></div>
       <div class="grid-2">
@@ -1562,6 +1589,10 @@ async function adminNewContest() {
       <button class="btn primary" id="ctSubmit">🏁 发布比赛</button>
     </div>
   </div>`;
+  if (document.getElementById('changeInvite')) document.getElementById('changeInvite').onclick = () => {
+    const c = prompt('输入新的一次性邀请码：', '');
+    if (c) { localStorage.setItem('contestInviteCode', c.trim().toUpperCase()); toast('邀请码已更新'); route(); }
+  };
   const pad = n => String(n).padStart(2, '0');
   const now = new Date();
   const def = new Date(now.getTime() + 3600000);
@@ -1596,17 +1627,69 @@ async function adminNewContest() {
   document.getElementById('ctSubmit').onclick = async (e) => {
     const valid = problems.filter(p => p.title.trim() && p.content.trim());
     if (!valid.length) return toast('至少布置一道完整的题目', 'err');
+    const body = {
+      title: ctTitle.value, description: ctDesc.value,
+      startTime: new Date(ctStart.value).getTime(), endTime: new Date(ctEnd.value).getTime(),
+      problems: valid
+    };
+    if (!isAdmin) body.inviteCode = (localStorage.getItem('contestInviteCode') || '').toUpperCase();
     try {
-      await api('/api/contests', {
-        method: 'POST',
-        body: {
-          title: ctTitle.value, description: ctDesc.value,
-          startTime: new Date(ctStart.value).getTime(), endTime: new Date(ctEnd.value).getTime(),
-          problems: valid
-        }
-      });
-      toast('比赛已发布'); go('#/contests');
+      const r = await api('/api/contests', { method: 'POST', body });
+      if (!isAdmin) localStorage.removeItem('contestInviteCode');
+      toast(isAdmin ? '比赛已发布' : '🎉 比赛创建成功！你现在是主办方');
+      go('#/contest/' + r.contest.id);
     } catch (err) { toast(err.message, 'err'); }
+  };
+}
+
+/* ---------- admin 邀请码管理 ---------- */
+async function adminInviteManager() {
+  $app.innerHTML = `
+  <div class="container" style="max-width:860px">
+    <div class="page-title"><div><h1>邀请码管理</h1><div class="sub">一次性使用，创建比赛后立即作废</div></div>
+      <button class="btn ghost sm" onclick="go('#/admin/articles')">← 返回审核</button>
+    </div>
+    <div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="flex:1;color:var(--text2)">生成后把码发给想创建比赛的人，他用掉后立即失效</span>
+      <button class="btn primary" id="genInvite">🎲 生成一次性邀请码</button>
+    </div>
+    <div id="newCodeArea"></div>
+    <div class="card">
+      <h2>历史邀请码</h2>
+      <div id="inviteList"></div>
+    </div>
+  </div>`;
+  const refresh = async () => {
+    const d = await api('/api/admin/invite/list');
+    document.getElementById('inviteList').innerHTML = (d.codes || []).map(c => {
+      return `
+      <div class="item" style="font-size:13px">
+        <code style="font-family:monospace;font-size:15px;font-weight:700;letter-spacing:1px;color:#4f7cff">${esc(c.code)}</code>
+        <span class="meta">创建者：${esc(c.createdBy)}</span>
+        <span class="meta">${fmtTime(c.createdAt)}</span>
+        ${c.used
+          ? `<span class="badge rejected">✕ 已使用 · ${esc(c.usedBy)} · ${fmtTime(c.usedAt)}</span>`
+          : `<span class="badge approved">✓ 未使用</span>`}
+      </div>`;
+    }).join('') || '<div class="empty">还没有生成过邀请码</div>';
+  };
+  refresh();
+  document.getElementById('genInvite').onclick = async () => {
+    try {
+      const r = await api('/api/admin/invite/generate', { method: 'POST', body: { purpose: 'contest' } });
+      localStorage.setItem('contestInviteCode', r.code);
+      document.getElementById('newCodeArea').innerHTML = `
+        <div class="card" style="border-left:4px solid #52c41a">
+          <div style="font-size:12px;color:#8a93a6;margin-bottom:4px">新生成的邀请码（请立刻发给对方，使用后即失效）</div>
+          <div style="font-family:monospace;font-size:22px;font-weight:700;letter-spacing:3px;color:#4f7cff;text-align:center;padding:6px 0">${r.code}</div>
+          <div style="text-align:center;margin-top:8px">
+            <button class="btn ghost sm" onclick="navigator.clipboard.writeText('${r.code}');toast('已复制')">📋 复制</button>
+            <button class="btn ghost sm" onclick="document.getElementById('newCodeArea').innerHTML=''">关闭</button>
+          </div>
+        </div>`;
+      toast('邀请码已生成，请发给对方');
+      refresh();
+    } catch (e) { toast(e.message, 'err'); }
   };
 }
 
