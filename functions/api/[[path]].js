@@ -566,6 +566,7 @@ function problemOut(p, db) {
   const ps = db.practices.filter(x => x.problemId === p.id);
   return Object.assign({}, p, {
     status: p.status || 'approved',
+    difficulty: parseInt(p.difficulty, 10) || 1,
     proposer: pub(userByIdSync(db, p.createdBy)) || { nickname: '已注销用户' },
     practiceCount: ps.length,
     doerCount: new Set(ps.map(x => x.authorId)).size
@@ -1860,7 +1861,7 @@ export async function onRequest(context) {
       const tag = url.searchParams.get('tag');
       const q = url.searchParams.get('q');
       if (['theme', 'skill'].includes(type)) list = list.filter(p => p.type === type);
-      if (diff) list = list.filter(p => p.difficulty === Number(diff));
+      if (diff) list = list.filter(p => parseInt(p.difficulty, 10) === Number(diff));
       if (tag) list = list.filter(p => (p.tags || []).includes(tag));
       list = searchFilter(list, q, db);
       list.sort((a, b) => b.createdAt - a.createdAt);
