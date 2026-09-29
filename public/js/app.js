@@ -1131,19 +1131,7 @@ async function viewContestDetail(id) {
     try {
       const r = await api(`/api/contests/${id}/join`, { method: 'POST' });
       toast(r.joined ? '报名成功！' : '已取消报名');
-      // 局部更新按钮 + 报名人数 + 名单
-      const joined = r.joined;
-      jb.className = 'btn ' + (joined ? 'primary' : 'outline');
-      jb.innerHTML = joined ? '✓ 已报名' : '+ 我要报名';
-      const pcount = document.getElementById('joinCount');
-      if (pcount) pcount.textContent = r.participantCount;
-      const plist = document.getElementById('plist');
-      if (plist && joined) {
-        plist.insertAdjacentHTML('afterbegin', `<div class="part-item"><div class="avatar sm">${avatarLetter(state.me?.nickname || state.me?.username)}</div><div style="align-self:center"><a href="#/user/${state.me?.id}">${esc(state.me?.nickname || '')}</a><span class="meta">@${esc(state.me?.username || '')}</span></div></div>`);
-      } else if (plist && !joined) {
-        // 简单刷新一下
-        route();
-      }
+      route();
     } catch (e) { toast(e.message, 'err'); }
   };
   document.querySelectorAll('[data-showsub]').forEach(b => b.onclick = () => {
@@ -1304,12 +1292,8 @@ async function viewProfile(id) {
     if (needLogin()) return;
     try {
       const r = await api(`/api/users/${id}/follow`, { method: 'POST' });
-      fb.className = 'btn ' + (r.followed ? 'following' : 'primary');
-      fb.innerHTML = r.followed ? '✓ 已关注' : '+ 关注';
       toast(r.followed ? '已关注 ' + u.nickname : '已取消关注');
-      // 局部更新关注数
-      const fc = document.getElementById('followerCount');
-      if (fc) fc.textContent = (parseInt(fc.textContent) || 0) + (r.followed ? 1 : -1);
+      route();
     } catch (e) { toast(e.message, 'err'); }
   };
   const dm = document.getElementById('dmBtn');
@@ -1921,12 +1905,7 @@ async function viewDaily() {
     if (!content) return toast('写点什么吧', 'err');
     try {
       const r = await api('/api/checkins', { method: 'POST', body: { content } });
-      toast(`打卡成功！+${r.points} 积分，连续 ${r.streak} 天`);
-      // 局部更新打卡区
-      const btn = document.getElementById('ckBtn');
-      if (btn) { btn.disabled = true; btn.textContent = '今天已打卡 ✓'; btn.classList.remove('primary'); btn.classList.add('outline'); }
-      const totalEl = document.getElementById('ckTotal');
-      if (totalEl) totalEl.textContent = parseInt(totalEl.textContent || '0') + 1;
+      toast(`打卡成功！+${r.points} 积分，连续 ${r.streak} 天`); route();
     } catch (e) { toast(e.message, 'err'); }
   };
 }
@@ -2061,12 +2040,8 @@ async function viewProfile(id) {
     if (needLogin()) return;
     try {
       const r = await api(`/api/users/${id}/follow`, { method: 'POST' });
-      fb.className = 'btn ' + (r.followed ? 'following' : 'primary');
-      fb.innerHTML = r.followed ? '✓ 已关注' : '+ 关注';
       toast(r.followed ? '已关注 ' + u.nickname : '已取消关注');
-      // 局部更新关注数
-      const fc = document.getElementById('followerCount');
-      if (fc) fc.textContent = (parseInt(fc.textContent) || 0) + (r.followed ? 1 : -1);
+      route();
     } catch (e) { toast(e.message, 'err'); }
   };
   const dm = document.getElementById('dmBtn');
