@@ -318,6 +318,7 @@ const go = (h) => { location.hash = h; };
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-09-30 02:00', author: 'ZhangCing', items: ['分屏工作台编辑区支持 Markdown 预览；新增「上传文件」模块（.txt/.md 点击或拖入导入）'] },
   { date: '2026-09-30 01:30', author: 'ZhangCing', items: ['题目练习/比赛提交改为 Luogu 风格分屏工作台（可拖动调整，支持在线写作和粘贴导入）'] },
   { date: '2026-09-30 00:30', author: 'ZhangCing', items: ['文章库 / 论坛 / 题库新增分页（每页 10 条）'] },
   { date: '2026-09-29 23:30', author: 'ZhangCing', items: ['题库新增 100 道写作题，难度 1-6 全覆盖'] },
@@ -1219,12 +1220,28 @@ async function viewWorkspace(arg) {
     </div>
     <div class="ws-bar" id="wsBar" title="拖动调整分屏大小"><div class="ws-grip"></div></div>
     <div class="ws-right">
-      <div class="ws-editor-head">
-        <span>${mine ? '✏️ 修改我的' + (mode === 'problem' ? '练习' : '作品') : '📝 ' + submitLabel}</span>
-        <span class="hint">字数：<b id="wsWc">0</b>${wordLimit ? ' / 上限 ' + wordLimit : ''}</span>
+      <div class="ws-tabs">
+        <button class="ws-tab cur" id="wsTabWrite">✏️ 在线写作</button>
+        <button class="ws-tab" id="wsTabUpload">📄 上传文件</button>
+        <span class="hint" style="margin-left:auto">字数：<b id="wsWc">0</b>${wordLimit ? ' / 上限 ' + wordLimit : ''}</span>
       </div>
-      <input id="wsTitle" maxlength="80" placeholder="作品标题" value="${mine ? esc(mine.title) : (mode === 'problem' ? esc(state.me.nickname) + '的练习' : '')}">
-      <textarea id="wsContent" placeholder="在这里在线写作，也可以把写好的内容直接粘贴进来（Ctrl+V）…">${mine ? esc(mine.content) : ''}</textarea>
+      <div id="wsWritePane" style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <div class="ws-mode">
+          <button class="mini cur" id="wsModeEdit">编辑</button>
+          <button class="mini" id="wsModePrev">👁 预览</button>
+        </div>
+        <input id="wsTitle" maxlength="80" placeholder="作品标题" value="${mine ? esc(mine.title) : (mode === 'problem' ? esc(state.me.nickname) + '的练习' : '')}">
+        <textarea id="wsContent" placeholder="支持 Markdown（# 标题、**加粗**、> 引用…）。也可以把写好的内容直接粘贴进来（Ctrl+V）…">${mine ? esc(mine.content) : ''}</textarea>
+        <div id="wsPreview" class="ws-preview doc-content" style="display:none"></div>
+      </div>
+      <div id="wsUploadPane" style="display:none;flex:1;min-height:0">
+        <div class="upload-drop" id="wsDrop">
+          <div style="font-size:36px">📄</div>
+          <p><b>点击选择或拖入文件</b></p>
+          <p class="hint">支持 .txt / .md 纯文本（≤1MB），内容将导入编辑器，可预览后再提交</p>
+          <input type="file" id="wsFile" accept=".txt,.md,.markdown,text/plain" style="display:none">
+        </div>
+      </div>
       <div class="ws-actions">
         <button class="btn ghost sm" id="wsPaste">📋 粘贴导入</button>
         <button class="btn green" id="wsSubmit">📤 ${mine ? '保存修改' : '提交'}</button>
@@ -1235,6 +1252,43 @@ async function viewWorkspace(arg) {
   const ta = document.getElementById('wsContent'), wc = document.getElementById('wsWc');
   const updWc = () => { wc.textContent = ta.value.replace(/\s/g, '').length; };
   ta.oninput = updWc; updWc();
+  // 模块 Tab：在线写作 / 上传文件
+  const tabW = document.getElementById('wsTabWrite'), tabU = document.getElementById('wsTabUpload');
+  const paneW = document.getElementById('wsWritePane'), paneU = document.getElementById('wsUploadPane');
+  const switchTab = (up) => {
+    tabW.classList.toggle('cur', !up); tabU.classList.toggle('cur', up);
+    paneW.style.display = up ? 'none' : 'flex'; paneU.style.display = up ? 'block' : 'none';
+  };
+  tabW.onclick = () => switchTab(false);
+  tabU.onclick = () => switchTab(true);
+  // Markdown 编辑/预览切换
+  const mE = document.getElementById('wsModeEdit'), mP = document.getElementById('wsModePrev'), prev = document.getElementById('wsPreview');
+  mE.onclick = () => { mE.classList.add('cur'); mP.classList.remove('cur'); ta.style.display = ''; prev.style.display = 'none'; };
+  mP.onclick = () => {
+    mP.classList.add('cur'); mE.classList.remove('cur');
+    prev.innerHTML = ta.value.trim() ? md(ta.value) : '<div class="empty">暂无内容，先写点东西吧</div>';
+    ta.style.display = 'none'; prev.style.display = '';
+  };
+  // 上传文件导入
+  const readFile = (file) => {
+    if (!file) return;
+    if (file.size > 1024 * 1024) return toast('文件过大（纯文本 ≤1MB）', 'err');
+    const rd = new FileReader();
+    rd.onload = () => {
+      if (!document.getElementById('wsTitle').value.trim()) document.getElementById('wsTitle').value = file.name.replace(/\.(txt|md|markdown)$/i, '');
+      ta.value = rd.result; updWc();
+      switchTab(false); mE.click();
+      toast(`已导入「${file.name}」，可预览后提交`);
+    };
+    rd.onerror = () => toast('文件读取失败', 'err');
+    rd.readAsText(file, 'utf-8');
+  };
+  const drop = document.getElementById('wsDrop'), fin = document.getElementById('wsFile');
+  drop.onclick = () => fin.click();
+  fin.onchange = (e) => { readFile(e.target.files[0]); e.target.value = ''; };
+  drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('over'); };
+  drop.ondragleave = () => drop.classList.remove('over');
+  drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove('over'); readFile(e.dataTransfer.files[0]); };
   // 拖动分隔条
   const wrap = document.getElementById('wsWrap'), left = document.getElementById('wsLeft');
   let dragging = false;
