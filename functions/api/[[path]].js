@@ -2140,7 +2140,13 @@ export async function onRequest(context) {
       const me = await auth(request, env);
       if (!me || me.role !== 'admin') return bad('需要管理员权限', 403);
       const status = ['pending', 'approved', 'rejected'].includes(url.searchParams.get('status')) ? url.searchParams.get('status') : 'pending';
-      return json({ files: db.files.filter(f => f.status === status).sort((a, b) => b.createdAt - a.createdAt).map(f => withAuthorSync(f, db)) });
+      let rows = [];
+      try { rows = (await env.DB.prepare(`SELECT * FROM files WHERE status=? ORDER BY created_at DESC`).bind(status).all()).results || []; }
+      catch (e) { return bad(e.message); }
+      return json({ files: rows.map(r => {
+        const author = userByIdSync(db, r.author_id) || db.users.find(u => u.id === r.author_id);
+        return { ...r, author: author ? pub(author) : { nickname: '未知用户' } };
+      })});
     }
 
     // ---- 审核文件 ----
@@ -2149,13 +2155,18 @@ export async function onRequest(context) {
       const me = await auth(request, env);
       if (!me || me.role !== 'admin') return bad('需要管理员权限', 403);
       const body = await request.json();
+      let row;
+      try { row = (await env.DB.prepare(`SELECT * FROM files WHERE id=?`).bind(m.id).all()).results[0]; }
+      catch (e) { return bad(e.message); }
+      if (!row) return bad('文件不存在', 404);
+      const newStatus = body.action === 'approve' ? 'approved' : 'rejected';
+      const reviewedAt = Date.now();
+      // 同步更新内存
       const f = db.files.find(x => x.id === m.id);
-      if (!f) return bad('文件不存在', 404);
-      f.status = body.action === 'approve' ? 'approved' : 'rejected';
-      f.reviewedAt = Date.now();
-      try { await env.DB.prepare(`UPDATE files SET status=?, reviewed_at=? WHERE id=?`).bind(f.status, f.reviewedAt, f.id).run(); } catch (e) { return bad(e.message); }
+      if (f) { f.status = newStatus; f.reviewedAt = reviewedAt; }
+      try { await env.DB.prepare(`UPDATE files SET status=?, reviewed_at=? WHERE id=?`).bind(newStatus, reviewedAt, m.id).run(); } catch (e) { return bad(e.message); }
       invalidateCache();
-      return json({ ok: true, status: f.status });
+      return json({ ok: true, status: newStatus });
     }
 
     // ---- 后台审核：题目列表 ----
@@ -2164,7 +2175,16 @@ export async function onRequest(context) {
       const me = await auth(request, env);
       if (!me || me.role !== 'admin') return bad('需要管理员权限', 403);
       const status = ['pending', 'approved', 'rejected'].includes(url.searchParams.get('status')) ? url.searchParams.get('status') : 'pending';
-      return json({ problems: db.problems.filter(p => (p.status || 'approved') === status).sort((a, b) => b.createdAt - a.createdAt).map(p => problemOut(p, db)) });
+      let rows = [];
+      try { rows = (await env.DB.prepare(`SELECT * FROM problems WHERE COALESCE(status,'approved')=? ORDER BY created_at DESC`).bind(status).all()).results || []; }
+      catch (e) { return bad(e.message); }
+      const tagCols = rows[0] && Object.keys(rows[0]).includes('tags') ? 'tags' : 'tag';
+      return json({ problems: rows.map(r => ({
+        id: r.id, type: r.type, title: r.title, content: r.content, difficulty: parseInt(r.difficulty, 10) || 1,
+        tags: r[tagCols] ? (typeof r[tagCols] === 'string' ? safeJSON(r[tagCols]) : r[tagCols]) : [],
+        createdBy: r.created_by, createdAt: r.created_at,
+        status: r.status || 'approved', reviewedAt: r.reviewed_at || r.reviewedAt
+      })) });
     }
 
     // ---- 审核题目 ----
@@ -2173,13 +2193,15 @@ export async function onRequest(context) {
       const me = await auth(request, env);
       if (!me || me.role !== 'admin') return bad('需要管理员权限', 403);
       const body = await request.json();
-      const p = db.problems.find(x => x.id === m.id);
-      if (!p) return bad('题目不存在', 404);
-      p.status = body.action === 'approve' ? 'approved' : 'rejected';
-      p.reviewedAt = Date.now();
-      try { await env.DB.prepare(`UPDATE problems SET status=?, reviewed_at=? WHERE id=?`).bind(p.status, p.reviewedAt, p.id).run(); } catch (e) { return bad(e.message); }
+      let row;
+      try { row = (await env.DB.prepare(`SELECT * FROM problems WHERE id=?`).bind(m.id).all()).results[0]; }
+      catch (e) { return bad(e.message); }
+      if (!row) return bad('题目不存在', 404);
+      const newStatus = body.action === 'approve' ? 'approved' : 'rejected';
+      const reviewedAt = Date.now();
+      try { await env.DB.prepare(`UPDATE problems SET status=?, reviewed_at=? WHERE id=?`).bind(newStatus, reviewedAt, m.id).run(); } catch (e) { return bad(e.message); }
       invalidateCache();
-      return json({ ok: true, status: p.status });
+      return json({ ok: true, status: newStatus });
     }
     // GET /api/admin/stats
     if (match(path, 'admin/stats') && method === 'GET') {
