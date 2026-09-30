@@ -2189,13 +2189,17 @@ export async function onRequest(context) {
       let rows = [];
       try {
         const r = await env.DB.prepare(`SELECT * FROM posts WHERE status = ? ORDER BY created_at DESC`).bind(status).all();
-        rows = (r.results || []).map(row => ({
-          id: row.id, authorId: row.author_id, title: row.title, content: row.content,
-          category: row.category, status: row.status, createdAt: row.created_at,
-          comments: JSON.parse(row.comments || '[]')
+        rows = await Promise.all((r.results || []).map(async row => {
+          const author = await userById(env, row.author_id);
+          return {
+            id: row.id, authorId: row.author_id, title: row.title, content: row.content,
+            category: row.category, status: row.status, createdAt: row.created_at,
+            commentCount: (row.comments ? JSON.parse(row.comments).length : 0),
+            author: author ? pub(author) : { nickname: '未知用户' }
+          };
         }));
-      } catch {}
-      return json({ posts: rows.map(p => postOut(p, db)) });
+      } catch (e) { return bad(e.message); }
+      return json({ posts: rows });
     }
 
     // ---- 审核帖子 ----
