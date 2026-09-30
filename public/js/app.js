@@ -1,4 +1,19 @@
 ﻿/* ============ 文汇 · 前端 SPA ============ */
+// 深色模式（初始化 + toggle）
+(function initTheme() {
+  const saved = localStorage.getItem('theme');
+  if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    document.documentElement.classList.add('dark');
+  }
+  window.applyTheme = (isDark) => {
+    document.documentElement.classList.toggle('dark', isDark);
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+  };
+})();
+// 统一 routeCleanup（清理进度条 scroll 监听等）
+window.addEventListener('hashchange', () => {
+  setTimeout(() => document.dispatchEvent(new Event('routeCleanup')), 0);
+});
 const $app = document.getElementById('app');
 const $sidebar = document.getElementById('sidebar');
 const state = { me: null, token: localStorage.getItem('token') || null };
@@ -225,6 +240,10 @@ function renderSidebar() {
       ${link('/admin/files', '📁', '审核投稿')}
       ${link('/admin/invite', '🔑', '邀请码管理')}
       ${link('/admin/contest', '🏁', '创建比赛')}` : ''}
+      <div class="theme-toggle" id="themeToggle" title="切换深色模式">
+        <span id="themeIcon">🌙</span><span>${localStorage.getItem('theme') === 'dark' ? '深色' : '浅色'}</span>
+        <span class="dot"></span>
+      </div>
   </nav>
   <div class="user-zone" id="userZone">`;
   if (me) {
@@ -274,6 +293,16 @@ function toggleUserMenu() {
   setTimeout(() => document.addEventListener('click', closeMenu, { once: true }), 0);
 }
 function closeMenu() { const m = document.getElementById('userMenu'); if (m) m.remove(); }
+// 绑定主题切换
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('#themeToggle');
+  if (t) {
+    const now = !document.documentElement.classList.contains('dark');
+    applyTheme(now);
+    const label = t.querySelector('span:nth-child(2)'); if (label) label.textContent = now ? '深色' : '浅色';
+    const icon = t.querySelector('#themeIcon'); if (icon) icon.textContent = now ? '☀️' : '🌙';
+  }
+});
 
 /* 未读私信红点 */
 async function refreshUnread() {
@@ -327,7 +356,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
-  { date: '2026-09-30 04:00', author: 'ZhangCing', items: ['比赛创建支持一次性邀请码：admin 在后台生成 → 发给对方 → 对方输入即可创建（用完立即失效）', '新增 #/admin/invite 邀请码管理页（生成 / 列表）'] },
+  { date: '2026-09-30 05:00', author: 'ZhangCing', items: ['P0 全量 saveDB 替换为直接 SQL（20+ 端点彻底解决跨 isolate 持久化问题）', 'P1 相关推荐（根据分类+标签 2-3 排）、阅读进度条（顶部分数）、深色模式'] },
   { date: '2026-09-30 03:30', author: 'ZhangCing', items: ['网站更名：文洛 → 文汇（logo、标题、欢迎语、杯赛名、Schema 注释全量替换）'] },
   { date: '2026-09-30 03:00', author: 'ZhangCing', items: ['每日打卡改用分屏工作台；修复文件投稿/比赛/我的练习的 withAuthorSync 未定义错误'] },
   { date: '2026-09-30 02:00', author: 'ZhangCing', items: ['分屏工作台编辑区支持 Markdown 预览；新增「上传文件」模块（.txt/.md 点击或拖入导入）'] },
@@ -639,6 +668,7 @@ async function viewArticleDetail(id) {
   const stars = (n) => { let s = ''; for (let i = 1; i <= 5; i++) s += i <= n ? '★' : '☆'; return s; };
   const tagsHtml = (a.tags && a.tags.length) ? `<div style="margin-top:8px">${a.tags.map(t => `<a class="tag-chip" href="#/articles?tag=${encodeURIComponent(t)}">#${esc(t)}</a>`).join('')}</div>` : '';
   $app.innerHTML = `
+  <div id="readBar"></div>
   <div class="container" style="max-width:820px">
     <div class="card">
       <div class="doc-head">
@@ -694,6 +724,8 @@ async function viewArticleDetail(id) {
       </div>` : `<div class="empty" style="margin-bottom:12px"><a href="#/login">登录</a> 后参与评论</div>`}
       <div id="commentBox">${renderComments(cd.comments, 'article', id)}</div>
     </div>
+
+    <div class="card" id="relatedCard" style="display:none"></div>
   </div>`;
   // 绑定评论区事件（回复/删除/点赞）
   bindCommentEvents(document.getElementById('commentBox'));
@@ -750,6 +782,33 @@ async function viewArticleDetail(id) {
       route();
     } catch (e) { toast(e.message, 'err'); }
   };
+  // 阅读进度条
+  window.addEventListener('scroll', viewArticleDetail._onScroll = () => {
+    const bar = document.getElementById('readBar'); if (!bar) return;
+    const h = document.documentElement;
+    const pct = Math.min(100, Math.max(0, (h.scrollTop / (h.scrollHeight - h.clientHeight)) * 100));
+    bar.style.width = pct + '%';
+  });
+  viewArticleDetail._onScroll();
+  // 离开时清理
+  window.addEventListener('routeCleanup', viewArticleDetail._cleanup = () => {
+    window.removeEventListener('scroll', viewArticleDetail._onScroll);
+  });
+  // 相关推荐
+  api('/api/articles').then(r => {
+    const list = (r.articles || []).filter(x => x.id !== id && x.status === 'approved');
+    const sameCat = list.filter(x => x.category === a.category).slice(0, 6);
+    const sameTag = (a.tags && a.tags.length) ? list.filter(x => x.tags && x.tags.some(t => a.tags.includes(t))).slice(0, 6) : [];
+    const pool = [...sameCat, ...sameTag, ...list].filter((x, i, arr) => arr.findIndex(y => y.id === x.id) === i).slice(0, 6);
+    if (!pool.length) return;
+    const rc = document.getElementById('relatedCard');
+    rc.style.display = '';
+    rc.innerHTML = `<h2>📚 相关推荐</h2><div class="rel-grid">${pool.map(x => `
+      <a href="#/article/${x.id}" class="rel-item">
+        <div class="rel-title">${esc(x.title)}</div>
+        <div class="rel-meta"><span class="type-badge">${esc(x.category)}</span> · ${esc(x.author.nickname)} · 👁 ${x.views || 0}</div>
+      </a>`).join('')}</div>`;
+  }).catch(() => {});
 }
 
 /* 递归渲染楼中楼评论 */

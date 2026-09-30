@@ -1109,7 +1109,8 @@ export async function onRequest(context) {
       me.following = me.following || [];
       const i = me.following.indexOf(t.id);
       if (i >= 0) me.following.splice(i, 1); else me.following.push(t.id);
-      await saveDB(env);
+      try { await env.DB.prepare(`UPDATE users SET following=? WHERE id=?`).bind(JSON.stringify(me.following), me.id).run(); } catch (e) { return bad(e.message); }
+      invalidateCache();
       const followerCount = db.users.filter(x => (x.following || []).includes(t.id)).length;
       return json({ followed: i < 0, followerCount });
     }
@@ -1246,7 +1247,9 @@ export async function onRequest(context) {
         a.tags = JSON.stringify(body.tags.slice(0, 8).map(t => clean(t, 20)).filter(Boolean));
       }
       if (a.status !== 'approved') a.status = 'pending';
-      await saveDB(env);
+      try { await env.DB.prepare(`UPDATE articles SET title=?,content=?,status=?,tags=?,category=?,updated_at=? WHERE id=?`)
+        .bind(a.title, a.content, a.status, a.tags, a.category, Date.now(), a.id).run(); } catch (e) { return bad(e.message); }
+      invalidateCache();
       return json({ article: articleOut(a, db) });
     }
 
@@ -1259,7 +1262,8 @@ export async function onRequest(context) {
       if (i < 0) return bad('文章不存在', 404);
       if (db.articles[i].authorId !== me.id && me.role !== 'admin') return bad('无权限', 403);
       db.articles.splice(i, 1);
-      await saveDB(env);
+      try { await env.DB.prepare(`DELETE FROM articles WHERE id=?`).bind(m.id).run(); } catch (e) { return bad(e.message); }
+      invalidateCache();
       return json({ ok: true });
     }
 
@@ -1273,7 +1277,8 @@ export async function onRequest(context) {
       a.likes = a.likes || [];
       const i = a.likes.indexOf(me.id);
       if (i >= 0) a.likes.splice(i, 1); else a.likes.push(me.id);
-      await saveDB(env);
+      try { await env.DB.prepare(`UPDATE articles SET likes=?, like_count=? WHERE id=?`).bind(JSON.stringify(a.likes), a.likes.length, a.id).run(); } catch (e) { return bad(e.message); }
+      invalidateCache();
       return json({ liked: i < 0, likeCount: a.likes.length });
     }
 
@@ -1346,7 +1351,9 @@ export async function onRequest(context) {
       const category = POST_CATS.includes(body.category) ? body.category : '其他';
       const p = { id: uid('p'), authorId: me.id, title, content, category, status: 'pending', createdAt: Date.now(), comments: [] };
       db.posts.push(p);
-      await saveDB(env);
+      try { await env.DB.prepare(`INSERT INTO posts (id,author_id,title,content,category,status,created_at,comments) VALUES (?,?,?,?,?,?,?,?)`)
+        .bind(p.id, p.authorId, p.title, p.content, p.category, p.status, p.createdAt, '[]').run(); } catch (e) { return bad(e.message); }
+      invalidateCache();
       return json({ post: postOut(p, db) });
     }
 
@@ -1387,7 +1394,8 @@ export async function onRequest(context) {
       if (i < 0) return bad('帖子不存在', 404);
       if (db.posts[i].authorId !== me.id && me.role !== 'admin') return bad('无权限', 403);
       db.posts.splice(i, 1);
-      await saveDB(env);
+      try { await env.DB.prepare(`DELETE FROM posts WHERE id=?`).bind(m.id).run(); } catch (e) { return bad(e.message); }
+      invalidateCache();
       return json({ ok: true });
     }
 
@@ -1468,7 +1476,8 @@ export async function onRequest(context) {
       if (i < 0) return bad('评论不存在', 404);
       if (db.comments[i].authorId !== me.id && me.role !== 'admin') return bad('无权限', 403);
       db.comments.splice(i, 1);
-      await saveDB(env);
+      try { await env.DB.prepare(`DELETE FROM comments WHERE id=?`).bind(m.id).run(); } catch (e) { return bad(e.message); }
+      invalidateCache();
       return json({ ok: true });
     }
 
@@ -1481,7 +1490,8 @@ export async function onRequest(context) {
       if (!c.likes) c.likes = [];
       const idx = c.likes.indexOf(me.id);
       if (idx >= 0) c.likes.splice(idx, 1); else c.likes.push(me.id);
-      await saveDB(env);
+      try { await env.DB.prepare(`UPDATE comments SET likes=? WHERE id=?`).bind(JSON.stringify(c.likes), c.id).run(); } catch (e) { return bad(e.message); }
+      invalidateCache();
       return json({ liked: idx < 0, likeCount: c.likes.length });
     }
 
@@ -1525,7 +1535,8 @@ export async function onRequest(context) {
       const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       db.notifications.forEach(n => { if (n.userId === me.id) n.read = 1; });
-      await saveDB(env);
+      try { await env.DB.prepare(`UPDATE notifications SET read=1 WHERE user_id=? OR user=?`).bind(me.id, me.id).run(); } catch (e) {}
+      invalidateCache();
       return json({ ok: true });
     }
     // POST /api/notifications/:id/read
@@ -1536,7 +1547,8 @@ export async function onRequest(context) {
       const n = db.notifications.find(x => x.id === m.id);
       if (!n || n.userId !== me.id) return bad('不存在', 404);
       n.read = 1;
-      await saveDB(env);
+      try { await env.DB.prepare(`UPDATE notifications SET read=1 WHERE id=?`).bind(m.id).run(); } catch (e) {}
+      invalidateCache();
       return json({ ok: true });
     }
 
@@ -1828,7 +1840,8 @@ export async function onRequest(context) {
       let s = c.submissions.find(x => x.problemId === p.id && x.authorId === me.id);
       if (s) { s.title = title; s.content = content; s.wordCount = wordCount; s.updatedAt = Date.now(); }
       else { s = { id: uid('s'), problemId: p.id, authorId: me.id, title, content, wordCount, createdAt: Date.now() }; c.submissions.push(s); }
-      await saveDB(env);
+      try { await env.DB.prepare(`UPDATE contests SET submissions=? WHERE id=?`).bind(JSON.stringify(c.submissions), c.id).run(); } catch (e) { return bad(e.message); }
+      invalidateCache();
       return json({ submission: s });
     }
 
@@ -1865,7 +1878,8 @@ export async function onRequest(context) {
       const i = db.contests.findIndex(x => x.id === m.id);
       if (i < 0) return bad('比赛不存在', 404);
       db.contests.splice(i, 1);
-      await saveDB(env);
+      try { await env.DB.prepare(`DELETE FROM contests WHERE id=?`).bind(m.id).run(); } catch (e) { return bad(e.message); }
+      invalidateCache();
       return json({ ok: true });
     }
 
@@ -1916,7 +1930,9 @@ export async function onRequest(context) {
       const isAdmin = me.role === 'admin';
       const p = { id: uid('q'), type, title, content, difficulty, tags, createdBy: me.id, createdAt: Date.now(), status: isAdmin ? 'approved' : 'pending' };
       db.problems.push(p);
-      await saveDB(env);
+      try { await env.DB.prepare(`INSERT INTO problems (id,type,title,content,difficulty,tags,created_by,created_at,status) VALUES (?,?,?,?,?,?,?,?,?)`)
+        .bind(p.id, p.type, p.title, p.content, p.difficulty, p.tags, p.createdBy, p.createdAt, p.status).run(); } catch (e) { return bad(e.message); }
+      invalidateCache();
       return json({ problem: problemOut(p, db) });
     }
 
@@ -1930,7 +1946,9 @@ export async function onRequest(context) {
       if (i < 0) return bad('题目不存在', 404);
       db.practices = db.practices.filter(x => x.problemId !== m.id);
       db.problems.splice(i, 1);
-      await saveDB(env);
+      try { await env.DB.prepare(`DELETE FROM practices WHERE problem_id=?`).bind(m.id).run(); } catch (e) {}
+      try { await env.DB.prepare(`DELETE FROM problems WHERE id=?`).bind(m.id).run(); } catch (e) { return bad(e.message); }
+      invalidateCache();
       return json({ ok: true });
     }
 
@@ -1948,9 +1966,17 @@ export async function onRequest(context) {
       if (!title || !content) return bad('标题和内容不能为空');
       const wordCount = content.replace(/\s/g, '').length;
       let s = db.practices.find(x => x.problemId === p.id && x.authorId === me.id);
-      if (s) { s.title = title; s.content = content; s.wordCount = wordCount; s.updatedAt = Date.now(); }
-      else { s = { id: uid('r'), problemId: p.id, authorId: me.id, title, content, wordCount, createdAt: Date.now() }; db.practices.push(s); }
-      await saveDB(env);
+      if (s) {
+        s.title = title; s.content = content; s.wordCount = wordCount; s.updatedAt = Date.now();
+        try { await env.DB.prepare(`UPDATE practices SET title=?,content=?,word_count=?,updated_at=? WHERE id=?`)
+          .bind(s.title, s.content, s.wordCount, s.updatedAt, s.id).run(); } catch (e) { return bad(e.message); }
+      } else {
+        s = { id: uid('r'), problemId: p.id, authorId: me.id, title, content, wordCount, createdAt: Date.now() };
+        db.practices.push(s);
+        try { await env.DB.prepare(`INSERT INTO practices (id,problem_id,author_id,title,content,word_count,created_at) VALUES (?,?,?,?,?,?,?)`)
+          .bind(s.id, s.problemId, s.authorId, s.title, s.content, s.wordCount, s.createdAt).run(); } catch (e) { return bad(e.message); }
+      }
+      invalidateCache();
       return json({ practice: s });
     }
 
@@ -1989,7 +2015,9 @@ export async function onRequest(context) {
       await env.DATA.put('file:' + storedName, btoa(base64));
       const f = { id: fileId, authorId: me.id, originalName: file.name, storedName, size: file.size, note, status: 'pending', createdAt: Date.now() };
       db.files.push(f);
-      await saveDB(env);
+      try { await env.DB.prepare(`INSERT INTO files (id,author_id,original_name,stored_name,size,note,status,created_at) VALUES (?,?,?,?,?,?,?,?)`)
+        .bind(f.id, f.authorId, f.originalName, f.storedName, f.size, f.note, f.status, f.createdAt).run(); } catch (e) { return bad(e.message); }
+      invalidateCache();
       return json({ file: withAuthorSync(f, db) });
     }
 
@@ -2125,7 +2153,8 @@ export async function onRequest(context) {
       if (!f) return bad('文件不存在', 404);
       f.status = body.action === 'approve' ? 'approved' : 'rejected';
       f.reviewedAt = Date.now();
-      await saveDB(env);
+      try { await env.DB.prepare(`UPDATE files SET status=?, reviewed_at=? WHERE id=?`).bind(f.status, f.reviewedAt, f.id).run(); } catch (e) { return bad(e.message); }
+      invalidateCache();
       return json({ ok: true, status: f.status });
     }
 
@@ -2148,7 +2177,8 @@ export async function onRequest(context) {
       if (!p) return bad('题目不存在', 404);
       p.status = body.action === 'approve' ? 'approved' : 'rejected';
       p.reviewedAt = Date.now();
-      await saveDB(env);
+      try { await env.DB.prepare(`UPDATE problems SET status=?, reviewed_at=? WHERE id=?`).bind(p.status, p.reviewedAt, p.id).run(); } catch (e) { return bad(e.message); }
+      invalidateCache();
       return json({ ok: true, status: p.status });
     }
     // GET /api/admin/stats
@@ -2261,7 +2291,10 @@ export async function onRequest(context) {
       // 点评 3 次获得「热心点评员」勋章
       const myReviewCount = db.reviews.filter(x => x.authorId === me.id).length;
       if (myReviewCount >= 3) awardBadge(me.id, '热心点评员', '你已点评 3 篇以上文章');
-      await saveDB(env);
+      try { await env.DB.prepare(`INSERT INTO reviews (id,article_id,author_id,rating,content,created_at) VALUES (?,?,?,?,?,?)`)
+        .bind(uid('rv'), r.targetId, r.authorId, r.rating, r.content, Date.now()).run(); } catch (e) { return bad(e.message); }
+      try { await env.DB.prepare(`UPDATE users SET score=?, badges=? WHERE id=?`).bind(me.score, JSON.stringify(me.badges), me.id).run(); } catch (e) {}
+      invalidateCache();
       return json({ ok: true, review: { ...r, author: withAuthorSyncSimple(me.id, db) } });
     }
 
@@ -2339,7 +2372,10 @@ export async function onRequest(context) {
       if (streak >= 30) awardBadge(me.id, '月度冠军', '连续打卡 30 天');
       // 清理临时字段
       delete me._tmpStreak;
-      await saveDB(env);
+      try { await env.DB.prepare(`INSERT INTO checkins (id,author_id,problem_id,content,word_count,points,streak,created_at) VALUES (?,?,?,?,?,?,?,?)`)
+        .bind(c.id, c.authorId, c.problemId, c.content, c.wordCount, c.points, c.streak, c.createdAt).run(); } catch (e) { return bad(e.message); }
+      try { await env.DB.prepare(`UPDATE users SET score=?, badges=? WHERE id=?`).bind(me.score, JSON.stringify(me.badges), me.id).run(); } catch (e) {}
+      invalidateCache();
       return json({ ok: true, checkin: c, streak, points });
     }
 
