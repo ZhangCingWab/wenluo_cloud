@@ -356,6 +356,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-01 03:00', author: 'ZhangCing', items: ['修复我的投稿记录/文件下载显示 undefined（files 表列名 camelCase/snake_case 兼容）', 'admin 审核 files/problems 列表改直接 SQL 查询'] },
   { date: '2026-09-30 05:00', author: 'ZhangCing', items: ['P0 全量 saveDB 替换为直接 SQL（20+ 端点彻底解决跨 isolate 持久化问题）', 'P1 相关推荐（根据分类+标签 2-3 排）、阅读进度条（顶部分数）、深色模式'] },
   { date: '2026-09-30 03:30', author: 'ZhangCing', items: ['网站更名：文洛 → 文汇（logo、标题、欢迎语、杯赛名、Schema 注释全量替换）'] },
   { date: '2026-09-30 03:00', author: 'ZhangCing', items: ['每日打卡改用分屏工作台；修复文件投稿/比赛/我的练习的 withAuthorSync 未定义错误'] },

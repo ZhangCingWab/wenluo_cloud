@@ -2025,7 +2025,18 @@ export async function onRequest(context) {
     if (match(path, 'files/mine') && method === 'GET') {
       const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
-      return json({ files: db.files.filter(f => f.authorId === me.id).sort((a, b) => b.createdAt - a.createdAt).map(f => withAuthorSync(f, db)) });
+      let rows = [];
+      try { rows = (await env.DB.prepare(`SELECT * FROM files WHERE author_id=? ORDER BY created_at DESC`).bind(me.id).all()).results || []; }
+      catch (e) { return bad(e.message); }
+      return json({ files: rows.map(r => {
+        const author = userByIdSync(db, r.author_id) || pub(me);
+        return {
+          id: r.id, authorId: r.author_id, originalName: r.original_name || r.originalName,
+          storedName: r.stored_name || r.storedName, size: r.size,
+          note: r.note, status: r.status, createdAt: r.created_at,
+          reviewedAt: r.reviewed_at, author
+        };
+      })});
     }
 
     // ---- 文件下载 ----
@@ -2033,19 +2044,23 @@ export async function onRequest(context) {
     if (m && method === 'GET') {
       const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
-      const f = db.files.find(x => x.id === m.id);
-      if (!f) return bad('文件不存在', 404);
-      if (f.authorId !== me.id && me.role !== 'admin') return bad('无权限下载', 403);
-      const b64 = await env.DATA.get('file:' + f.storedName);
+      let row;
+      try { row = (await env.DB.prepare(`SELECT * FROM files WHERE id=?`).bind(m.id).all()).results[0]; }
+      catch (e) { return bad(e.message); }
+      if (!row) return bad('文件不存在', 404);
+      if (row.author_id !== me.id && me.role !== 'admin') return bad('无权限下载', 403);
+      const stored = row.stored_name || row.storedName;
+      const b64 = await env.DATA.get('file:' + stored);
       if (!b64) return bad('文件已丢失', 404);
       const binary = atob(b64);
       const arr = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
-      const mime = guessMime(f.storedName);
+      const mime = guessMime(stored);
+      const origName = row.original_name || row.originalName || 'file';
       return new Response(arr, {
         headers: {
           'Content-Type': mime,
-          'Content-Disposition': `attachment; filename="${encodeURIComponent(f.originalName)}"`,
+          'Content-Disposition': `attachment; filename="${encodeURIComponent(origName)}"`,
           'Access-Control-Allow-Origin': '*'
         }
       });
