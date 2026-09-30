@@ -905,8 +905,11 @@ async function auth(request, env) {
   const token = header.replace(/^Bearer\s+/i, '');
   const userId = await resolveToken(env, token);
   if (!userId) return null;
-  // 直接查 D1（跨 isolate 内存不共享，必须 SQL）
-  return await userById(env, userId);
+  // 直接 env.DB.prepare 查，不吞异常（dbFirst 的 catch {} 会把真实错误藏起来）
+  let row;
+  try { row = (await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first()); } catch { return null; }
+  if (!row) return null;
+  return toCamel(row);
 }
 
 /* ---------------- 路由匹配 ---------------- */
@@ -998,9 +1001,10 @@ export async function onRequest(context) {
       const body = await request.json().catch(() => ({}));
       const username = clean(body.username, 24);
       if (!username || typeof body.password !== 'string') return bad('请输入用户名和密码');
-      // 直接查 D1（跨 isolate 内存不共享），dbFirst 返回 camelCase
-      let user;
-      try { user = await userByIdByUsername(env, username); } catch (e) { return bad(e.message); }
+      // 直接 env.DB.prepare 查，不吞异常
+      let row;
+      try { row = await env.DB.prepare('SELECT * FROM users WHERE username = ? COLLATE NOCASE').bind(username).first(); } catch (e) { return bad(e.message); }
+      let user = row ? toCamel(row) : null;
       const genericError = '用户名或密码错误';
       if (!user) { await sleep(300); return bad(genericError); }
       if (user.lockedUntil && Date.now() < user.lockedUntil) {
