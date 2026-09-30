@@ -1122,47 +1122,51 @@ export async function onRequest(context) {
       let stats = { users: 0, articles: 0, posts: 0, contests: 0 };
       let latestArticles = [], latestPosts = [], activeContests = [];
       try {
-        // 全部直接 env.DB.prepare 查（绕 dbFirst/dbAll 的 toCamel 转换，避免异常被吞）
-        const [uR, aR, pR, cR, artsR, postsR, contestsR] = await Promise.all([
-          env.DB.prepare('SELECT COUNT(*) as c FROM users').first(),
-          env.DB.prepare("SELECT COUNT(*) as c FROM articles WHERE status='approved'").first(),
-          env.DB.prepare("SELECT COUNT(*) as c FROM posts WHERE status='approved'").first(),
-          env.DB.prepare('SELECT COUNT(*) as c FROM contests').first(),
-          env.DB.prepare("SELECT * FROM articles WHERE status='approved' ORDER BY created_at DESC LIMIT 6").all(),
-          env.DB.prepare("SELECT * FROM posts WHERE status='approved' ORDER BY created_at DESC LIMIT 6").all(),
+        // 先全量 SELECT 所有表再在 JS 里 filter — 避免 COUNT + WHERE 异常被吞
+        const [usersR, artsAll, postsAll, contestsAll] = await Promise.all([
+          env.DB.prepare('SELECT * FROM users').all(),
+          env.DB.prepare('SELECT * FROM articles').all(),
+          env.DB.prepare('SELECT * FROM posts').all(),
           env.DB.prepare('SELECT * FROM contests').all()
         ]);
+        const users = (usersR.results || []).map(toCamel);
+        const allArts = (artsAll.results || []).map(toCamel);
+        const allPosts = (postsAll.results || []).map(toCamel);
+        const allContests = (contestsAll.results || []).map(toCamel);
+        const approvedArts = allArts.filter(a => a.status === 'approved');
+        const approvedPosts = allPosts.filter(p => p.status === 'approved');
         stats = {
-          users: uR?.c || 0,
-          articles: aR?.c || 0,
-          posts: pR?.c || 0,
-          contests: cR?.c || 0
+          users: users.length,
+          articles: approvedArts.length,
+          posts: approvedPosts.length,
+          contests: allContests.length
         };
-        const arts = (artsR.results || []).map(toCamel);
-        const posts = (postsR.results || []).map(toCamel);
-        const allContests = (contestsR.results || []).map(toCamel);
         // 组装最新文章
-        latestArticles = await Promise.all(arts.map(async row => {
-          const author = await userById(env, row.authorId);
-          return {
-            id: row.id, authorId: row.authorId, title: row.title, content: row.content,
-            category: row.category, status: row.status, views: row.views || 0,
-            likeCount: (row.likes ? safeJSON(row.likes).length : 0),
-            tags: row.tags ? safeJSON(row.tags) : [],
-            createdAt: row.createdAt, reviewedAt: row.reviewedAt,
-            author: author ? pub(author) : { nickname: '未知用户' }
-          };
-        }));
+        latestArticles = await Promise.all(
+          approvedArts.sort((a, b) => b.createdAt - a.createdAt).slice(0, 6).map(async row => {
+            const author = await userById(env, row.authorId);
+            return {
+              id: row.id, authorId: row.authorId, title: row.title, content: row.content,
+              category: row.category, status: row.status, views: row.views || 0,
+              likeCount: (row.likes ? safeJSON(row.likes).length : 0),
+              tags: row.tags ? safeJSON(row.tags) : [],
+              createdAt: row.createdAt, reviewedAt: row.reviewedAt,
+              author: author ? pub(author) : { nickname: '未知用户' }
+            };
+          })
+        );
         // 组装最新帖子
-        latestPosts = await Promise.all(posts.map(async row => {
-          const author = await userById(env, row.authorId);
-          return {
-            id: row.id, authorId: row.authorId, title: row.title, content: row.content,
-            category: row.category, status: row.status, createdAt: row.createdAt,
-            commentCount: (row.comments ? safeJSON(row.comments).length : 0),
-            author: author ? pub(author) : { nickname: '未知用户' }
-          };
-        }));
+        latestPosts = await Promise.all(
+          approvedPosts.sort((a, b) => b.createdAt - a.createdAt).slice(0, 6).map(async row => {
+            const author = await userById(env, row.authorId);
+            return {
+              id: row.id, authorId: row.authorId, title: row.title, content: row.content,
+              category: row.category, status: row.status, createdAt: row.createdAt,
+              commentCount: (row.comments ? safeJSON(row.comments).length : 0),
+              author: author ? pub(author) : { nickname: '未知用户' }
+            };
+          })
+        );
         // 活跃比赛
         activeContests = allContests
           .filter(c => (c.startTime || 0) <= now && now <= (c.endTime || 0))
