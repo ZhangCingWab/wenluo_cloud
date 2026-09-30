@@ -294,6 +294,62 @@ async function ensureSeedData(env) {
     )`);
   } catch {}
 
+  /* ---------- 旧 camelCase 表一次性迁移为 snake_case（saveDB 时代遗留） ---------- */
+  // files/problems/practices 是旧 saveDB 按内存对象自动建的表，列名是 camelCase（authorId、
+  // originalName、createdAt），导致所有 snake_case SQL 报 "no such column"：投稿上传失败、
+  // 审核列表永远为空。这里运行时检测真实列名，若是 camelCase 则建新表搬数据后换名（幂等）。
+  async function migrateTableToSnake(table, createSQL, colMap) {
+    try {
+      const info = (await env.DB.prepare(`PRAGMA table_info(${table})`).all()).results || [];
+      const cols = info.map(c => c.name);
+      if (cols.length === 0) { await env.DB.prepare(createSQL).run(); return; } // 表不存在 → 直接建
+      const needCols = colMap.map(m => m.s);
+      if (needCols.every(c => cols.includes(c))) return; // 已是 snake_case → 跳过
+      await env.DB.prepare(`DROP TABLE IF EXISTS ${table}__mig`).run();
+      await env.DB.prepare(createSQL.replace(`TABLE ${table}`, `TABLE ${table}__mig`)).run();
+      const pick = m => cols.includes(m.s) ? m.s : (cols.includes(m.c) ? m.c : 'NULL');
+      const sel = colMap.map(m => `${pick(m)} AS ${m.s}`).join(', ');
+      await env.DB.prepare(`INSERT INTO ${table}__mig (${needCols.join(',')}) SELECT ${sel} FROM ${table}`).run();
+      await env.DB.prepare(`DROP TABLE ${table}`).run();
+      await env.DB.prepare(`ALTER TABLE ${table}__mig RENAME TO ${table}`).run();
+      console.error(`[migrate] ${table}: camelCase → snake_case 迁移完成`);
+    } catch (e) { console.error(`[migrate] ${table} 迁移失败:`, e.message); }
+  }
+  await migrateTableToSnake('files', `CREATE TABLE files (
+    id TEXT PRIMARY KEY, author_id TEXT, original_name TEXT, stored_name TEXT,
+    size INTEGER, note TEXT, status TEXT, created_at INTEGER, reviewed_at INTEGER
+  )`, [
+    { s: 'id', c: 'id' }, { s: 'author_id', c: 'authorId' },
+    { s: 'original_name', c: 'originalName' }, { s: 'stored_name', c: 'storedName' },
+    { s: 'size', c: 'size' }, { s: 'note', c: 'note' }, { s: 'status', c: 'status' },
+    { s: 'created_at', c: 'createdAt' }, { s: 'reviewed_at', c: 'reviewedAt' }
+  ]);
+  await migrateTableToSnake('problems', `CREATE TABLE problems (
+    id TEXT PRIMARY KEY, type TEXT, title TEXT, content TEXT, difficulty INTEGER,
+    tags TEXT, created_by TEXT, status TEXT DEFAULT 'approved', created_at INTEGER, reviewed_at INTEGER
+  )`, [
+    { s: 'id', c: 'id' }, { s: 'type', c: 'type' }, { s: 'title', c: 'title' },
+    { s: 'content', c: 'content' }, { s: 'difficulty', c: 'difficulty' }, { s: 'tags', c: 'tags' },
+    { s: 'created_by', c: 'createdBy' }, { s: 'status', c: 'status' },
+    { s: 'created_at', c: 'createdAt' }, { s: 'reviewed_at', c: 'reviewedAt' }
+  ]);
+  await migrateTableToSnake('practices', `CREATE TABLE practices (
+    id TEXT PRIMARY KEY, problem_id TEXT, author_id TEXT, title TEXT, content TEXT,
+    word_count INTEGER, created_at INTEGER
+  )`, [
+    { s: 'id', c: 'id' }, { s: 'problem_id', c: 'problemId' }, { s: 'author_id', c: 'authorId' },
+    { s: 'title', c: 'title' }, { s: 'content', c: 'content' },
+    { s: 'word_count', c: 'wordCount' }, { s: 'created_at', c: 'createdAt' }
+  ]);
+  // templates 表之前根本没建过，种子数据一直静默失败
+  await migrateTableToSnake('templates', `CREATE TABLE templates (
+    id TEXT PRIMARY KEY, title TEXT, category TEXT, description TEXT,
+    content TEXT, created_at INTEGER
+  )`, [
+    { s: 'id', c: 'id' }, { s: 'title', c: 'title' }, { s: 'category', c: 'category' },
+    { s: 'description', c: 'description' }, { s: 'content', c: 'content' }, { s: 'created_at', c: 'createdAt' }
+  ]);
+
   // Admin 用户（如果没的话）
   let uc = (await dbFirst(env, 'SELECT COUNT(*) as c FROM users'))?.c || 0;
   if (uc === 0) {
