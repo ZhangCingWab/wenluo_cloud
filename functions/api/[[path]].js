@@ -542,9 +542,12 @@ async function computeScore(env, userId) {
 }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// userById: 从 D1 查询
+// userById: 从 D1 查询（dbFirst 返回 camelCase）
 async function userById(env, id) {
   return dbFirst(env, 'SELECT * FROM users WHERE id = ?', [id]);
+}
+async function userByIdByUsername(env, username) {
+  return dbFirst(env, 'SELECT * FROM users WHERE username = ? COLLATE NOCASE', [username]);
 }
 // userById 同步版：从内存 _cache 找（推荐，已经 loadDB 预加载了）
 function userByIdSync(db, id) {
@@ -995,26 +998,25 @@ export async function onRequest(context) {
       const body = await request.json().catch(() => ({}));
       const username = clean(body.username, 24);
       if (!username || typeof body.password !== 'string') return bad('请输入用户名和密码');
-      // 直接查 D1（跨 isolate 内存不共享，必须 SQL）
+      // 直接查 D1（跨 isolate 内存不共享），dbFirst 返回 camelCase
       let user;
-      try { user = await dbFirst(env, 'SELECT * FROM users WHERE username = ? COLLATE NOCASE', [username]); } catch (e) { return bad(e.message); }
-      // 统一错误消息，防止用户名枚举
+      try { user = await userByIdByUsername(env, username); } catch (e) { return bad(e.message); }
       const genericError = '用户名或密码错误';
-      if (!user) { await sleep(300); return bad(genericError); } // 延时防枚举
-      if (user.locked_until && Date.now() < user.locked_until) {
-        const mins = Math.ceil((user.locked_until - Date.now()) / 60000);
+      if (!user) { await sleep(300); return bad(genericError); }
+      if (user.lockedUntil && Date.now() < user.lockedUntil) {
+        const mins = Math.ceil((user.lockedUntil - Date.now()) / 60000);
         return bad(`该账号已因多次登录失败被锁定，请 ${mins} 分钟后再试`, 429);
       }
       const ok = await verifyPassword(body.password, user);
       if (!ok) {
-        const newFails = (user.login_fails || 0) + 1;
+        const newFails = (user.loginFails || 0) + 1;
         const newLocked = newFails >= 5 ? Date.now() + 10 * 60000 : 0;
         const finalFails = newFails >= 5 ? 0 : newFails;
-        await dbRun(env, 'UPDATE users SET login_fails=?, locked_until=? WHERE id=?', [finalFails, newLocked, user.id]);
-        await sleep(300); // 延时防暴力破解
+        await env.DB.prepare('UPDATE users SET login_fails=?, locked_until=? WHERE id=?').bind(finalFails, newLocked, user.id).run();
+        await sleep(300);
         return bad(genericError);
       }
-      await dbRun(env, 'UPDATE users SET login_fails=0, locked_until=0 WHERE id=?', [user.id]);
+      await env.DB.prepare('UPDATE users SET login_fails=0, locked_until=0 WHERE id=?').bind(user.id).run();
       const token = await createToken(env, user.id);
       return json({ user: pubFull(user), token });
     }
@@ -1117,64 +1119,67 @@ export async function onRequest(context) {
     // ---- 首页 ----
     if (match(path, 'home') && method === 'GET') {
       const now = Date.now();
-      // 全部直接查 D1（跨 isolate 内存不共享）
       let stats = { users: 0, articles: 0, posts: 0, contests: 0 };
       let latestArticles = [], latestPosts = [], activeContests = [];
       try {
-        const [uC, aC, pC, cC, arts, posts, allContests] = await Promise.all([
-          dbFirst(env, 'SELECT COUNT(*) as c FROM users'),
-          dbFirst(env, "SELECT COUNT(*) as c FROM articles WHERE status='approved'"),
-          dbFirst(env, "SELECT COUNT(*) as c FROM posts WHERE status='approved'"),
-          dbFirst(env, 'SELECT COUNT(*) as c FROM contests'),
-          dbAll(env, "SELECT * FROM articles WHERE status='approved' ORDER BY created_at DESC LIMIT 6"),
-          dbAll(env, "SELECT * FROM posts WHERE status='approved' ORDER BY created_at DESC LIMIT 6"),
-          dbAll(env, 'SELECT * FROM contests')
+        // 全部直接 env.DB.prepare 查（绕 dbFirst/dbAll 的 toCamel 转换，避免异常被吞）
+        const [uR, aR, pR, cR, artsR, postsR, contestsR] = await Promise.all([
+          env.DB.prepare('SELECT COUNT(*) as c FROM users').first(),
+          env.DB.prepare("SELECT COUNT(*) as c FROM articles WHERE status='approved'").first(),
+          env.DB.prepare("SELECT COUNT(*) as c FROM posts WHERE status='approved'").first(),
+          env.DB.prepare('SELECT COUNT(*) as c FROM contests').first(),
+          env.DB.prepare("SELECT * FROM articles WHERE status='approved' ORDER BY created_at DESC LIMIT 6").all(),
+          env.DB.prepare("SELECT * FROM posts WHERE status='approved' ORDER BY created_at DESC LIMIT 6").all(),
+          env.DB.prepare('SELECT * FROM contests').all()
         ]);
         stats = {
-          users: uC?.c || 0,
-          articles: aC?.c || 0,
-          posts: pC?.c || 0,
-          contests: cC?.c || 0
+          users: uR?.c || 0,
+          articles: aR?.c || 0,
+          posts: pR?.c || 0,
+          contests: cR?.c || 0
         };
-        // 组装最新文章（手动映射 snake_case → 前端 camelCase）
-        latestArticles = await Promise.all((arts || []).map(async row => {
-          const author = await userById(env, row.author_id);
+        const arts = (artsR.results || []).map(toCamel);
+        const posts = (postsR.results || []).map(toCamel);
+        const allContests = (contestsR.results || []).map(toCamel);
+        // 组装最新文章
+        latestArticles = await Promise.all(arts.map(async row => {
+          const author = await userById(env, row.authorId);
           return {
-            id: row.id, authorId: row.author_id, title: row.title, content: row.content,
+            id: row.id, authorId: row.authorId, title: row.title, content: row.content,
             category: row.category, status: row.status, views: row.views || 0,
-            likeCount: (row.likes ? JSON.parse(row.likes).length : 0),
-            tags: row.tags ? JSON.parse(row.tags) : [],
-            createdAt: row.created_at, reviewedAt: row.reviewed_at,
+            likeCount: (row.likes ? safeJSON(row.likes).length : 0),
+            tags: row.tags ? safeJSON(row.tags) : [],
+            createdAt: row.createdAt, reviewedAt: row.reviewedAt,
             author: author ? pub(author) : { nickname: '未知用户' }
           };
         }));
         // 组装最新帖子
-        latestPosts = await Promise.all((posts || []).map(async row => {
-          const author = await userById(env, row.author_id);
+        latestPosts = await Promise.all(posts.map(async row => {
+          const author = await userById(env, row.authorId);
           return {
-            id: row.id, authorId: row.author_id, title: row.title, content: row.content,
-            category: row.category, status: row.status, createdAt: row.created_at,
-            commentCount: (row.comments ? JSON.parse(row.comments).length : 0),
+            id: row.id, authorId: row.authorId, title: row.title, content: row.content,
+            category: row.category, status: row.status, createdAt: row.createdAt,
+            commentCount: (row.comments ? safeJSON(row.comments).length : 0),
             author: author ? pub(author) : { nickname: '未知用户' }
           };
         }));
-        // 活跃比赛（start_time <= now <= end_time）
-        activeContests = (allContests || [])
-          .filter(c => (c.start_time || c.startTime || 0) <= now && now <= (c.end_time || c.endTime || 0))
+        // 活跃比赛
+        activeContests = allContests
+          .filter(c => (c.startTime || 0) <= now && now <= (c.endTime || 0))
           .map(c => ({
             id: c.id, title: c.title, description: c.description,
             participantCount: (() => {
-              const p = c.participants ? JSON.parse(c.participants) : [];
+              const p = c.participants ? safeJSON(c.participants) : [];
               return Array.isArray(p) ? p.length : 0;
             })(),
             problemCount: (() => {
-              const p = c.problems ? JSON.parse(c.problems) : [];
+              const p = c.problems ? safeJSON(c.problems) : [];
               return Array.isArray(p) ? p.length : 0;
             })(),
-            startTime: c.start_time, endTime: c.end_time, createdAt: c.created_at,
+            startTime: c.startTime, endTime: c.endTime, createdAt: c.createdAt,
             status: 'active'
           })).slice(0, 3);
-      } catch {}
+      } catch (e) { /* 出错时返回默认空数据 */ }
       return json({ stats, latestArticles, latestPosts, activeContests });
     }
 
@@ -2266,19 +2271,18 @@ export async function onRequest(context) {
     if (match(path, 'admin/stats') && method === 'GET') {
       const me = await auth(request, env);
       if (!me || me.role !== 'admin') return bad('需要管理员权限', 403);
-      // 全部直接查 D1（跨 isolate 内存不共享）
       try {
         const [uC, aC, pC, cC, aP, pP, coC, prC, chC, fC] = await Promise.all([
-          dbFirst(env, 'SELECT COUNT(*) as c FROM users'),
-          dbFirst(env, 'SELECT COUNT(*) as c FROM articles'),
-          dbFirst(env, 'SELECT COUNT(*) as c FROM posts'),
-          dbFirst(env, 'SELECT COUNT(*) as c FROM comments'),
-          dbFirst(env, "SELECT COUNT(*) as c FROM articles WHERE status='pending'"),
-          dbFirst(env, "SELECT COUNT(*) as c FROM posts WHERE status='pending'"),
-          dbFirst(env, 'SELECT COUNT(*) as c FROM contests'),
-          dbFirst(env, 'SELECT COUNT(*) as c FROM problems'),
-          dbFirst(env, 'SELECT COUNT(*) as c FROM checkins'),
-          dbFirst(env, 'SELECT COUNT(*) as c FROM files')
+          env.DB.prepare('SELECT COUNT(*) as c FROM users').first(),
+          env.DB.prepare('SELECT COUNT(*) as c FROM articles').first(),
+          env.DB.prepare('SELECT COUNT(*) as c FROM posts').first(),
+          env.DB.prepare('SELECT COUNT(*) as c FROM comments').first(),
+          env.DB.prepare("SELECT COUNT(*) as c FROM articles WHERE status='pending'").first(),
+          env.DB.prepare("SELECT COUNT(*) as c FROM posts WHERE status='pending'").first(),
+          env.DB.prepare('SELECT COUNT(*) as c FROM contests').first(),
+          env.DB.prepare('SELECT COUNT(*) as c FROM problems').first(),
+          env.DB.prepare('SELECT COUNT(*) as c FROM checkins').first(),
+          env.DB.prepare('SELECT COUNT(*) as c FROM files').first()
         ]);
         return json({
           users: uC?.c || 0,
