@@ -1232,13 +1232,19 @@ export async function onRequest(context) {
       let rows = [];
       try {
         const r = await env.DB.prepare(`SELECT * FROM articles WHERE author_id = ? ORDER BY created_at DESC`).bind(me.id).all();
-        rows = (r.results || []).map(row => ({
-          id: row.id, authorId: row.author_id, title: row.title, content: row.content,
-          category: row.category, status: row.status, views: row.views, likes: JSON.parse(row.likes || '[]'),
-          tags: row.tags, createdAt: row.created_at, reviewedAt: row.reviewed_at
+        rows = await Promise.all((r.results || []).map(async row => {
+          const author = await userById(env, row.author_id);
+          return {
+            id: row.id, authorId: row.author_id, title: row.title, content: row.content,
+            category: row.category, status: row.status, views: row.views || 0,
+            likeCount: (row.likes ? JSON.parse(row.likes).length : 0),
+            tags: row.tags ? JSON.parse(row.tags) : [],
+            createdAt: row.created_at, reviewedAt: row.reviewed_at,
+            author: author ? pub(author) : { nickname: '未知用户' }
+          };
         }));
-      } catch {}
-      return json({ articles: rows.map(a => articleOut(a, db)) });
+      } catch (e) { return bad('查询失败: ' + e.message); }
+      return json({ articles: rows });
     }
 
     // ---- 文章详情 ----
@@ -1277,6 +1283,9 @@ export async function onRequest(context) {
         await env.DB.prepare(`INSERT INTO articles (id, author_id, title, content, category, status, views, likes, tags, created_at)
           VALUES (?,?,?,?,?,?,?,?,?,?)`)
           .bind(id, me.id, title, content, category, status, 0, '[]', JSON.stringify(tagsRaw), now).run();
+        // 立刻 SELECT COUNT 验证真的写进 D1（防止静默丢失）
+        const verify = await env.DB.prepare('SELECT COUNT(*) as c FROM articles WHERE id = ?').bind(id).first();
+        if (!verify?.c) return bad('创建失败：数据库未确认写入，请稍后重试');
       } catch (e) { return bad('创建失败: ' + e.message); }
       const a = { id, authorId: me.id, title, content, category, status, views: 0, likes: [], tags: JSON.stringify(tagsRaw), createdAt: now };
       db.articles.push(a);
