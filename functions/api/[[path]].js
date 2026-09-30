@@ -1118,73 +1118,23 @@ export async function onRequest(context) {
 
     // ---- 首页 ----
     if (match(path, 'home') && method === 'GET') {
-      const now = Date.now();
-      let stats = { users: 0, articles: 0, posts: 0, contests: 0 };
-      let latestArticles = [], latestPosts = [], activeContests = [];
       try {
-        // 先全量 SELECT 所有表再在 JS 里 filter — 避免 COUNT + WHERE 异常被吞
         const [usersR, artsAll, postsAll, contestsAll] = await Promise.all([
           env.DB.prepare('SELECT * FROM users').all(),
           env.DB.prepare('SELECT * FROM articles').all(),
           env.DB.prepare('SELECT * FROM posts').all(),
           env.DB.prepare('SELECT * FROM contests').all()
         ]);
-        const users = (usersR.results || []).map(toCamel);
-        const allArts = (artsAll.results || []).map(toCamel);
-        const allPosts = (postsAll.results || []).map(toCamel);
-        const allContests = (contestsAll.results || []).map(toCamel);
-        const approvedArts = allArts.filter(a => a.status === 'approved');
-        const approvedPosts = allPosts.filter(p => p.status === 'approved');
-        stats = {
-          users: users.length,
-          articles: approvedArts.length,
-          posts: approvedPosts.length,
-          contests: allContests.length
-        };
-        // 组装最新文章
-        latestArticles = await Promise.all(
-          approvedArts.sort((a, b) => b.createdAt - a.createdAt).slice(0, 6).map(async row => {
-            const author = await userById(env, row.authorId);
-            return {
-              id: row.id, authorId: row.authorId, title: row.title, content: row.content,
-              category: row.category, status: row.status, views: row.views || 0,
-              likeCount: (row.likes ? safeJSON(row.likes).length : 0),
-              tags: row.tags ? safeJSON(row.tags) : [],
-              createdAt: row.createdAt, reviewedAt: row.reviewedAt,
-              author: author ? pub(author) : { nickname: '未知用户' }
-            };
-          })
-        );
-        // 组装最新帖子
-        latestPosts = await Promise.all(
-          approvedPosts.sort((a, b) => b.createdAt - a.createdAt).slice(0, 6).map(async row => {
-            const author = await userById(env, row.authorId);
-            return {
-              id: row.id, authorId: row.authorId, title: row.title, content: row.content,
-              category: row.category, status: row.status, createdAt: row.createdAt,
-              commentCount: (row.comments ? safeJSON(row.comments).length : 0),
-              author: author ? pub(author) : { nickname: '未知用户' }
-            };
-          })
-        );
-        // 活跃比赛
-        activeContests = allContests
-          .filter(c => (c.startTime || 0) <= now && now <= (c.endTime || 0))
-          .map(c => ({
-            id: c.id, title: c.title, description: c.description,
-            participantCount: (() => {
-              const p = c.participants ? safeJSON(c.participants) : [];
-              return Array.isArray(p) ? p.length : 0;
-            })(),
-            problemCount: (() => {
-              const p = c.problems ? safeJSON(c.problems) : [];
-              return Array.isArray(p) ? p.length : 0;
-            })(),
-            startTime: c.startTime, endTime: c.endTime, createdAt: c.createdAt,
-            status: 'active'
-          })).slice(0, 3);
-      } catch (e) { /* 出错时返回默认空数据 */ }
-      return json({ stats, latestArticles, latestPosts, activeContests });
+        return json({
+          debug: {
+            users_raw: usersR.results?.length || 0,
+            arts_raw: artsAll.results?.length || 0,
+            arts_first: artsAll.results?.[0] || null,
+            posts_raw: postsAll.results?.length || 0,
+            contests_raw: contestsAll.results?.length || 0
+          }
+        });
+      } catch (e) { return json({ debug_error: String(e) }); }
     }
 
     // ---- 文章列表（直接 SQL D1，跨 isolate 必拿到最新）----
