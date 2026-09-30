@@ -1116,6 +1116,19 @@ export async function onRequest(context) {
       return json({ followed: i < 0, followerCount });
     }
 
+    // ---- DEBUG: 查 D1 表结构 ----
+    if (match(path, 'debug/schema') && method === 'GET') {
+      const tables = ['users','articles','posts','files','contests','problems','comments','notifications','messages','checkins','practices'];
+      const result = {};
+      for (const t of tables) {
+        try {
+          const r = await env.DB.prepare(`PRAGMA table_info(${t})`).all();
+          result[t] = r.results.map(c => ({ name: c.name, type: c.type, notnull: c.notnull }));
+        } catch (e) { result[t] = { error: String(e) }; }
+      }
+      return json(result);
+    }
+
     // ---- 首页 ----
     if (match(path, 'home') && method === 'GET') {
       const now = Date.now();
