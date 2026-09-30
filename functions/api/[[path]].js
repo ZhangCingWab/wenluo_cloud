@@ -2221,10 +2221,21 @@ export async function onRequest(context) {
       let rows = [];
       try { rows = (await env.DB.prepare(`SELECT * FROM files WHERE status=? ORDER BY created_at DESC`).bind(status).all()).results || []; }
       catch (e) { return bad(e.message); }
-      return json({ files: rows.map(r => {
-        const author = userByIdSync(db, r.author_id) || db.users.find(u => u.id === r.author_id);
-        return { ...r, author: author ? pub(author) : { nickname: '未知用户' } };
-      })});
+      // 用 toCamel 转列名，再手动组装（兼容 files 表 snake_case/camelCase 混合）
+      const files = await Promise.all(rows.map(async r => {
+        const c = toCamel(r);
+        const author = await userById(env, c.authorId);
+        return {
+          id: c.id, authorId: c.authorId,
+          originalName: c.originalName || c.original_name,
+          storedName: c.storedName || c.stored_name,
+          size: c.size, note: c.note, status: c.status,
+          createdAt: c.createdAt || c.created_at,
+          reviewedAt: c.reviewedAt || c.reviewed_at,
+          author: author ? pub(author) : { nickname: '未知用户' }
+        };
+      }));
+      return json({ files });
     }
 
     // ---- 审核文件 ----
@@ -2256,13 +2267,22 @@ export async function onRequest(context) {
       let rows = [];
       try { rows = (await env.DB.prepare(`SELECT * FROM problems WHERE COALESCE(status,'approved')=? ORDER BY created_at DESC`).bind(status).all()).results || []; }
       catch (e) { return bad(e.message); }
-      const tagCols = rows[0] && Object.keys(rows[0]).includes('tags') ? 'tags' : 'tag';
-      return json({ problems: rows.map(r => ({
-        id: r.id, type: r.type, title: r.title, content: r.content, difficulty: parseInt(r.difficulty, 10) || 1,
-        tags: r[tagCols] ? (typeof r[tagCols] === 'string' ? safeJSON(r[tagCols]) : r[tagCols]) : [],
-        createdBy: r.created_by, createdAt: r.created_at,
-        status: r.status || 'approved', reviewedAt: r.reviewed_at || r.reviewedAt
-      })) });
+      // toCamel + 手动组装列名（problems 表混合）
+      const problems = await Promise.all(rows.map(async r => {
+        const c = toCamel(r);
+        const proposer = await userById(env, c.createdBy || c.created_by);
+        const rawTags = c.tags || c.tag || c.tags_json;
+        return {
+          id: c.id, type: c.type, title: c.title, content: c.content,
+          difficulty: parseInt(c.difficulty, 10) || 1,
+          tags: rawTags ? (typeof rawTags === 'string' ? safeJSON(rawTags) : rawTags) : [],
+          createdAt: c.createdAt || c.created_at,
+          status: c.status || 'approved',
+          reviewedAt: c.reviewedAt || c.reviewed_at,
+          proposer: proposer ? pub(proposer) : { nickname: '未知用户', username: '' }
+        };
+      }));
+      return json({ problems });
     }
 
     // ---- 审核题目 ----

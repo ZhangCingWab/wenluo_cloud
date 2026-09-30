@@ -356,6 +356,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-01 06:00', author: 'ZhangCing', items: ['🔴 admin/files + admin/problems 返回 D1 原始 snake_case 行未转 camelCase → 前端 originalName/createdAt 全 undefined', '修复：admin/files/problems 用 toCamel + 手动 map 列名 + D1 查 author/proposer'] },
   { date: '2026-10-01 05:00', author: 'ZhangCing', items: ['文章创建 INSERT 后立刻 SELECT 验证（防静默丢失）', 'articles/mine 去掉吞异常 catch，错误直接返回给前端', '清理临时 debug/schema 端点'] },
   { date: '2026-10-01 04:00', author: 'ZhangCing', items: ['🔴 修复 Cloudflare 多 isolate 跨实例数据不同步：auth/登录/home/admin-stats 全部改直接 D1 SQL', '🔴 修复 pub 函数 createdAt 一直 undefined（snake_case vs camelCase 列名兼容）', '🔴 我的投稿记录/文件下载修复，admin 审核列表去掉多余内存 merge'] },
   { date: '2026-09-30 05:00', author: 'ZhangCing', items: ['P0 全量 saveDB 替换为直接 SQL（20+ 端点彻底解决跨 isolate 持久化问题）', 'P1 相关推荐（根据分类+标签 2-3 排）、阅读进度条（顶部分数）、深色模式'] },
