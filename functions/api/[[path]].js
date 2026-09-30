@@ -499,6 +499,7 @@ async function dbRun(env, sql, binds = []) {
 }
 
 /* ---------------- 辅助函数 ---------------- */
+// 同时兼容 snake_case（D1 原始）和 camelCase（内存对象）
 const pub = (u) => {
   if (!u) return null;
   return {
@@ -507,7 +508,7 @@ const pub = (u) => {
     nickname: u.nickname,
     role: u.role,
     bio: u.bio || '',
-    createdAt: u.createdAt
+    createdAt: u.createdAt ?? u.created_at
   };
 };
 function pubFull(u) {
@@ -901,9 +902,8 @@ async function auth(request, env) {
   const token = header.replace(/^Bearer\s+/i, '');
   const userId = await resolveToken(env, token);
   if (!userId) return null;
-  // 用内存 db 查用户（dbAll 已经预加载了 users）
-  const db = await loadDB(env);
-  return userByIdSync(db, userId);
+  // 直接查 D1（跨 isolate 内存不共享，必须 SQL）
+  return await userById(env, userId);
 }
 
 /* ---------------- 路由匹配 ---------------- */
@@ -995,26 +995,25 @@ export async function onRequest(context) {
       const body = await request.json().catch(() => ({}));
       const username = clean(body.username, 24);
       if (!username || typeof body.password !== 'string') return bad('请输入用户名和密码');
-      const user = db.users.find(u => u.username.toLowerCase() === username.toLowerCase());
+      // 直接查 D1（跨 isolate 内存不共享，必须 SQL）
+      let user;
+      try { user = await dbFirst(env, 'SELECT * FROM users WHERE username = ? COLLATE NOCASE', [username]); } catch (e) { return bad(e.message); }
       // 统一错误消息，防止用户名枚举
       const genericError = '用户名或密码错误';
       if (!user) { await sleep(300); return bad(genericError); } // 延时防枚举
-      if (user.lockedUntil && Date.now() < user.lockedUntil) {
-        const mins = Math.ceil((user.lockedUntil - Date.now()) / 60000);
+      if (user.locked_until && Date.now() < user.locked_until) {
+        const mins = Math.ceil((user.locked_until - Date.now()) / 60000);
         return bad(`该账号已因多次登录失败被锁定，请 ${mins} 分钟后再试`, 429);
       }
       const ok = await verifyPassword(body.password, user);
       if (!ok) {
-        user.loginFails = (user.loginFails || 0) + 1;
-        if (user.loginFails >= 5) {
-          user.lockedUntil = Date.now() + 10 * 60000;
-          user.loginFails = 0;
-        }
-        await dbRun(env, 'UPDATE users SET login_fails=?, locked_until=? WHERE id=?', [user.loginFails, user.lockedUntil, user.id]);
+        const newFails = (user.login_fails || 0) + 1;
+        const newLocked = newFails >= 5 ? Date.now() + 10 * 60000 : 0;
+        const finalFails = newFails >= 5 ? 0 : newFails;
+        await dbRun(env, 'UPDATE users SET login_fails=?, locked_until=? WHERE id=?', [finalFails, newLocked, user.id]);
         await sleep(300); // 延时防暴力破解
         return bad(genericError);
       }
-      user.loginFails = 0; user.lockedUntil = 0;
       await dbRun(env, 'UPDATE users SET login_fails=0, locked_until=0 WHERE id=?', [user.id]);
       const token = await createToken(env, user.id);
       return json({ user: pubFull(user), token });
@@ -1118,22 +1117,65 @@ export async function onRequest(context) {
     // ---- 首页 ----
     if (match(path, 'home') && method === 'GET') {
       const now = Date.now();
-      return json({
-        stats: {
-          users: db.users.length,
-          articles: db.articles.filter(a => a.status === 'approved').length,
-          posts: db.posts.filter(p => p.status === 'approved').length,
-          contests: db.contests.length
-        },
-        latestArticles: db.articles.filter(a => a.status === 'approved').sort((a, b) => b.createdAt - a.createdAt).slice(0, 6).map(a => articleOut(a, db)),
-        latestPosts: db.posts.filter(p => p.status === 'approved').sort((a, b) => b.createdAt - a.createdAt).slice(0, 6).map(p => postOut(p, db)),
-        activeContests: db.contests.map(c => ({
-          ...c,
-          problems: typeof c.problems === 'string' ? safeJSON(c.problems) : (c.problems || []),
-          participants: typeof c.participants === 'string' ? safeJSON(c.participants) : (c.participants || []),
-          submissions: typeof c.submissions === 'string' ? safeJSON(c.submissions) : (c.submissions || [])
-        })).filter(c => c.startTime <= now && now <= c.endTime).map(c => contestOut(c, db)).slice(0, 3)
-      });
+      // 全部直接查 D1（跨 isolate 内存不共享）
+      let stats = { users: 0, articles: 0, posts: 0, contests: 0 };
+      let latestArticles = [], latestPosts = [], activeContests = [];
+      try {
+        const [uC, aC, pC, cC, arts, posts, allContests] = await Promise.all([
+          dbFirst(env, 'SELECT COUNT(*) as c FROM users'),
+          dbFirst(env, "SELECT COUNT(*) as c FROM articles WHERE status='approved'"),
+          dbFirst(env, "SELECT COUNT(*) as c FROM posts WHERE status='approved'"),
+          dbFirst(env, 'SELECT COUNT(*) as c FROM contests'),
+          dbAll(env, "SELECT * FROM articles WHERE status='approved' ORDER BY created_at DESC LIMIT 6"),
+          dbAll(env, "SELECT * FROM posts WHERE status='approved' ORDER BY created_at DESC LIMIT 6"),
+          dbAll(env, 'SELECT * FROM contests')
+        ]);
+        stats = {
+          users: uC?.c || 0,
+          articles: aC?.c || 0,
+          posts: pC?.c || 0,
+          contests: cC?.c || 0
+        };
+        // 组装最新文章（手动映射 snake_case → 前端 camelCase）
+        latestArticles = await Promise.all((arts || []).map(async row => {
+          const author = await userById(env, row.author_id);
+          return {
+            id: row.id, authorId: row.author_id, title: row.title, content: row.content,
+            category: row.category, status: row.status, views: row.views || 0,
+            likeCount: (row.likes ? JSON.parse(row.likes).length : 0),
+            tags: row.tags ? JSON.parse(row.tags) : [],
+            createdAt: row.created_at, reviewedAt: row.reviewed_at,
+            author: author ? pub(author) : { nickname: '未知用户' }
+          };
+        }));
+        // 组装最新帖子
+        latestPosts = await Promise.all((posts || []).map(async row => {
+          const author = await userById(env, row.author_id);
+          return {
+            id: row.id, authorId: row.author_id, title: row.title, content: row.content,
+            category: row.category, status: row.status, createdAt: row.created_at,
+            commentCount: (row.comments ? JSON.parse(row.comments).length : 0),
+            author: author ? pub(author) : { nickname: '未知用户' }
+          };
+        }));
+        // 活跃比赛（start_time <= now <= end_time）
+        activeContests = (allContests || [])
+          .filter(c => (c.start_time || c.startTime || 0) <= now && now <= (c.end_time || c.endTime || 0))
+          .map(c => ({
+            id: c.id, title: c.title, description: c.description,
+            participantCount: (() => {
+              const p = c.participants ? JSON.parse(c.participants) : [];
+              return Array.isArray(p) ? p.length : 0;
+            })(),
+            problemCount: (() => {
+              const p = c.problems ? JSON.parse(c.problems) : [];
+              return Array.isArray(p) ? p.length : 0;
+            })(),
+            startTime: c.start_time, endTime: c.end_time, createdAt: c.created_at,
+            status: 'active'
+          })).slice(0, 3);
+      } catch {}
+      return json({ stats, latestArticles, latestPosts, activeContests });
     }
 
     // ---- 文章列表（直接 SQL D1，跨 isolate 必拿到最新）----
@@ -2089,17 +2131,19 @@ export async function onRequest(context) {
       let rows = [];
       try {
         const r = await env.DB.prepare(`SELECT * FROM articles WHERE status = ? ORDER BY created_at DESC`).bind(status).all();
-        rows = (r.results || []).map(row => ({
-          id: row.id, authorId: row.author_id, title: row.title, content: row.content,
-          category: row.category, status: row.status, views: row.views, likes: JSON.parse(row.likes || '[]'),
-          tags: row.tags, createdAt: row.created_at, reviewedAt: row.reviewed_at
+        rows = await Promise.all((r.results || []).map(async row => {
+          const author = await userById(env, row.author_id);
+          return {
+            id: row.id, authorId: row.author_id, title: row.title, content: row.content,
+            category: row.category, status: row.status, views: row.views || 0,
+            likeCount: (row.likes ? JSON.parse(row.likes).length : 0),
+            tags: row.tags ? JSON.parse(row.tags) : [],
+            createdAt: row.created_at, reviewedAt: row.reviewed_at,
+            author: author ? pub(author) : { nickname: '未知用户' }
+          };
         }));
-      } catch {}
-      // 用内存 db.articles 合并（同 isolate 里刚创建的内存项也包含）
-      const ids = new Set(rows.map(r => r.id));
-      const extra = (db.articles || []).filter(a => a.status === status && !ids.has(a.id));
-      rows = [...rows, ...extra].sort((a, b) => b.createdAt - a.createdAt);
-      return json({ articles: rows.map(a => articleOut(a, db)) });
+      } catch (e) { return bad(e.message); }
+      return json({ articles: rows });
     }
 
     // ---- 审核文章 ----
@@ -2222,18 +2266,33 @@ export async function onRequest(context) {
     if (match(path, 'admin/stats') && method === 'GET') {
       const me = await auth(request, env);
       if (!me || me.role !== 'admin') return bad('需要管理员权限', 403);
-      return json({
-        users: db.users.length,
-        articles: db.articles.length,
-        posts: db.posts.length,
-        comments: db.comments?.length || 0,
-        pendingArticles: db.articles.filter(a => a.status === 'pending').length,
-        pendingPosts: db.posts.filter(p => p.status === 'pending').length,
-        contests: db.contests.length,
-        problems: db.problems.length,
-        checkins: db.checkins?.length || 0,
-        files: db.files?.length || 0
-      });
+      // 全部直接查 D1（跨 isolate 内存不共享）
+      try {
+        const [uC, aC, pC, cC, aP, pP, coC, prC, chC, fC] = await Promise.all([
+          dbFirst(env, 'SELECT COUNT(*) as c FROM users'),
+          dbFirst(env, 'SELECT COUNT(*) as c FROM articles'),
+          dbFirst(env, 'SELECT COUNT(*) as c FROM posts'),
+          dbFirst(env, 'SELECT COUNT(*) as c FROM comments'),
+          dbFirst(env, "SELECT COUNT(*) as c FROM articles WHERE status='pending'"),
+          dbFirst(env, "SELECT COUNT(*) as c FROM posts WHERE status='pending'"),
+          dbFirst(env, 'SELECT COUNT(*) as c FROM contests'),
+          dbFirst(env, 'SELECT COUNT(*) as c FROM problems'),
+          dbFirst(env, 'SELECT COUNT(*) as c FROM checkins'),
+          dbFirst(env, 'SELECT COUNT(*) as c FROM files')
+        ]);
+        return json({
+          users: uC?.c || 0,
+          articles: aC?.c || 0,
+          posts: pC?.c || 0,
+          comments: cC?.c || 0,
+          pendingArticles: aP?.c || 0,
+          pendingPosts: pP?.c || 0,
+          contests: coC?.c || 0,
+          problems: prC?.c || 0,
+          checkins: chC?.c || 0,
+          files: fC?.c || 0
+        });
+      } catch (e) { return bad(e.message); }
     }
 
     // ---- admin 生成一次性邀请码 ----
