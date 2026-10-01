@@ -356,6 +356,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-01 10:00', author: 'ZhangCing', items: ['✨ 投稿文章正文直接显示文档内容：Word(docx) 自动转正文排版、PDF 内嵌预览、txt 直接可读（不用下载也能看）', '🔴 修复点赞报错 a.likes.push is not a function（点赞改直接查 D1）', '🔴 修复文章详情「文章不存在」（详情/评论点赞/评论删除全部改直接 SQL，不再读旧内存）'] },
   { date: '2026-10-01 09:00', author: 'ZhangCing', items: ['✨ 投稿文件审核通过后自动发布到文章库「文件投稿」分类（含大小、投稿说明、下载按钮，署名投稿人）', '通过的文件开放所有人下载；拒绝/撤回时自动移除对应文章', '文章库新增「文件投稿」分类标签'] },
   { date: '2026-10-01 08:00', author: 'ZhangCing', items: ['🔴 根治：files/problems/practices/templates 表是旧 saveDB 自动建的 camelCase 列，所有 snake_case SQL 报 no such column → Word 文档投稿失败、审核列表永远空', '启动时自动检测真实列名，camelCase 旧表自动迁移数据到 snake_case（幂等，旧投稿不丢）', '说明：Word(docx) 一直在白名单里，之前传不上是列名 bug，不是不允许'] },
   { date: '2026-10-01 07:00', author: 'ZhangCing', items: ['🔴 auth/login 改直接 env.DB.prepare 查用户，绕过 dbFirst 吞异常返回 null 导致的 401', '🔴 admin/files+admin/posts+admin/problems 用 toCamel+手动map 转 snake_case→camelCase', '用户必须登出后重新登录'] },
@@ -663,6 +664,17 @@ async function viewArticles() {
   renderArtPage();
 }
 
+/* 动态加载外部脚本（Promise 化，重复加载直接成功） */
+function loadScript(src) {
+  return new Promise((ok, err) => {
+    if (document.querySelector('script[data-src="' + src + '"]')) return ok();
+    const s = document.createElement('script');
+    s.src = src; s.dataset.src = src;
+    s.onload = ok; s.onerror = () => err(new Error('脚本加载失败'));
+    document.head.appendChild(s);
+  });
+}
+
 async function viewArticleDetail(id) {
   hideAiFab(); showAiFab();
   const [d, rd, cd] = await Promise.all([
@@ -690,6 +702,7 @@ async function viewArticleDetail(id) {
         </div>
       </div>
       <div class="doc-content">${md(a.content)}</div>
+      ${(a.id || '').startsWith('a_file_') ? `<div class="doc-content" id="fileDocBox" style="margin-top:16px;border-top:1px dashed var(--border);padding-top:16px"><div class="empty">📄 正在加载文档内容…</div></div>` : ''}
       <div style="margin-top:22px;text-align:center">
         <button class="btn like-btn ${a.liked ? 'liked' : ''}" id="likeBtn">${a.liked ? '❤️ 已赞' : '🤍 点赞'} · ${a.likeCount}</button>
       </div>
@@ -733,6 +746,32 @@ async function viewArticleDetail(id) {
 
     <div class="card" id="relatedCard" style="display:none"></div>
   </div>`;
+  // 文件投稿文章：把文档内容直接渲染到正文（docx→HTML / pdf→内嵌预览 / txt→文本）
+  if ((id || '').startsWith('a_file_')) {
+    const fbox = document.getElementById('fileDocBox');
+    if (fbox) (async () => {
+      try {
+        const ext = ((a.title || '').match(/\.([a-z0-9]+)$/i) || [])[1] ? a.title.match(/\.([a-z0-9]+)$/i)[1].toLowerCase() : '';
+        if (['doc', 'xls', 'xlsx', 'ppt', 'pptx', 'zip', 'rtf', 'csv'].includes(ext)) {
+          fbox.innerHTML = '<div class="empty">该文件类型暂不支持在线预览，请点击上方「⬇ 下载文件」查看原文</div>';
+          return;
+        }
+        const res = await fetch('/api/files/' + id.slice(8) + '/download');
+        if (!res.ok) throw new Error('文件加载失败 (' + res.status + ')');
+        if (ext === 'pdf') {
+          fbox.innerHTML = `<iframe src="${URL.createObjectURL(await res.blob())}" style="width:100%;height:80vh;border:none;border-radius:8px" title="PDF 预览"></iframe>`;
+        } else if (ext === 'docx') {
+          await loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js');
+          const r = await window.mammoth.convertToHtml({ arrayBuffer: await res.arrayBuffer() });
+          fbox.innerHTML = r.value && r.value.trim() ? r.value : '<div class="empty">（文档内容为空）</div>';
+        } else {
+          fbox.innerHTML = md(await res.text());
+        }
+      } catch (e) {
+        fbox.innerHTML = `<div class="empty">文档内容加载失败：${esc(e.message)}<br>可点击上方「⬇ 下载文件」查看原文</div>`;
+      }
+    })();
+  }
   // 绑定评论区事件（回复/删除/点赞）
   bindCommentEvents(document.getElementById('commentBox'));
   if (state.me) {

@@ -1310,18 +1310,30 @@ export async function onRequest(context) {
     // ---- 文章详情 ----
     m = match(path, 'articles/:id');
     if (m && method === 'GET') {
-      const a = db.articles.find(x => x.id === m.id);
-      if (!a) return bad('文章不存在', 404);
+      // 直接查 D1（内存 db.articles 跨 isolate 不同步，会误报"文章不存在"）
+      let row;
+      try { row = await env.DB.prepare(`SELECT * FROM articles WHERE id=?`).bind(m.id).first(); } catch (e) { return bad(e.message); }
+      if (!row) return bad('文章不存在', 404);
       const me = await auth(request, env);
-      const canView = a.status === 'approved' || (me && (me.id === a.authorId || me.role === 'admin'));
+      const st = row.status || 'pending';
+      const authorId = row.author_id || row.authorId;
+      const canView = st === 'approved' || (me && (me.id === authorId || me.role === 'admin'));
       if (!canView) return bad('文章正在审核中', 403);
-      if (!me || me.id !== a.authorId) {
-        a.views = (a.views || 0) + 1;
-        // 单条 SQL UPDATE 代替全量 saveDB（快 100 倍）
-        try { await env.DB.prepare(`UPDATE articles SET views = ? WHERE id = ?`).bind(a.views, a.id).run(); } catch {}
+      let views = row.views || 0;
+      if (!me || me.id !== authorId) {
+        views += 1;
+        try { await env.DB.prepare(`UPDATE articles SET views = ? WHERE id = ?`).bind(views, m.id).run(); } catch {}
       }
+      const likesArr = safeJSON(row.likes);
+      const a = {
+        id: row.id, authorId, title: row.title, content: row.content,
+        category: row.category, status: st, views,
+        likes: Array.isArray(likesArr) ? likesArr : [],
+        tags: safeJSON(row.tags), createdAt: row.created_at || row.createdAt,
+        reviewedAt: row.reviewed_at || row.reviewedAt
+      };
       const o = articleOut(a, db);
-      o.liked = !!(me && (a.likes || []).includes(me.id));
+      o.liked = !!(me && a.likes.includes(me.id));
       return json({ article: o });
     }
 
@@ -1393,14 +1405,17 @@ export async function onRequest(context) {
     if (m && method === 'POST') {
       const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
-      const a = db.articles.find(x => x.id === m.id && x.status === 'approved');
-      if (!a) return bad('文章不存在', 404);
-      a.likes = a.likes || [];
-      const i = a.likes.indexOf(me.id);
-      if (i >= 0) a.likes.splice(i, 1); else a.likes.push(me.id);
-      try { await env.DB.prepare(`UPDATE articles SET likes=?, like_count=? WHERE id=?`).bind(JSON.stringify(a.likes), a.likes.length, a.id).run(); } catch (e) { return bad(e.message); }
+      // 直接查 D1：内存行 likes 是 JSON 字符串（曾导致 a.likes.push is not a function）
+      let row;
+      try { row = await env.DB.prepare(`SELECT id, likes FROM articles WHERE id=? AND status='approved'`).bind(m.id).first(); } catch (e) { return bad(e.message); }
+      if (!row) return bad('文章不存在', 404);
+      let likes = safeJSON(row.likes);
+      if (!Array.isArray(likes)) likes = [];
+      const i = likes.indexOf(me.id);
+      if (i >= 0) likes.splice(i, 1); else likes.push(me.id);
+      try { await env.DB.prepare(`UPDATE articles SET likes=? WHERE id=?`).bind(JSON.stringify(likes), m.id).run(); } catch (e) { return bad(e.message); }
       invalidateCache();
-      return json({ liked: i < 0, likeCount: a.likes.length });
+      return json({ liked: i < 0, likeCount: likes.length });
     }
 
     // ---- 帖子列表（直接 SQL）----
@@ -1593,10 +1608,11 @@ export async function onRequest(context) {
     if (m && method === 'DELETE') {
       const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
-      const i = db.comments.findIndex(c => c.id === m.id);
-      if (i < 0) return bad('评论不存在', 404);
-      if (db.comments[i].authorId !== me.id && me.role !== 'admin') return bad('无权限', 403);
-      db.comments.splice(i, 1);
+      let row;
+      try { row = await env.DB.prepare(`SELECT author_id FROM comments WHERE id=?`).bind(m.id).first(); } catch (e) { return bad(e.message); }
+      if (!row) return bad('评论不存在', 404);
+      const cAuthor = row.author_id || row.authorId;
+      if (cAuthor !== me.id && me.role !== 'admin') return bad('无权限', 403);
       try { await env.DB.prepare(`DELETE FROM comments WHERE id=?`).bind(m.id).run(); } catch (e) { return bad(e.message); }
       invalidateCache();
       return json({ ok: true });
@@ -1606,14 +1622,16 @@ export async function onRequest(context) {
     if (m && method === 'POST') {
       const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
-      const c = db.comments.find(x => x.id === m.id);
-      if (!c) return bad('评论不存在', 404);
-      if (!c.likes) c.likes = [];
-      const idx = c.likes.indexOf(me.id);
-      if (idx >= 0) c.likes.splice(idx, 1); else c.likes.push(me.id);
-      try { await env.DB.prepare(`UPDATE comments SET likes=? WHERE id=?`).bind(JSON.stringify(c.likes), c.id).run(); } catch (e) { return bad(e.message); }
+      let row;
+      try { row = await env.DB.prepare(`SELECT id, likes FROM comments WHERE id=?`).bind(m.id).first(); } catch (e) { return bad(e.message); }
+      if (!row) return bad('评论不存在', 404);
+      let likes = safeJSON(row.likes);
+      if (!Array.isArray(likes)) likes = [];
+      const idx = likes.indexOf(me.id);
+      if (idx >= 0) likes.splice(idx, 1); else likes.push(me.id);
+      try { await env.DB.prepare(`UPDATE comments SET likes=? WHERE id=?`).bind(JSON.stringify(likes), m.id).run(); } catch (e) { return bad(e.message); }
       invalidateCache();
-      return json({ liked: idx < 0, likeCount: c.likes.length });
+      return json({ liked: idx < 0, likeCount: likes.length });
     }
 
     // ========== 通知系统 ==========
