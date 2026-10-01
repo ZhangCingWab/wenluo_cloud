@@ -2163,13 +2163,17 @@ export async function onRequest(context) {
     // ---- 文件下载 ----
     m = match(path, 'files/:id/download');
     if (m && method === 'GET') {
-      const me = await auth(request, env);
-      if (!me) return bad('请先登录', 401);
       let row;
       try { row = (await env.DB.prepare(`SELECT * FROM files WHERE id=?`).bind(m.id).all()).results[0]; }
       catch (e) { return bad(e.message); }
       if (!row) return bad('文件不存在', 404);
-      if (row.author_id !== me.id && me.role !== 'admin') return bad('无权限下载', 403);
+      // 已通过审核的投稿 = 公开社区内容（文件 id 为不可猜 UUID）；未通过的仅作者/管理员可下载
+      const st = row.status || 'pending';
+      if (st !== 'approved') {
+        const me = await auth(request, env);
+        if (!me) return bad('请先登录', 401);
+        if (row.author_id !== me.id && me.role !== 'admin') return bad('无权限下载', 403);
+      }
       const stored = row.stored_name || row.storedName;
       const b64 = await env.DATA.get('file:' + stored);
       if (!b64) return bad('文件已丢失', 404);
@@ -2318,6 +2322,22 @@ export async function onRequest(context) {
       const f = db.files.find(x => x.id === m.id);
       if (f) { f.status = newStatus; f.reviewedAt = reviewedAt; }
       try { await env.DB.prepare(`UPDATE files SET status=?, reviewed_at=? WHERE id=?`).bind(newStatus, reviewedAt, m.id).run(); } catch (e) { return bad(e.message); }
+      // 通过 → 自动生成一篇文章放进文章库（id 固定 a_file_<fileId>，重复审核不会重复发）
+      if (newStatus === 'approved') {
+        const origName = clean(row.original_name || row.originalName || '未命名文件', 120);
+        const size = Number(row.size) || 0;
+        const sizeText = size > 1048576 ? (size / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(size / 1024)) + ' KB';
+        const note = clean(row.note || '', 300);
+        const content = `## 📄 文件投稿：${origName}\n\n**文件大小**：${sizeText}\n\n${note ? '> 投稿说明：' + note + '\n\n' : ''}[⬇ 下载文件](/api/files/${m.id}/download)\n\n*本文由文件投稿审核通过后自动发布到文章库*`;
+        try {
+          await env.DB.prepare(`INSERT INTO articles (id, author_id, title, content, category, status, views, likes, tags, created_at, reviewed_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+            .bind('a_file_' + m.id, row.author_id, origName, content, '文件投稿', 'approved', 0, 0, '[]', reviewedAt, reviewedAt).run();
+        } catch (e) { console.error('file->article:', e.message); } // 文章已存在（重复审核）则跳过
+      } else {
+        // 拒绝 → 移除之前自动生成的文章（如有）
+        try { await env.DB.prepare(`DELETE FROM articles WHERE id=?`).bind('a_file_' + m.id).run(); } catch (e) {}
+      }
       invalidateCache();
       return json({ ok: true, status: newStatus });
     }

@@ -1,4 +1,4 @@
-﻿/* ============ 文汇 · 前端 SPA ============ */
+/* ============ 文汇 · 前端 SPA ============ */
 // 深色模式（初始化 + toggle）
 (function initTheme() {
   const saved = localStorage.getItem('theme');
@@ -356,6 +356,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-01 09:00', author: 'ZhangCing', items: ['✨ 投稿文件审核通过后自动发布到文章库「文件投稿」分类（含大小、投稿说明、下载按钮，署名投稿人）', '通过的文件开放所有人下载；拒绝/撤回时自动移除对应文章', '文章库新增「文件投稿」分类标签'] },
   { date: '2026-10-01 08:00', author: 'ZhangCing', items: ['🔴 根治：files/problems/practices/templates 表是旧 saveDB 自动建的 camelCase 列，所有 snake_case SQL 报 no such column → Word 文档投稿失败、审核列表永远空', '启动时自动检测真实列名，camelCase 旧表自动迁移数据到 snake_case（幂等，旧投稿不丢）', '说明：Word(docx) 一直在白名单里，之前传不上是列名 bug，不是不允许'] },
   { date: '2026-10-01 07:00', author: 'ZhangCing', items: ['🔴 auth/login 改直接 env.DB.prepare 查用户，绕过 dbFirst 吞异常返回 null 导致的 401', '🔴 admin/files+admin/posts+admin/problems 用 toCamel+手动map 转 snake_case→camelCase', '用户必须登出后重新登录'] },
   { date: '2026-10-01 06:00', author: 'ZhangCing', items: ['🔴 admin/files + admin/problems 返回 D1 原始 snake_case 行未转 camelCase → 前端 originalName/createdAt 全 undefined', '修复：admin/files/problems 用 toCamel + 手动 map 列名 + D1 查 author/proposer'] },
@@ -624,7 +625,7 @@ async function viewArticles() {
       <span class="t ${sort === 'hot' ? 'active' : ''}" data-s="hot">最热</span>
       <span style="margin:0 6px;color:var(--border)">|</span>
       <span class="t ${cat === '' ? 'active' : ''}" data-c="">全部类别</span>
-      ${ART_CATS.map(c => `<span class="t ${cat === c ? 'active' : ''}" data-c="${c}">${c}</span>`).join('')}
+      ${['文件投稿', ...ART_CATS].map(c => `<span class="t ${cat === c ? 'active' : ''}" data-c="${c}">${c}</span>`).join('')}
     </div>
     <div class="card">
       <div id="artList"></div>
