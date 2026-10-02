@@ -614,8 +614,10 @@ function userByIdSync(db, id) {
   return db.users.find(u => u.id === id) || null;
 }
 function withAuthorSync(db, item) {
-  const a = userByIdSync(db, item.authorId);
-  return { ...item, author: pub(a) || { nickname: '已注销用户' } };
+  // 防御：历史调用点曾把参数顺序写成 (item, db)，导致 ...item 展开整个 db 泄露用户 hash
+  if (db && !Array.isArray(db.users) && item && Array.isArray(item.users)) { const t = db; db = item; item = t; }
+  const a = item ? userByIdSync(db, item.authorId) : null;
+  return { ...(item || {}), author: pub(a) || { nickname: '已注销用户' } };
 }
 function articleOut(a, db) {
   const o = withAuthorSync(db, a);
@@ -2007,7 +2009,7 @@ export async function onRequest(context) {
       if (!c) return bad('比赛不存在', 404);
       return json({
         problems: c.problems || [],
-        submissions: (c.submissions || []).map(s => { const o = withAuthorSync(s, db); delete o.content; return o; })
+        submissions: (c.submissions || []).map(s => { const o = withAuthorSync(db, s); delete o.content; return o; })
       });
     }
 
@@ -2054,7 +2056,7 @@ export async function onRequest(context) {
       return json({
         problem: problemOut(p, db),
         myPractice: mine,
-        practices: practices.slice(0, 50).map(x => { const o = withAuthorSync(x, db); delete o.content; return o; })
+        practices: practices.slice(0, 50).map(x => { const o = withAuthorSync(db, x); delete o.content; return o; })
       });
     }
 
@@ -2127,7 +2129,7 @@ export async function onRequest(context) {
     if (m && method === 'GET') {
       const s = db.practices.find(x => x.id === m.prId && x.problemId === m.id);
       if (!s) return bad('练习不存在', 404);
-      return json({ practice: withAuthorSync(s, db) });
+      return json({ practice: withAuthorSync(db, s) });
     }
 
     // ---- 我的练习 ----
@@ -2165,7 +2167,7 @@ export async function onRequest(context) {
         try { await env.DB.prepare(`INSERT INTO file_blobs (id, content) VALUES (?,?)`).bind(fileId, b64).run(); } catch (e) { console.error('file_blobs:', e.message); }
       }
       invalidateCache();
-      return json({ file: withAuthorSync(f, db) });
+      return json({ file: withAuthorSync(db, f) });
     }
 
     // ---- 删除文件（作者或管理员）----
