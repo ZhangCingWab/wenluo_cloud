@@ -758,7 +758,7 @@ async function viewArticleDetail(id) {
           fbox.innerHTML = '<div class="empty">该文件类型暂不支持在线预览，请点击上方「⬇ 下载文件」查看原文</div>';
           return;
         }
-        const res = await fetch('/api/files/' + id.slice(8) + '/download');
+        const res = await fetch('/api/files/' + id.replace(/^a_file_/, '') + '/download');
         if (!res.ok) throw new Error('文件加载失败 (' + res.status + ')');
         if (ext === 'pdf') {
           fbox.innerHTML = `<iframe src="${URL.createObjectURL(await res.blob())}" style="width:100%;height:80vh;border:none;border-radius:8px" title="PDF 预览"></iframe>`;
