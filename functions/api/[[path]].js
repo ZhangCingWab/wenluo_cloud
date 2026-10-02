@@ -350,6 +350,9 @@ async function ensureSeedData(env) {
     { s: 'description', c: 'description' }, { s: 'content', c: 'content' }, { s: 'created_at', c: 'createdAt' }
   ]);
 
+  // 文件内容表：正文以 base64 存 D1（KV 曾被清空导致旧文件全丢，现在内容跟着 D1 走）
+  try { await dbRun(env, `CREATE TABLE IF NOT EXISTS file_blobs (id TEXT PRIMARY KEY, content TEXT)`); } catch {}
+
   // Admin 用户（如果没的话）
   let uc = (await dbFirst(env, 'SELECT COUNT(*) as c FROM users'))?.c || 0;
   if (uc === 0) {
@@ -2156,8 +2159,32 @@ export async function onRequest(context) {
       db.files.push(f);
       try { await env.DB.prepare(`INSERT INTO files (id,author_id,original_name,stored_name,size,note,status,created_at) VALUES (?,?,?,?,?,?,?,?)`)
         .bind(f.id, f.authorId, f.originalName, f.storedName, f.size, f.note, f.status, f.createdAt).run(); } catch (e) { return bad(e.message); }
+      // 文件内容同步存 D1（D1 单值上限 2MB，大文件只存 KV）
+      const b64 = btoa(base64);
+      if (b64.length <= 1900000) {
+        try { await env.DB.prepare(`INSERT INTO file_blobs (id, content) VALUES (?,?)`).bind(fileId, b64).run(); } catch (e) { console.error('file_blobs:', e.message); }
+      }
       invalidateCache();
       return json({ file: withAuthorSync(f, db) });
+    }
+
+    // ---- 删除文件（作者或管理员）----
+    m = match(path, 'files/:id');
+    if (m && method === 'DELETE') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      let row;
+      try { row = (await env.DB.prepare(`SELECT * FROM files WHERE id=?`).bind(m.id).all()).results[0]; }
+      catch (e) { return bad(e.message); }
+      if (!row) return bad('文件不存在', 404);
+      if ((row.author_id || row.authorId) !== me.id && me.role !== 'admin') return bad('无权限删除', 403);
+      const stored = row.stored_name || row.storedName;
+      try { await env.DB.prepare(`DELETE FROM files WHERE id=?`).bind(m.id).run(); } catch (e) { return bad(e.message); }
+      try { await env.DB.prepare(`DELETE FROM file_blobs WHERE id=?`).bind(m.id).run(); } catch {}
+      try { await env.DB.prepare(`DELETE FROM articles WHERE id=?`).bind('a_file_' + m.id).run(); } catch {}
+      try { await env.DATA.delete('file:' + stored); } catch {}
+      invalidateCache();
+      return json({ ok: true });
     }
 
     // ---- 我的文件 ----
@@ -2193,8 +2220,11 @@ export async function onRequest(context) {
         if (row.author_id !== me.id && me.role !== 'admin') return bad('无权限下载', 403);
       }
       const stored = row.stored_name || row.storedName;
-      const b64 = await env.DATA.get('file:' + stored);
-      if (!b64) return bad('文件已丢失', 404);
+      // 优先从 D1 读内容，旧文件回退 KV
+      let b64 = null;
+      try { const br = await env.DB.prepare(`SELECT content FROM file_blobs WHERE id=?`).bind(m.id).first(); if (br && br.content) b64 = br.content; } catch {}
+      if (!b64) b64 = await env.DATA.get('file:' + stored);
+      if (!b64) return bad('文件已丢失（旧投稿内容在 KV 清理时丢失，请删除后重新上传）', 404);
       const binary = atob(b64);
       const arr = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
