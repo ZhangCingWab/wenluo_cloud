@@ -2149,6 +2149,7 @@ export async function onRequest(context) {
       const file = formData.get('file');
       const note = clean(formData.get('note') || '', 200);
       if (!file) return bad('请选择文件');
+      if (!file.size) return bad('文件内容为空（0 字节），请检查文件后重新上传');
       if (!isAllowedFile(file.name)) return bad('不允许上传该类型的文件');
       if (file.size > MAX_FILE_SIZE) return bad('文件不能超过 20MB');
       const fileId = uid('f');
@@ -2226,7 +2227,7 @@ export async function onRequest(context) {
       let b64 = null;
       try { const br = await env.DB.prepare(`SELECT content FROM file_blobs WHERE id=?`).bind(m.id).first(); if (br && br.content) b64 = br.content; } catch {}
       if (!b64) b64 = await env.DATA.get('file:' + stored);
-      if (!b64) return bad('文件已丢失（旧投稿内容在 KV 清理时丢失，请删除后重新上传）', 404);
+      if (!b64) return bad('文件内容不存在（可能是空文件或损坏的上传），请删除后重新上传', 404);
       const binary = atob(b64);
       const arr = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
