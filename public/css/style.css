@@ -117,10 +117,11 @@ button, input, textarea, select, .nav a, .btn, .item, .tpl-card {
 }
 .login-btn {
   display: block; text-align: center; padding: 10px;
-  background: var(--blue); color: #fff !important;
+  background: var(--blue); color: #fff;
   border-radius: 8px; font-weight: 600;
 }
 .login-btn:hover { background: var(--blue-dark); }
+.login-btn .lg-short { display: none; }
 
 /* 弹出菜单 */
 .popover {
@@ -910,13 +911,16 @@ html.dark .theme-toggle .dot::after { transform:translateX(14px); }
   .nav a.active { padding-left: 19px; }
   .user-card { padding-left: 4px; }
   .theme-toggle { padding-left: 15px; }
-  /* 登录入口：收起时就是和导航一样的图标行（在 user-zone 内，缩进补偿 10px），不再是蓝色大块 */
+  /* 登录入口：收起时只显示「登录」二字（新人能看懂），展开时「🔑 登录 / 注册」 */
   .login-btn {
-    display: flex; align-items: center; justify-content: flex-start; gap: 10px;
-    padding: 10px 12px 10px 14px; margin: 0; background: transparent;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    padding: 10px 0; margin: 0; background: transparent;
     border-radius: 0; color: var(--logo, #4f7cff); font-weight: 700; white-space: nowrap;
   }
-  #sidebar:hover .login-btn { padding-left: 22px; }
+  #sidebar:hover .login-btn { justify-content: flex-start; padding-left: 22px; }
+  .login-btn .lg-ico { display: none; }
+  .login-btn .lg-short { display: inline-block; font-size: 13px; letter-spacing: 3px; }
+  #sidebar:hover .login-btn .lg-ico { display: inline-block; font-size: 16px; }
+  #sidebar:hover .login-btn .lg-short { display: none; }
   .login-btn:hover { background: #f0f4ff; }
-  .login-btn .lg-ico { display: inline-block; font-size: 16px; }
 }
