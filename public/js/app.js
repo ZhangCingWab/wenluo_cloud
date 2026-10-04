@@ -219,7 +219,7 @@ function renderSidebar() {
   let html = `
   <div class="logo">
     <div class="logo-mark">文</div>
-    <div><span class="logo-name">文汇</span><span class="logo-sub">WENHUI</span></div>
+    <div class="logo-text"><span class="logo-name">文汇</span><span class="logo-sub">WENHUI</span></div>
   </div>
   <nav class="nav">
     ${link('/home', '🏠', '主页')}
@@ -357,6 +357,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-04 16:00', author: 'ZhangCing', items: ['🖥️ 修复收起时 Logo「文汇」图标被挤出屏幕只剩半截（隐形文字占位导致，改 max-width 折叠）', '🖥️ 根除侧边栏底部横向滚动条'] },
   { date: '2026-10-04 15:00', author: 'ZhangCing', items: ['🖥️ 侧边栏收起时：Logo 图标居中、隐藏滚动条、所有图标精确居中对齐（悬停展开仍不跳动）'] },
   { date: '2026-10-04 14:00', author: 'ZhangCing', items: ['🖥️ 电脑端侧边栏改成洛谷风格：平时只显示图标条，鼠标悬停自动展开（浮层不挤内容）', '🖥️ 展开时文字淡入，图标位置固定不跳动；修复深色模式下侧边栏配色失效的问题'] },
   { date: '2026-10-04 12:00', author: 'ZhangCing', items: ['📱 手机端适配：侧边栏变抽屉菜单（左上角 ☰ 按钮开关），内容区全宽显示', '📱 统计/推荐/排行榜/私信/AI面板/写作工作台全部适配小屏'] },
