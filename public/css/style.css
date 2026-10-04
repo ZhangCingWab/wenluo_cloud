@@ -889,16 +889,23 @@ html.dark .theme-toggle .dot::after { transform:translateX(14px); }
   #sidebar { width: 64px; overflow: hidden; transition: width .22s cubic-bezier(.4, 0, .2, 1); }
   #sidebar:hover { width: 232px; box-shadow: 8px 0 28px rgba(31, 56, 88, .16); }
   #main { margin-left: 66px; }
+  /* 收起时不出滚动条，悬停展开后才允许滚动 */
+  #sidebar .nav { overflow-y: hidden; }
+  #sidebar:hover .nav { overflow-y: auto; }
   /* 图标位置固定不动，文字淡入淡出（展开时不跳动） */
-  .logo-name, .logo-sub, .nav a span.txt, .nav-label, .user-card .uinfo, .login-btn span.txt {
+  .logo-name, .logo-sub, .nav a span.txt, .nav-label, .user-card .uinfo, .login-btn span.txt, .theme-toggle span.txt {
     opacity: 0; transition: opacity .18s ease .05s; white-space: nowrap;
   }
   #sidebar:hover .logo-name, #sidebar:hover .logo-sub, #sidebar:hover .nav a span.txt,
-  #sidebar:hover .nav-label, #sidebar:hover .user-card .uinfo, #sidebar:hover .login-btn span.txt { opacity: 1; }
-  /* 让图标在 64px 收起条里居中（展开后同样的缩进也自然） */
-  .logo { justify-content: flex-start; padding-left: 13px; }
+  #sidebar:hover .nav-label, #sidebar:hover .user-card .uinfo, #sidebar:hover .login-btn span.txt,
+  #sidebar:hover .theme-toggle span.txt { opacity: 1; }
+  /* Logo：收起时图标在 64px 条里居中，展开后文字淡入且图标位置不变（13+19=32=64/2） */
+  .logo { justify-content: center; padding: 18px 0 14px; }
+  #sidebar:hover .logo { justify-content: flex-start; padding-left: 13px; }
+  /* 图标在收起条里水平居中（22+10=32） */
   .nav a { justify-content: flex-start; padding: 10px 12px 10px 22px; }
   .nav a.active { padding-left: 19px; }
-  .user-card { padding-left: 14px; white-space: nowrap; }
-  .login-btn { padding: 10px 0; margin: 0 10px; text-align: center; overflow: hidden; }
+  .user-card { padding-left: 4px; white-space: nowrap; }
+  .theme-toggle { padding-left: 15px; }
+  .login-btn { padding: 10px 0; margin: 0 4px; text-align: center; overflow: hidden; }
 }
