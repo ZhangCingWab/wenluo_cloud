@@ -257,7 +257,7 @@ function renderSidebar() {
       </div>
     </div>`;
   } else {
-    html += `<a class="login-btn" href="#/login"><span class="txt">登录 / 注册</span></a>`;
+    html += `<a class="login-btn" href="#/login"><span class="lg-ico">🔑</span><span class="txt">登录 / 注册</span></a>`;
   }
   html += `</div>`;
   $sidebar.innerHTML = html;
@@ -357,6 +357,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-04 17:00', author: 'ZhangCing', items: ['🔑 修复未登录时侧边栏底部变成空蓝块：登录按钮收起时显示 🔑 图标，悬停展开显示完整文字', '🔄 静态资源加版本号 ?v=1004，彻底解决 CSS 缓存导致侧边栏样式不生效的问题'] },
   { date: '2026-10-04 16:00', author: 'ZhangCing', items: ['🖥️ 修复收起时 Logo「文汇」图标被挤出屏幕只剩半截（隐形文字占位导致，改 max-width 折叠）', '🖥️ 根除侧边栏底部横向滚动条'] },
   { date: '2026-10-04 15:00', author: 'ZhangCing', items: ['🖥️ 侧边栏收起时：Logo 图标居中、隐藏滚动条、所有图标精确居中对齐（悬停展开仍不跳动）'] },
   { date: '2026-10-04 14:00', author: 'ZhangCing', items: ['🖥️ 电脑端侧边栏改成洛谷风格：平时只显示图标条，鼠标悬停自动展开（浮层不挤内容）', '🖥️ 展开时文字淡入，图标位置固定不跳动；修复深色模式下侧边栏配色失效的问题'] },

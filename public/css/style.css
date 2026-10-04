@@ -908,4 +908,5 @@ html.dark .theme-toggle .dot::after { transform:translateX(14px); }
   .user-card { padding-left: 4px; }
   .theme-toggle { padding-left: 15px; }
   .login-btn { padding: 10px 0; margin: 0 4px; text-align: center; overflow: hidden; }
+  .login-btn .lg-ico { display: inline-block; font-size: 15px; }
 }
