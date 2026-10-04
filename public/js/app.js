@@ -357,6 +357,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-04 12:00', author: 'ZhangCing', items: ['📱 手机端适配：侧边栏变抽屉菜单（左上角 ☰ 按钮开关），内容区全宽显示', '📱 统计/推荐/排行榜/私信/AI面板/写作工作台全部适配小屏'] },
   { date: '2026-10-03 12:00', author: 'ZhangCing', items: ['🔴 修复文件下载 404：文件内容之前存 KV，KV 清理时全部丢失；现在内容改存 D1（file_blobs 表），跟数据库一起走', '⚠️ 旧投稿内容已无法恢复：请在「文件投稿→我的投稿记录」删除旧文件后重新上传', '🔴 修复文章里「下载文件」链接显示成原始文本（markdown 不支持相对路径链接）', '🔴 严重安全修复：withAuthorSync 4处调用参数顺序颠倒，上传/比赛/练习接口把整个用户表（含密码hash）返回给了前端，已修复+加防御', '✨ 新增删除文件接口（同时清理内容/自动文章/KV备份）'] },
   { date: '2026-10-01 10:00', author: 'ZhangCing', items: ['✨ 投稿文章正文直接显示文档内容：Word(docx) 自动转正文排版、PDF 内嵌预览、txt 直接可读（不用下载也能看）', '🔴 修复点赞报错 a.likes.push is not a function（点赞改直接查 D1）', '🔴 修复文章详情「文章不存在」（详情/评论点赞/评论删除全部改直接 SQL，不再读旧内存）'] },
   { date: '2026-10-01 09:00', author: 'ZhangCing', items: ['✨ 投稿文件审核通过后自动发布到文章库「文件投稿」分类（含大小、投稿说明、下载按钮，署名投稿人）', '通过的文件开放所有人下载；拒绝/撤回时自动移除对应文章', '文章库新增「文件投稿」分类标签'] },
@@ -2402,4 +2403,10 @@ async function viewProfile(id) {
   renderSidebar();
   route();
   setInterval(refreshUnread, 30000);
+  // 移动端抽屉侧边栏：汉堡开关，点导航/遮罩/路由变化自动收起
+  document.getElementById('menuBtn').addEventListener('click', () => document.body.classList.toggle('nav-open'));
+  document.getElementById('navMask').addEventListener('click', () => document.body.classList.remove('nav-open'));
+  document.getElementById('sidebar').addEventListener('click', e => {
+    if (e.target.closest('a')) document.body.classList.remove('nav-open');
+  });
 })();

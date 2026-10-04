@@ -1,4 +1,4 @@
-﻿/* ============ 文汇 · 清新科技风 ============ */
+/* ============ 文汇 · 清新科技风 ============ */
 :root {
   --blue: #3498db;
   --blue-dark: #2980b9;
@@ -827,3 +827,56 @@ html.dark .doc-content p, html.dark .doc-content li { color:#c8cfe0; }
 .theme-toggle .dot::after { content:''; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:#fff; transition:transform .2s; }
 html.dark .theme-toggle .dot { background:#4f7cff; }
 html.dark .theme-toggle .dot::after { transform:translateX(14px); }
+
+/* ============ 移动端适配（≤768px 抽屉侧边栏） ============ */
+#menuBtn, #navMask { display: none; }
+@media (max-width: 768px) {
+  /* 汉堡按钮 */
+  #menuBtn {
+    display: flex; align-items: center; justify-content: center;
+    position: fixed; top: 12px; left: 12px; width: 42px; height: 42px;
+    border-radius: 12px; border: 1px solid var(--border);
+    background: var(--card); color: var(--text); font-size: 20px;
+    box-shadow: var(--shadow); cursor: pointer; z-index: 60;
+  }
+  /* 侧边栏变抽屉 */
+  #sidebar {
+    width: 258px; transform: translateX(-105%);
+    transition: transform .25s cubic-bezier(.4, 0, .2, 1);
+    z-index: 55; box-shadow: none;
+  }
+  body.nav-open #sidebar { transform: translateX(0); box-shadow: 8px 0 30px rgba(15,19,32,.28); }
+  #navMask {
+    display: block; position: fixed; inset: 0;
+    background: rgba(15,19,32,.45); z-index: 50;
+    opacity: 0; pointer-events: none; transition: opacity .25s;
+  }
+  body.nav-open #navMask { opacity: 1; pointer-events: auto; }
+  /* 恢复被 900px 图标模式隐藏的文字 */
+  .logo-name, .logo-sub, .nav a span.txt, .nav-label, .user-card .uinfo { display: revert; }
+  .logo { justify-content: flex-start; padding: 18px 16px 14px; }
+  .nav a { justify-content: flex-start; }
+  /* 内容区全宽，顶部给汉堡按钮留空间 */
+  #main { margin-left: 0; padding: 68px 14px 40px; }
+  .container { max-width: 100%; }
+  /* 组件紧凑化 */
+  .hero { padding: 26px 20px 24px; }
+  .hero h1 { font-size: 22px; }
+  .stats { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .page-title h1 { font-size: 18px; }
+  .doc-head h1 { font-size: 19px; }
+  .card { padding: 14px; }
+  .auth-card { margin: 16px auto; }
+  table.rank { display: block; overflow-x: auto; white-space: nowrap; }
+  .rel-grid { grid-template-columns: 1fr 1fr; }
+  .notif-panel { left: 10px; right: 10px; width: auto; top: 62px; }
+  .ai-panel { left: 10px; right: 10px; width: auto; top: 10px; bottom: 10px; transform: translateX(105%); transition: transform .28s cubic-bezier(.4,0,.2,1); }
+  .ai-panel.open { right: 10px; transform: translateX(0); }
+  .write-split { flex-direction: column; }
+  .write-pane { width: 100% !important; }
+  .write-divider { display: none; }
+  .bubble { max-width: 86%; }
+  .form-item textarea.tall { min-height: 220px; }
+  .ws-wrap { height: auto; }
+  html.dark #menuBtn { background: #161d33; border-color: #2a3154; color: #e4e8f0; }
+}
