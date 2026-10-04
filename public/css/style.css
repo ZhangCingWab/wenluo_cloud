@@ -808,7 +808,8 @@ html.dark .nav a:hover { background:#1c2340; color:#e4e8f0; }
 html.dark .nav a.active { background:#1c2340; color:#8fa7ff; }
 html.dark .nav-label { color:#6a7599; }
 html.dark .user-card:hover { background:#1c2340; }
-html.dark .login-btn { background:#2f6fb3; }
+@media (max-width: 900px) { html.dark .login-btn { background: #2f6fb3; } }
+html.dark .login-btn:hover { background: #1c2340; }
 html.dark .card { background:#161d33; border-color:#2a3154; }
 html.dark .main { background:#0f1320; color:#e4e8f0; }
 html.dark h1, html.dark h2, html.dark h3 { color:#fff; }
@@ -901,12 +902,21 @@ html.dark .theme-toggle .dot::after { transform:translateX(14px); }
   #sidebar:hover .login-btn span.txt, #sidebar:hover .theme-toggle span.txt { max-width: 220px; opacity: 1; }
   .nav-label { opacity: 0; white-space: nowrap; transition: opacity .18s ease .05s; }
   #sidebar:hover .nav-label { opacity: 1; }
-  /* Logo 图标固定居中（13+19=32=64/2），两个状态都不动 */
-  .logo { justify-content: flex-start; padding-left: 13px; }
+  /* Logo：收起时只显示标（单独一行、严格居中）；gap 归零避免隐形文字挤偏图标 */
+  .logo { justify-content: center; gap: 0; padding: 14px 0; }
+  #sidebar:hover .logo { justify-content: flex-start; padding-left: 13px; }
+  #sidebar:hover .logo-text { padding-left: 10px; }
   .nav a { justify-content: flex-start; padding: 10px 12px 10px 22px; }
   .nav a.active { padding-left: 19px; }
   .user-card { padding-left: 4px; }
   .theme-toggle { padding-left: 15px; }
-  .login-btn { padding: 10px 0; margin: 0 4px; text-align: center; overflow: hidden; }
-  .login-btn .lg-ico { display: inline-block; font-size: 15px; }
+  /* 登录入口：收起时就是和导航一样的图标行（在 user-zone 内，缩进补偿 10px），不再是蓝色大块 */
+  .login-btn {
+    display: flex; align-items: center; justify-content: flex-start; gap: 10px;
+    padding: 10px 12px 10px 14px; margin: 0; background: transparent;
+    border-radius: 0; color: var(--logo, #4f7cff); font-weight: 700; white-space: nowrap;
+  }
+  #sidebar:hover .login-btn { padding-left: 22px; }
+  .login-btn:hover { background: #f0f4ff; }
+  .login-btn .lg-ico { display: inline-block; font-size: 16px; }
 }
