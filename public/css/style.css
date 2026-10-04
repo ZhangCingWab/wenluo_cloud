@@ -800,12 +800,15 @@ table.rank tr:last-child td { border: none; }
 /* 深色模式 */
 html.dark #readBar { background: linear-gradient(90deg,#8fa7ff,#73d13d); }
 html.dark body, html.dark .app-wrap { background:#0f1320; color:#e4e8f0; }
-html.dark .sidebar { background:#141a2b; border-right-color:#2a3154; }
-html.dark .sidebar .logo-name { color:#e4e8f0; }
-html.dark .sidebar .logo-sub { color:#6a7599; }
-html.dark .nav-item { color:#a0a8c0; }
-html.dark .nav-item:hover { background:#1c2340; color:#e4e8f0; }
-html.dark .nav-item.cur { background:#1c2340; color:#8fa7ff; }
+html.dark #sidebar { background:#141a2b; border-right-color:#2a3154; }
+html.dark #sidebar .logo-name { color:#e4e8f0; }
+html.dark #sidebar .logo-sub { color:#6a7599; }
+html.dark .nav a { color:#a0a8c0; }
+html.dark .nav a:hover { background:#1c2340; color:#e4e8f0; }
+html.dark .nav a.active { background:#1c2340; color:#8fa7ff; }
+html.dark .nav-label { color:#6a7599; }
+html.dark .user-card:hover { background:#1c2340; }
+html.dark .login-btn { background:#2f6fb3; }
 html.dark .card { background:#161d33; border-color:#2a3154; }
 html.dark .main { background:#0f1320; color:#e4e8f0; }
 html.dark h1, html.dark h2, html.dark h3 { color:#fff; }
@@ -879,4 +882,23 @@ html.dark .theme-toggle .dot::after { transform:translateX(14px); }
   .form-item textarea.tall { min-height: 220px; }
   .ws-wrap { height: auto; }
   html.dark #menuBtn { background: #161d33; border-color: #2a3154; color: #e4e8f0; }
+}
+
+/* ============ 桌面端洛谷式侧边栏（>900px 收成图标条，悬停展开浮层） ============ */
+@media (min-width: 901px) {
+  #sidebar { width: 64px; overflow: hidden; transition: width .22s cubic-bezier(.4, 0, .2, 1); }
+  #sidebar:hover { width: 232px; box-shadow: 8px 0 28px rgba(31, 56, 88, .16); }
+  #main { margin-left: 66px; }
+  /* 图标位置固定不动，文字淡入淡出（展开时不跳动） */
+  .logo-name, .logo-sub, .nav a span.txt, .nav-label, .user-card .uinfo, .login-btn span.txt {
+    opacity: 0; transition: opacity .18s ease .05s; white-space: nowrap;
+  }
+  #sidebar:hover .logo-name, #sidebar:hover .logo-sub, #sidebar:hover .nav a span.txt,
+  #sidebar:hover .nav-label, #sidebar:hover .user-card .uinfo, #sidebar:hover .login-btn span.txt { opacity: 1; }
+  /* 让图标在 64px 收起条里居中（展开后同样的缩进也自然） */
+  .logo { justify-content: flex-start; padding-left: 13px; }
+  .nav a { justify-content: flex-start; padding: 10px 12px 10px 22px; }
+  .nav a.active { padding-left: 19px; }
+  .user-card { padding-left: 14px; white-space: nowrap; }
+  .login-btn { padding: 10px 0; margin: 0 10px; text-align: center; overflow: hidden; }
 }
