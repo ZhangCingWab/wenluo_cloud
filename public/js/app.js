@@ -241,32 +241,27 @@ function renderSidebar() {
       ${link('/admin/files', '📁', '审核投稿')}
       ${link('/admin/invite', '🔑', '邀请码管理')}
       ${link('/admin/contest', '🏁', '创建比赛')}` : ''}
-      <div class="theme-toggle" id="themeToggle" title="切换深色模式">
-        <span id="themeIcon">🌙</span><span class="txt">${localStorage.getItem('theme') === 'dark' ? '深色' : '浅色'}</span>
-        <span class="dot"></span>
-      </div>
-  </nav>
-  <div class="user-zone" id="userZone">`;
-  if (me) {
-    html += `
-    <div class="user-card" id="userCard">
-      ${avatarHtml(me)}
-      <div class="uinfo">
-        <div class="name">${esc(me.nickname)}${me.role === 'admin' ? '<span class="role-badge">管理员</span>' : ''}</div>
-        <div class="uname">@${esc(me.username)}</div>
-      </div>
-    </div>`;
-  } else {
-    html += `<a class="login-btn" href="#/login"><span class="lg-ico">🔑</span><span class="txt">登录 / 注册</span><span class="lg-short">登录</span></a>`;
-  }
-  html += `</div>`;
+  </nav>`;
   $sidebar.innerHTML = html;
-
-  const card = document.getElementById('userCard');
-  if (card) card.onclick = toggleUserMenu;
+  renderUserChip();
+}
+/* ---------- 右上角用户区（头像/名字/登录按钮，全端常驻） ---------- */
+function renderUserChip() {
+  let chip = document.getElementById('userChip');
+  if (!chip) { chip = document.createElement('div'); chip.id = 'userChip'; document.body.appendChild(chip); }
+  const me = state.me;
+  if (me) {
+    chip.className = 'userchip-in';
+    chip.innerHTML = `${avatarHtml(me)}<span class="chip-name">${esc(me.nickname)}</span>`;
+    chip.onclick = (e) => { e.stopPropagation(); toggleUserMenu(); };
+  } else {
+    chip.className = 'userchip-out';
+    chip.innerHTML = `<a class="chip-login" href="#/login">登录 / 注册</a>`;
+    chip.onclick = null;
+  }
 }
 function toggleUserMenu() {
-  const zone = document.getElementById('userZone');
+  const chip = document.getElementById('userChip');
   if (document.getElementById('userMenu')) return closeMenu();
   const me = state.me;
   const div = document.createElement('div');
@@ -279,8 +274,10 @@ function toggleUserMenu() {
     <a href="#/mine">📝 我的文章</a>
     <a href="#/settings">⚙️ 偏好设置</a>
     <div class="divider"></div>
+    <div class="p-item" id="themeToggle"><span id="themeIcon">${localStorage.getItem('theme') === 'dark' ? '☀️' : '🌙'}</span><span>切换深色模式</span></div>
+    <div class="divider"></div>
     <div class="p-item logout" id="logoutBtn">🚪 登出账号</div>`;
-  zone.appendChild(div);
+  chip.appendChild(div);
   div.querySelector('#logoutBtn').onclick = async () => {
     try { await api('/api/logout', { method: 'POST' }); } catch (e) {}
     state.me = null;
@@ -357,6 +354,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-04 20:00', author: 'ZhangCing', items: ['🔄 用户区搬到页面右上角：头像+名字常驻右上角（点击弹出个人主页/私信/深色模式/登出菜单），未登录显示「登录 / 注册」按钮', '🖥️ 侧边栏底部不再放用户信息，纯导航更清爽', '🖥️ 修复导航图标没对齐：emoji 装进固定宽度盒子，文字严格排成一列'] },
   { date: '2026-10-04 19:00', author: 'ZhangCing', items: ['🖥️ 侧边栏收起时登录入口显示「登录」二字（不再是看不懂的孤零零钥匙图标）', '🔴 修复展开后「登录 / 注册」白底白字看不见（去掉旧样式里的 color:#fff !important）'] },
   { date: '2026-10-04 18:00', author: 'ZhangCing', items: ['🖥️ 文汇 Logo 收起时单独一行、严格正中央（展开不跳动）', '🔑 登录入口重做：收起时是和导航一样的图标行，不再是突兀的蓝色大块'] },
   { date: '2026-10-04 17:00', author: 'ZhangCing', items: ['🔑 修复未登录时侧边栏底部变成空蓝块：登录按钮收起时显示 🔑 图标，悬停展开显示完整文字', '🔄 静态资源加版本号 ?v=1004，彻底解决 CSS 缓存导致侧边栏样式不生效的问题'] },
