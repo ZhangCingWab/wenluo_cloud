@@ -307,9 +307,9 @@ async function ensureSeedData(env) {
       id TEXT PRIMARY KEY, author_id TEXT NOT NULL, content TEXT NOT NULL, created_at INTEGER
     )`);
     try { await dbRun(env, `ALTER TABLE chat_messages ADD COLUMN group_id TEXT`); } catch {}
-    // 讨论区：群聊（多群制 + 群主审核入群）
+    // 讨论区：群聊（多群制 + 群主审核入群）；name 加 UNIQUE 防多 isolate 并发 seed 重复建群
     await dbRun(env, `CREATE TABLE IF NOT EXISTS chat_groups (
-      id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT DEFAULT '',
+      id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, description TEXT DEFAULT '',
       emoji TEXT DEFAULT '💬', owner_id TEXT, created_at INTEGER
     )`);
     await dbRun(env, `CREATE TABLE IF NOT EXISTS chat_members (
@@ -317,7 +317,22 @@ async function ensureSeedData(env) {
       status TEXT DEFAULT 'pending', joined_at INTEGER,
       PRIMARY KEY (group_id, user_id)
     )`);
-    // 预置群（仅群表为空时插入一次，群主 = 站长 admin）
+    // 旧表若无 UNIQUE 约束：按名字去重（保留最早一组）后重建（一次性，幂等）
+    try {
+      const ddl = await env.DB.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='chat_groups'`).first();
+      if (ddl && ddl.sql && !ddl.sql.includes('UNIQUE')) {
+        await env.DB.prepare(`DELETE FROM chat_groups WHERE rowid NOT IN (SELECT MIN(rowid) FROM chat_groups GROUP BY name)`).run();
+        await env.DB.prepare(`CREATE TABLE chat_groups_new (
+          id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, description TEXT DEFAULT '',
+          emoji TEXT DEFAULT '💬', owner_id TEXT, created_at INTEGER
+        )`).run();
+        await env.DB.prepare(`INSERT INTO chat_groups_new SELECT id, name, description, emoji, owner_id, created_at FROM chat_groups`).run();
+        await env.DB.prepare(`DROP TABLE chat_groups`).run();
+        await env.DB.prepare(`ALTER TABLE chat_groups_new RENAME TO chat_groups`).run();
+        await env.DB.prepare(`DELETE FROM chat_members WHERE group_id NOT IN (SELECT id FROM chat_groups)`).run();
+      }
+    } catch {}
+    // 预置群（仅群表为空时插入一次，群主 = 站长 admin；OR IGNORE 依赖 name UNIQUE 挡并发）
     try {
       const gcnt = (await env.DB.prepare(`SELECT COUNT(*) AS n FROM chat_groups`).first()).n;
       if (!gcnt) {
@@ -330,11 +345,11 @@ async function ensureSeedData(env) {
         ];
         for (const [emoji, name, desc] of seeds) {
           const gid = uid('g'), now = Date.now();
-          await env.DB.prepare(`INSERT INTO chat_groups (id, name, description, emoji, owner_id, created_at) VALUES (?,?,?,?,?,?)`)
+          await env.DB.prepare(`INSERT OR IGNORE INTO chat_groups (id, name, description, emoji, owner_id, created_at) VALUES (?,?,?,?,?,?)`)
             .bind(gid, name, desc, emoji, admin ? admin.id : null, now).run();
           if (admin) {
-            await env.DB.prepare(`INSERT OR IGNORE INTO chat_members (group_id, user_id, status, joined_at) VALUES (?,?,'approved',?)`)
-              .bind(gid, admin.id, now).run();
+            await env.DB.prepare(`INSERT OR IGNORE INTO chat_members (group_id, user_id, status, joined_at)
+              SELECT id, ?, 'approved', ? FROM chat_groups WHERE name = ?`).bind(admin.id, now, name).run();
           }
         }
       }
@@ -1923,7 +1938,7 @@ export async function onRequest(context) {
       const ex = await dbFirst(env, `SELECT status FROM chat_members WHERE group_id = ? AND user_id = ?`, [m.id, me.id]);
       if (ex && (ex.status === 'approved' || ex.status === 'pending')) return json({ ok: true, status: ex.status });
       try {
-        await env.DB.prepare(`INSERT INTO chat_members (group_id, user_id, status, joined_at) VALUES (?,?,'pending',?)`)
+        await env.DB.prepare(`INSERT OR IGNORE INTO chat_members (group_id, user_id, status, joined_at) VALUES (?,?,'pending',?)`)
           .bind(m.id, me.id, Date.now()).run();
       } catch (e) { return bad('申请失败: ' + e.message); }
       const ownerId = g.owner_id || g.ownerId;
