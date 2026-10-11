@@ -916,6 +916,10 @@ html.dark .g-desc, html.dark .g-meta { color:#6a7599; }
 html.dark .req-card { background:#1a2240; }
 html.dark .req-row { border-bottom-color:#2a3154; }
 html.dark .badge.pending { background:#3a2f14; color:#f5b04c; }
+html.dark .pager .pg-info { color:#6a7599; }
+html.dark .pager .pg { background:#1a2240; border-color:#2a3154; color:#a0a8c0; }
+html.dark .pager .pg:hover:not(:disabled):not(.cur) { border-color:#8fa7ff; color:#8fa7ff; }
+html.dark .pager .pg.cur { background:#4f7cff; border-color:#4f7cff; color:#fff; }
 
 /* 深色模式 toggle */
 .theme-toggle { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:8px; cursor:pointer; font-size:13px; color:#a0a8c0; user-select:none; }

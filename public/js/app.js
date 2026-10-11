@@ -361,6 +361,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-12 01:10', author: 'ZhangCing', items: ['📄 长列表加分页按钮：求助问答、排行榜（每页20）、我的文章/帖子/投稿、后台审核列表（每页10），翻页自动回到列表顶部', '🌙 分页按钮适配深色模式'] },
   { date: '2026-10-12 00:30', author: 'ZhangCing', items: ['👥 群聊升级为多群制：预置「官方公告 / 灌水闲聊 / 写作交流 / 兴趣杂谈」四个群（群主都是站长）', '🔐 加群需群主审核：申请后群主在群聊里点「通过 / 拒绝」，结果站内通知，审核卡片里可一键处理'] },
   { date: '2026-10-11 23:55', author: 'ZhangCing', items: ['🎉 新增「讨论区」模块：🙋 求助问答（发求助/回复/采纳答案/标记已解决，未解决自动置顶）+ 💬 群聊大厅（全员聊天室，5 秒自动刷新新消息）', '📱 讨论区适配手机端与深色模式'] },
   { date: '2026-10-11 16:00', author: 'ZhangCing', items: ['🎨 全站换上正式标志「开卷文汇」：浅蓝圆角方印 + 蓝字「文」+ 摊开书页', '🔖 浏览器标签页 favicon 同步替换为新标志'] },
@@ -569,7 +570,7 @@ async function viewHelpList(body) {
   body.innerHTML = '<div class="card"><div class="loading-block">加载中…</div></div>';
   const st = viewHelpList._st || '';
   const d = await api('/api/discuss/help' + (st ? '?status=' + st : ''));
-  const items = d.posts.map(p => `
+  const helpItem = (p) => `
     <div class="item">
       ${avatarHtml(p.author, 'xs')}
       <div style="flex:1">
@@ -577,7 +578,20 @@ async function viewHelpList(body) {
           <span class="badge ${p.status === 'solved' ? 'solved' : 'open'}">${p.status === 'solved' ? '已解决' : '待解决'}</span></div>
         <div class="meta"><span>${esc(p.author.nickname)}</span><span>${fmtTime(p.createdAt)}</span><span>💬 <span class="num">${p.replyCount || 0}</span></span></div>
       </div>
-    </div>`).join('');
+    </div>`;
+  const helpTotal = Math.max(1, Math.ceil(d.posts.length / PAGE_SIZE));
+  const renderHelpPage = () => {
+    const pg = viewHelpList._page || 1;
+    document.getElementById('helpList').innerHTML =
+      d.posts.slice((pg - 1) * PAGE_SIZE, pg * PAGE_SIZE).map(helpItem).join('') ||
+      '<div class="empty">还没有求助，点「发求助」提问吧！</div>';
+    document.getElementById('helpPager').innerHTML = pagerHtml(pg, helpTotal, 'pgHelp');
+  };
+  window.pgHelp = (p) => {
+    viewHelpList._page = Math.min(Math.max(1, p), helpTotal);
+    renderHelpPage();
+    document.querySelector('.tabs').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
   body.innerHTML = `
   <div class="card">
     <div class="tabs" style="align-items:center">
@@ -593,9 +607,10 @@ async function viewHelpList(body) {
       <div class="form-item"><label>详细描述</label><textarea id="hContent" style="min-height:130px" placeholder="把问题背景、遇到的现象写清楚，方便大家帮你"></textarea></div>
       <button class="btn primary" id="hSubmit">发布求助</button>
     </div>
-    <div id="helpList">${items || '<div class="empty">还没有求助，点「发求助」提问吧！</div>'}</div>
+    <div id="helpList"></div>
+    <div id="helpPager"></div>
   </div>`;
-  body.querySelectorAll('.tabs .t').forEach(t => t.onclick = () => { viewHelpList._st = t.dataset.s; viewDiscuss('help'); });
+  body.querySelectorAll('.tabs .t').forEach(t => t.onclick = () => { viewHelpList._st = t.dataset.s; viewHelpList._page = 1; viewDiscuss('help'); });
   document.getElementById('newHelpBtn').onclick = () => {
     if (needLogin()) return;
     const f = document.getElementById('newHelpForm');
@@ -609,6 +624,7 @@ async function viewHelpList(body) {
       viewDiscuss('help');
     } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
   };
+  renderHelpPage();
 }
 
 async function viewHelpDetail(body, id) {
@@ -1509,22 +1525,40 @@ async function viewWrite(editId) {
 /* ---------- 排行榜 ---------- */
 async function viewRank() {
   const d = await api('/api/rank');
+  const RANK_PAGE = 20;
+  const rankTotal = Math.max(1, Math.ceil(d.rank.length / RANK_PAGE));
+  const rankRow = (r, i) => `
+        <tr>
+          <td class="rank-no ${i < 3 ? 'r' + (i + 1) : ''}">${i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</td>
+          <td><a class="who" href="#/user/${r.user.id}">${avatarHtml(r.user, 'small')} ${esc(r.user.nickname)}
+            ${r.user.role === 'admin' ? '<span class="role-badge">管理员</span>' : ''}</a></td>
+          <td class="score">${r.score}</td><td>${r.articles}</td><td>${r.posts}</td><td>${r.likes}</td>
+        </tr>`;
+  const renderRankPage = () => {
+    const pg = viewRank._page || 1;
+    const start = (pg - 1) * RANK_PAGE;
+    document.getElementById('rankBody').innerHTML =
+      d.rank.slice(start, start + RANK_PAGE).map((r, i) => rankRow(r, start + i)).join('') ||
+      '<tr><td colspan="6" class="empty">虚位以待</td></tr>';
+    document.getElementById('rankPager').innerHTML = pagerHtml(pg, rankTotal, 'pgRank');
+  };
+  window.pgRank = (p) => {
+    viewRank._page = Math.min(Math.max(1, p), rankTotal);
+    renderRankPage();
+    document.querySelector('.page-title').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
   $app.innerHTML = `
   <div class="container">
     <div class="page-title"><div><h1>排行榜</h1><div class="sub">文章×10 + 帖子×5 + 获赞×3 + 评论×2 = 积分</div></div></div>
     <div class="card">
       <table class="rank">
         <tr><th></th><th>用户</th><th>积分</th><th>文章</th><th>帖子</th><th>获赞</th></tr>
-        ${d.rank.map((r, i) => `
-        <tr>
-          <td class="rank-no ${i < 3 ? 'r' + (i + 1) : ''}">${i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</td>
-          <td><a class="who" href="#/user/${r.user.id}">${avatarHtml(r.user, 'small')} ${esc(r.user.nickname)}
-            ${r.user.role === 'admin' ? '<span class="role-badge">管理员</span>' : ''}</a></td>
-          <td class="score">${r.score}</td><td>${r.articles}</td><td>${r.posts}</td><td>${r.likes}</td>
-        </tr>`).join('') || '<tr><td colspan="6" class="empty">虚位以待</td></tr>'}
+        <tbody id="rankBody"></tbody>
       </table>
+      <div id="rankPager"></div>
     </div>
   </div>`;
+  renderRankPage();
 }
 
 /* ---------- 比赛广场 ---------- */
@@ -1825,36 +1859,51 @@ async function viewMine() {
   if (needLogin()) return;
   const tab = viewMine._t || 'a';
   const [da, dp, df] = await Promise.all([api('/api/articles/mine'), api('/api/posts/mine'), api('/api/files/mine')]);
-  let list = '';
-  if (tab === 'a') {
-    list = da.articles.map(a => `
+  const mineData = { a: da.articles, p: dp.posts, f: df.files };
+  const mineEmpty = {
+    a: '<div class="empty">还没有写过文章，<a href="#/write">去写一篇</a>！</div>',
+    p: '<div class="empty">还没有发过帖子</div>',
+    f: '<div class="empty">暂无投稿</div>',
+  };
+  const mineItem = (x) => {
+    if (tab === 'a') return `
       <div class="item">
         <div style="flex:1">
-          <div class="title"><a href="#/article/${a.id}">${esc(a.title)}</a> <span class="badge ${a.status}">${statusBadge(a.status)}</span></div>
-          <div class="meta"><span>${fmtTime(a.createdAt)}</span><span>👁 ${a.views || 0}</span><span>❤️ ${a.likeCount || 0}</span></div>
+          <div class="title"><a href="#/article/${x.id}">${esc(x.title)}</a> <span class="badge ${x.status}">${statusBadge(x.status)}</span></div>
+          <div class="meta"><span>${fmtTime(x.createdAt)}</span><span>👁 ${x.views || 0}</span><span>❤️ ${x.likeCount || 0}</span></div>
         </div>
-        ${a.status !== 'approved' ? `<button class="btn ghost sm" onclick="go('#/write/${a.id}')">编辑</button>` : ''}
-        <button class="btn red sm" data-del-art="${a.id}">删除</button>
-      </div>`).join('') || '<div class="empty">还没有写过文章，<a href="#/write">去写一篇</a>！</div>';
-  } else if (tab === 'p') {
-    list = dp.posts.map(p => `
+        ${x.status !== 'approved' ? `<button class="btn ghost sm" onclick="go('#/write/${x.id}')">编辑</button>` : ''}
+        <button class="btn red sm" data-del-art="${x.id}">删除</button>
+      </div>`;
+    if (tab === 'p') return `
       <div class="item">
         <div style="flex:1">
-          <div class="title"><a href="#/post/${p.id}">${esc(p.title)}</a> <span class="badge ${p.status}">${statusBadge(p.status)}</span></div>
-          <div class="meta"><span>${fmtTime(p.createdAt)}</span><span>💬 ${p.commentCount}</span></div>
+          <div class="title"><a href="#/post/${x.id}">${esc(x.title)}</a> <span class="badge ${x.status}">${statusBadge(x.status)}</span></div>
+          <div class="meta"><span>${fmtTime(x.createdAt)}</span><span>💬 ${x.commentCount}</span></div>
         </div>
-        <button class="btn red sm" data-del-post="${p.id}">删除</button>
-      </div>`).join('') || '<div class="empty">还没有发过帖子</div>';
-  } else {
-    list = df.files.map(f => `
+        <button class="btn red sm" data-del-post="${x.id}">删除</button>
+      </div>`;
+    return `
       <div class="item">
         <div style="align-self:center;font-size:22px">📄</div>
         <div style="flex:1">
-          <div class="title">${esc(f.originalName)} <span class="badge ${f.status}">${statusBadge(f.status)}</span></div>
-          <div class="meta"><span>${esc(f.note || '')}</span><span>${fmtSize(f.size)}</span><span>${fmtTime(f.createdAt)}</span></div>
+          <div class="title">${esc(x.originalName)} <span class="badge ${x.status}">${statusBadge(x.status)}</span></div>
+          <div class="meta"><span>${esc(x.note || '')}</span><span>${fmtSize(x.size)}</span><span>${fmtTime(x.createdAt)}</span></div>
         </div>
-      </div>`).join('') || '<div class="empty">暂无投稿</div>';
-  }
+      </div>`;
+  };
+  const mineTotal = Math.max(1, Math.ceil(mineData[tab].length / PAGE_SIZE));
+  const renderMinePage = () => {
+    const pg = viewMine._page || 1;
+    document.getElementById('mineList').innerHTML =
+      mineData[tab].slice((pg - 1) * PAGE_SIZE, pg * PAGE_SIZE).map(mineItem).join('') || mineEmpty[tab];
+    document.getElementById('minePager').innerHTML = pagerHtml(pg, mineTotal, 'pgMine');
+  };
+  window.pgMine = (p) => {
+    viewMine._page = Math.min(Math.max(1, p), mineTotal);
+    renderMinePage();
+    document.querySelector('.tabs').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
   $app.innerHTML = `
   <div class="container">
     <div class="page-title"><div><h1>我的文章</h1><div class="sub">管理你发布的文章、帖子与投稿</div></div>
@@ -1864,9 +1913,12 @@ async function viewMine() {
       <span class="t ${tab === 'p' ? 'active' : ''}" data-t="p">帖子（${dp.posts.length}）</span>
       <span class="t ${tab === 'f' ? 'active' : ''}" data-t="f">投稿（${df.files.length}）</span>
     </div>
-    <div class="card">${list}</div>
+    <div class="card">
+      <div id="mineList"></div>
+      <div id="minePager"></div>
+    </div>
   </div>`;
-  document.querySelectorAll('.tabs .t').forEach(t => t.onclick = () => { viewMine._t = t.dataset.t; route(); });
+  document.querySelectorAll('.tabs .t').forEach(t => t.onclick = () => { viewMine._t = t.dataset.t; viewMine._page = 1; route(); });
   document.querySelectorAll('[data-del-art]').forEach(b => b.onclick = async () => {
     if (!confirm('确定删除该文章？')) return;
     await api('/api/articles/' + b.dataset.delArt, { method: 'DELETE' });
@@ -1877,6 +1929,7 @@ async function viewMine() {
     await api('/api/posts/' + b.dataset.delPost, { method: 'DELETE' });
     toast('已删除'); route();
   });
+  renderMinePage();
 }
 
 /* ---------- 偏好设置 ---------- */
@@ -2139,68 +2192,70 @@ async function adminReview(kind, st) {
   const title = { articles: '审核文章', posts: '审核帖子', files: '审核投稿', problems: '审核题目' }[kind];
   const labels = { pending: '待审核', approved: '已通过', rejected: '已拒绝' };
   const dataMap = { articles: d.articles, posts: d.posts, files: d.files, problems: d.problems };
-
-  let items = '';
-  if (kind === 'problems') {
-    items = d.problems.map(p => `
+  const revItem = (x) => {
+    if (kind === 'problems') return `
       <div class="review-item">
         <div class="r-head">
-          <span class="r-title">${esc(p.title)}</span>
-          <span class="type-badge">${TYPE[p.type]}</span>
-          ${diffBadge(p.difficulty)}
-          <span class="badge ${p.status}">${statusBadge(p.status)}</span>
+          <span class="r-title">${esc(x.title)}</span>
+          <span class="type-badge">${TYPE[x.type]}</span>
+          ${diffBadge(x.difficulty)}
+          <span class="badge ${x.status}">${statusBadge(x.status)}</span>
         </div>
-        <div class="r-content">${md(p.content)}</div>
+        <div class="r-content">${md(x.content)}</div>
         <div class="r-actions">
-          <span class="hint">出题人：${esc(p.proposer.nickname)}（@${esc(p.proposer.username || '')}）· ${fmtTime(p.createdAt)}</span>
-          <button class="btn green sm" data-r="approve" data-id="${p.id}">✔ 通过</button>
-          <button class="btn red sm" data-r="reject" data-id="${p.id}">✘ 拒绝</button>
+          <span class="hint">出题人：${esc(x.proposer.nickname)}（@${esc(x.proposer.username || '')}）· ${fmtTime(x.createdAt)}</span>
+          <button class="btn green sm" data-r="approve" data-id="${x.id}">✔ 通过</button>
+          <button class="btn red sm" data-r="reject" data-id="${x.id}">✘ 拒绝</button>
         </div>
-      </div>`).join('');
-  } else if (kind === 'files') {
-    items = d.files.map(f => `
+      </div>`;
+    if (kind === 'files') return `
       <div class="review-item">
         <div class="r-head">
           <span style="font-size:22px">📄</span>
-          <span class="r-title">${esc(f.originalName)}</span>
-          <span class="badge ${f.status}">${statusBadge(f.status)}</span>
+          <span class="r-title">${esc(x.originalName)}</span>
+          <span class="badge ${x.status}">${statusBadge(x.status)}</span>
         </div>
-        <div class="r-content">投稿说明：${esc(f.note || '（无）')}\n文件大小：${fmtSize(f.size)}\n投稿人：${esc(f.author.nickname)}（@${esc(f.author.username)}）· ${fmtTime(f.createdAt)}</div>
+        <div class="r-content">投稿说明：${esc(x.note || '（无）')}\n文件大小：${fmtSize(x.size)}\n投稿人：${esc(x.author.nickname)}（@${esc(x.author.username)}）· ${fmtTime(x.createdAt)}</div>
         <div class="r-actions">
-          <button class="btn green sm" data-r="approve" data-id="${f.id}">✔ 通过</button>
-          <button class="btn red sm" data-r="reject" data-id="${f.id}">✘ 拒绝</button>
-          <button class="btn ghost sm" onclick="window.open('/api/files/${f.id}/download')">⬇ 下载查看</button>
+          <button class="btn green sm" data-r="approve" data-id="${x.id}">✔ 通过</button>
+          <button class="btn red sm" data-r="reject" data-id="${x.id}">✘ 拒绝</button>
+          <button class="btn ghost sm" onclick="window.open('/api/files/${x.id}/download')">⬇ 下载查看</button>
         </div>
-      </div>`).join('');
-  } else if (kind === 'posts') {
-    items = d.posts.map(p => `
+      </div>`;
+    return `
       <div class="review-item">
         <div class="r-head">
-          <span class="r-title">${esc(p.title)}</span>
-          <span class="badge ${p.status}">${statusBadge(p.status)}</span>
+          <span class="r-title">${esc(x.title)}</span>
+          <span class="badge ${x.status}">${statusBadge(x.status)}</span>
         </div>
-        <div class="r-content">${md(p.content)}</div>
+        <div class="r-content">${md(x.content)}</div>
         <div class="r-actions">
-          <span class="hint">投稿人：${esc(p.author.nickname)}（@${esc(p.author.username)}）· ${fmtTime(p.createdAt)}</span>
-          <button class="btn green sm" data-r="approve" data-id="${p.id}">✔ 通过</button>
-          <button class="btn red sm" data-r="reject" data-id="${p.id}">✘ 拒绝</button>
+          <span class="hint">${kind === 'posts' ? '投稿人' : '作者'}：${esc(x.author.nickname)}（@${esc(x.author.username)}）· ${fmtTime(x.createdAt)}</span>
+          <button class="btn green sm" data-r="approve" data-id="${x.id}">✔ 通过</button>
+          <button class="btn red sm" data-r="reject" data-id="${x.id}">✘ 拒绝</button>
         </div>
-      </div>`).join('');
-  } else {
-    items = d.articles.map(a => `
-      <div class="review-item">
-        <div class="r-head">
-          <span class="r-title">${esc(a.title)}</span>
-          <span class="badge ${a.status}">${statusBadge(a.status)}</span>
-        </div>
-        <div class="r-content">${md(a.content)}</div>
-        <div class="r-actions">
-          <span class="hint">作者：${esc(a.author.nickname)}（@${esc(a.author.username)}）· ${fmtTime(a.createdAt)}</span>
-          <button class="btn green sm" data-r="approve" data-id="${a.id}">✔ 通过</button>
-          <button class="btn red sm" data-r="reject" data-id="${a.id}">✘ 拒绝</button>
-        </div>
-      </div>`).join('');
-  }
+      </div>`;
+  };
+  const revData = dataMap[kind];
+  const revTotal = Math.max(1, Math.ceil(revData.length / PAGE_SIZE));
+  const renderRevPage = () => {
+    const pg = adminReview._page || 1;
+    document.getElementById('revList').innerHTML =
+      revData.slice((pg - 1) * PAGE_SIZE, pg * PAGE_SIZE).map(revItem).join('');
+    document.getElementById('revPager').innerHTML = pagerHtml(pg, revTotal, 'pgRev');
+    document.querySelectorAll('[data-r]').forEach(b => b.onclick = async () => {
+      try {
+        await api(`/api/admin/${apiPath}/${b.dataset.id}/review`, { method: 'POST', body: { action: b.dataset.r } });
+        toast(b.dataset.r === 'approve' ? '已通过' : '已拒绝');
+        route();
+      } catch (e) { toast(e.message, 'err'); }
+    });
+  };
+  window.pgRev = (p) => {
+    adminReview._page = Math.min(Math.max(1, p), revTotal);
+    renderRevPage();
+    document.querySelector('.tabs').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   $app.innerHTML = `
   <div class="container" style="max-width:900px">
@@ -2210,19 +2265,16 @@ async function adminReview(kind, st) {
       ${['pending', 'approved', 'rejected'].map(s => `
       <span class="t ${st === s ? 'active' : ''}" data-s="${s}">${labels[s]}（${counts[s]}）</span>`).join('')}
     </div>
-    ${items || '<div class="card"><div class="empty">这里空空如也 🎉</div></div>'}
+    <div id="revList"></div>
+    <div id="revPager"></div>
+    ${revData.length ? '' : '<div class="card"><div class="empty">这里空空如也 🎉</div></div>'}
   </div>`;
 
   document.querySelectorAll('.tabs .t').forEach(t => t.onclick = () => {
+    adminReview._page = 1;
     location.hash = `#/admin/${kind}/${t.dataset.s}`;
   });
-  document.querySelectorAll('[data-r]').forEach(b => b.onclick = async () => {
-    try {
-      await api(`/api/admin/${apiPath}/${b.dataset.id}/review`, { method: 'POST', body: { action: b.dataset.r } });
-      toast(b.dataset.r === 'approve' ? '已通过' : '已拒绝');
-      route();
-    } catch (e) { toast(e.message, 'err'); }
-  });
+  renderRevPage();
 }
 
 /* ---------- 私信 ---------- */
