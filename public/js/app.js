@@ -371,6 +371,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-12 03:20', author: 'ZhangCing', items: ['🏠 主页公告改为正常展示栏：hero 下方「📢 公告」栏直接显示公告全文，不再折叠'] },
   { date: '2026-10-12 03:00', author: 'ZhangCing', items: ['🏠 公告移到主页显示：hero 下方公告卡片，点击展开全文（新用户仍会自动弹出必读）', '🔔 通知藏进右上角名字菜单：点名字 →「通知中心」，有新通知时名字旁亮小红点'] },
   { date: '2026-10-12 02:20', author: 'ZhangCing', items: ['🔔 新增「通知中心」：右上角铃铛 + 未读红点，点赞/评论/回复/采纳答案/比赛开始/题目审核/练习提交都会提醒，点击通知直达对应页面', '📢 新增「公告」模块：上线第一篇《文汇新用户必读》，新用户进主页自动弹出，侧边栏可随时查看'] },
   { date: '2026-10-12 01:10', author: 'ZhangCing', items: ['📄 长列表加分页按钮：求助问答、排行榜（每页20）、我的文章/帖子/投稿、后台审核列表（每页10），翻页自动回到列表顶部', '🌙 分页按钮适配深色模式'] },
@@ -520,12 +521,15 @@ async function viewHome() {
     </div>`).join('') || '<div class="empty">暂无内容</div>';
 
   const annCard = (ad.announcements || []).length ? `
-    <div class="card ann-details">
+    <div class="card">
+      <h2>📢 公告</h2>
       ${ad.announcements.map(a => `
-      <details ${a.id === 'ann_readme' ? 'class="ann-important"' : ''}>
-        <summary>📢 ${esc(a.title)}</summary>
-        <div class="ann-body">${md(a.content || '')}</div>
-      </details>`).join('')}
+      <div class="item">
+        <div style="flex:1;min-width:0">
+          <div class="title" style="color:var(--orange);font-weight:700">${esc(a.title)}</div>
+          <div class="ann-body">${md(a.content || '')}</div>
+        </div>
+      </div>`).join('')}
     </div>` : '';
 
   const checkinCard = cd && cd.daily ? `
