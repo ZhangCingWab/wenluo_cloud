@@ -916,6 +916,32 @@ html.dark #userMenu { background: #161d33; }
   .chip-login { padding: 7px 14px; font-size: 12px; }
 }
 
+/* ============ 全局过渡动画（打开动作的中间帧） ============ */
+@keyframes pageIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes popIn { from { opacity: 0; transform: scale(.92) translateY(-8px); } to { opacity: 1; transform: none; } }
+@keyframes riseIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+/* 页面切换：整页淡入上移（route() 加 page-anim 类，播完自动移除 → 点赞等局部刷新不重播） */
+.page-anim { animation: pageIn .32s cubic-bezier(.25, .8, .35, 1) both; }
+/* 页内卡片/列表项依次上升入场（错峰更流畅） */
+.page-anim .card, .page-anim .item { animation: riseIn .4s ease both; }
+.page-anim .card:nth-child(2), .page-anim .item:nth-child(2) { animation-delay: .05s; }
+.page-anim .card:nth-child(3), .page-anim .item:nth-child(3) { animation-delay: .1s; }
+.page-anim .card:nth-child(4), .page-anim .item:nth-child(4) { animation-delay: .15s; }
+.page-anim .card:nth-child(5), .page-anim .item:nth-child(5) { animation-delay: .2s; }
+/* 弹出菜单：以右上角为原点弹性弹出 */
+.popover { transform-origin: top right; animation: popIn .22s cubic-bezier(.34, 1.45, .64, 1) both; }
+/* AI 面板打开：右下角弹性弹出——仅桌面端（手机端靠 translateX 位移过渡，动画会覆盖它的初始态） */
+@media (min-width: 769px) {
+  .ai-panel { animation: popIn .26s cubic-bezier(.34, 1.4, .64, 1) both; transform-origin: bottom right; }
+}
+/* toast 从下滑入 */
+.toast { animation: riseIn .28s cubic-bezier(.34, 1.4, .64, 1) both; }
+/* 尊重系统减少动效偏好 */
+@media (prefers-reduced-motion: reduce) {
+  .page-anim, .page-anim .card, .page-anim .item, .popover, .ai-panel, .toast { animation: none; }
+}
+
 /* ============ 桌面端洛谷式侧边栏（>900px 收成图标条，悬停展开浮层） ============ */
 @media (min-width: 901px) {
   #sidebar { width: 64px; overflow: hidden; transition: width .22s cubic-bezier(.4, 0, .2, 1); }

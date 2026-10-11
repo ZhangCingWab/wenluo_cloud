@@ -274,10 +274,19 @@ function toggleUserMenu() {
     <a href="#/mine">📝 我的文章</a>
     <a href="#/settings">⚙️ 偏好设置</a>
     <div class="divider"></div>
-    <div class="p-item" id="themeToggle"><span id="themeIcon">${localStorage.getItem('theme') === 'dark' ? '☀️' : '🌙'}</span><span>切换深色模式</span></div>
+    <div class="p-item" id="themeToggle"><span id="themeIcon">${localStorage.getItem('theme') === 'dark' ? '☀️' : '🌙'}</span><span id="themeLabel">切换深色模式</span></div>
     <div class="divider"></div>
     <div class="p-item logout" id="logoutBtn">🚪 登出账号</div>`;
   chip.appendChild(div);
+  /* 深色开关：直接绑在菜单项上 + stopPropagation。
+     之前挂在 document 上，但菜单是头像(有 stopPropagation)的子元素，点击根本到不了 document → 开关失效 */
+  div.querySelector('#themeToggle').onclick = (e) => {
+    e.stopPropagation();
+    const now = !document.documentElement.classList.contains('dark');
+    applyTheme(now);
+    const icon = div.querySelector('#themeIcon'); if (icon) icon.textContent = now ? '☀️' : '🌙';
+    const label = div.querySelector('#themeLabel'); if (label) label.textContent = now ? '深色模式：已开启' : '深色模式：已关闭';
+  };
   div.querySelector('#logoutBtn').onclick = async () => {
     try { await api('/api/logout', { method: 'POST' }); } catch (e) {}
     state.me = null;
@@ -291,16 +300,6 @@ function toggleUserMenu() {
   setTimeout(() => document.addEventListener('click', closeMenu, { once: true }), 0);
 }
 function closeMenu() { const m = document.getElementById('userMenu'); if (m) m.remove(); }
-// 绑定主题切换
-document.addEventListener('click', (e) => {
-  const t = e.target.closest('#themeToggle');
-  if (t) {
-    const now = !document.documentElement.classList.contains('dark');
-    applyTheme(now);
-    const label = t.querySelector('span:nth-child(2)'); if (label) label.textContent = now ? '深色' : '浅色';
-    const icon = t.querySelector('#themeIcon'); if (icon) icon.textContent = now ? '☀️' : '🌙';
-  }
-});
 
 /* 未读私信红点 */
 async function refreshUnread() {
@@ -339,6 +338,12 @@ async function route() {
   } catch (e) {
     $app.innerHTML = `<div class="card"><div class="empty">😕 ${esc(e.message)}</div></div>`;
   }
+  /* 页面入场动画：内容渲染完后加 page-anim 类，播完自动移除（避免点赞等局部刷新时重播） */
+  $app.classList.remove('page-anim');
+  void $app.offsetWidth;
+  $app.classList.add('page-anim');
+  clearTimeout($app._animT);
+  $app._animT = setTimeout(() => $app.classList.remove('page-anim'), 800);
   window.scrollTo(0, 0);
 }
 const go = (h) => { location.hash = h; };
@@ -354,6 +359,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-11 12:00', author: 'ZhangCing', items: ['🔴 修复深色模式开关失效（菜单在头像内，头像的 stopPropagation 拦截了事件；改为直接绑定，切换后菜单不关闭可立即看到效果）', '✨ 全局流畅动效：页面切换淡入上移、卡片/列表依次上升、弹出菜单弹性缩放、toast 滑入（尊重系统减少动效设置）'] },
   { date: '2026-10-04 20:00', author: 'ZhangCing', items: ['🔄 用户区搬到页面右上角：头像+名字常驻右上角（点击弹出个人主页/私信/深色模式/登出菜单），未登录显示「登录 / 注册」按钮', '🖥️ 侧边栏底部不再放用户信息，纯导航更清爽', '🖥️ 修复导航图标没对齐：emoji 装进固定宽度盒子，文字严格排成一列'] },
   { date: '2026-10-04 19:00', author: 'ZhangCing', items: ['🖥️ 侧边栏收起时登录入口显示「登录」二字（不再是看不懂的孤零零钥匙图标）', '🔴 修复展开后「登录 / 注册」白底白字看不见（去掉旧样式里的 color:#fff !important）'] },
   { date: '2026-10-04 18:00', author: 'ZhangCing', items: ['🖥️ 文汇 Logo 收起时单独一行、严格正中央（展开不跳动）', '🔑 登录入口重做：收起时是和导航一样的图标行，不再是突兀的蓝色大块'] },
