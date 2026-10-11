@@ -966,8 +966,12 @@ html.dark #userMenu { background: #161d33; }
   .logo { justify-content: center; gap: 0; padding: 14px 0; }
   #sidebar:hover .logo { justify-content: flex-start; padding-left: 13px; }
   #sidebar:hover .logo-text { padding-left: 10px; }
-  .nav a { justify-content: flex-start; padding: 10px 12px 10px 22px; }
-  .nav a.active { padding-left: 19px; }
+  /* 收起态：图标严格居中（gap 归零消除隐形文字占位），激活项无蓝底无边框（蓝色高亮只在展开时出现） */
+  .nav a { justify-content: center; gap: 0; padding: 10px 0; }
+  .nav a.active { background: transparent; border-left: none; padding-left: 0; }
+  /* 展开浮层：恢复左对齐 + 间距 + 蓝色高亮 */
+  #sidebar:hover .nav a { justify-content: flex-start; gap: 10px; padding: 10px 12px 10px 22px; }
+  #sidebar:hover .nav a.active { background: var(--blue-light); border-left: 3px solid var(--blue); padding-left: 19px; }
   .user-card { padding-left: 4px; }
   .theme-toggle { padding-left: 15px; }
 }
