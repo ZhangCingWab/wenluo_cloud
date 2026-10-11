@@ -226,6 +226,7 @@ function renderSidebar() {
     ${link('/daily', '🔥', '每日打卡')}
     ${link('/forum', '💬', '论坛广场')}
     ${link('/discuss', '🙋', '讨论区')}
+    ${link('/announcements', '📢', '公告')}
     ${link('/articles', '📖', '文章库')}
     ${link('/problems', '📚', '题库')}
     ${link('/templates', '📝', '写作模板')}
@@ -253,7 +254,9 @@ function renderUserChip() {
   const me = state.me;
   if (me) {
     chip.className = 'userchip-in';
-    chip.innerHTML = `${avatarHtml(me)}<span class="chip-name">${esc(me.nickname)}</span>`;
+    chip.innerHTML = `<a class="bell" href="#/notifications" title="通知中心">🔔<span class="notif-badge" id="notifBadge" style="display:none">0</span></a>${avatarHtml(me)}<span class="chip-name">${esc(me.nickname)}</span>`;
+    const bell = chip.querySelector('.bell');
+    if (bell) bell.onclick = (e) => { e.stopPropagation(); };
     chip.onclick = (e) => { e.stopPropagation(); toggleUserMenu(); };
   } else {
     chip.className = 'userchip-out';
@@ -302,18 +305,24 @@ function toggleUserMenu() {
 }
 function closeMenu() { const m = document.getElementById('userMenu'); if (m) m.remove(); }
 
-/* 未读私信红点 */
+/* 未读红点（私信 + 通知），登录期间每 60 秒轮询一次 */
 async function refreshUnread() {
   if (!state.me) return;
   try {
-    const d = await api('/api/messages/unread');
+    const [md, nd] = await Promise.all([api('/api/messages/unread'), api('/api/notifications/unread-count')]);
     const b = document.getElementById('msgBadge');
     if (b) {
-      b.textContent = d.count;
-      b.style.display = d.count > 0 ? 'inline-block' : 'none';
+      b.textContent = md.count;
+      b.style.display = md.count > 0 ? 'inline-block' : 'none';
+    }
+    const nb = document.getElementById('notifBadge');
+    if (nb) {
+      nb.textContent = nd.count > 99 ? '99+' : nd.count;
+      nb.style.display = nd.count > 0 ? 'inline-block' : 'none';
     }
   } catch (e) {}
 }
+setInterval(refreshUnread, 60000);
 
 /* ---------- 路由 ---------- */
 const routes = {
@@ -324,7 +333,8 @@ const routes = {
   submit: viewSubmit, mine: viewMine, user: viewProfile, settings: viewSettings,
   login: viewLogin, admin: viewAdmin, messages: viewMessages, chat: viewChat,
   problems: viewProblems, problem: viewProblemDetail, work: viewWorkspace,
-  templates: viewTemplates, daily: viewDaily, 'contest-create': contestCreate
+  templates: viewTemplates, daily: viewDaily, 'contest-create': contestCreate,
+  notifications: viewNotifications, announcements: viewAnnouncements
 };
 async function route() {
   closeMenu();
@@ -361,6 +371,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-12 02:20', author: 'ZhangCing', items: ['🔔 新增「通知中心」：右上角铃铛 + 未读红点，点赞/评论/回复/采纳答案/比赛开始/题目审核/练习提交都会提醒，点击通知直达对应页面', '📢 新增「公告」模块：上线第一篇《文汇新用户必读》，新用户进主页自动弹出，侧边栏可随时查看'] },
   { date: '2026-10-12 01:10', author: 'ZhangCing', items: ['📄 长列表加分页按钮：求助问答、排行榜（每页20）、我的文章/帖子/投稿、后台审核列表（每页10），翻页自动回到列表顶部', '🌙 分页按钮适配深色模式'] },
   { date: '2026-10-12 00:30', author: 'ZhangCing', items: ['👥 群聊升级为多群制：预置「官方公告 / 灌水闲聊 / 写作交流 / 兴趣杂谈」四个群（群主都是站长）', '🔐 加群需群主审核：申请后群主在群聊里点「通过 / 拒绝」，结果站内通知，审核卡片里可一键处理'] },
   { date: '2026-10-11 23:55', author: 'ZhangCing', items: ['🎉 新增「讨论区」模块：🙋 求助问答（发求助/回复/采纳答案/标记已解决，未解决自动置顶）+ 💬 群聊大厅（全员聊天室，5 秒自动刷新新消息）', '📱 讨论区适配手机端与深色模式'] },
@@ -392,8 +403,105 @@ const CHANGELOG = [
   { date: '2026-09-29 22:30', author: 'ZhangCing', items: ['修复主页比赛卡片显示 undefined', '评论系统升级：楼中楼回复、回复/删除按钮', '比赛报名名单显示用户昵称'] },
   { date: '2026-09-29', author: 'ZhangCing', items: ['审核系统全链路直接 SQL 持久化，审核状态不再丢失', '积分统一实时计算，个人主页与排行榜一致', 'Markdown 全站渲染适配', '比赛列表/详情/状态修复'] },
 ];
+/* ---------- 通知中心 ---------- */
+const NOTIF_ICON = { like: '❤️', comment: '💬', reply: '↩️', adopt: '✅', contest_start: '🏁', problem_review: '📚', practice: '✍️' };
+function notifUrl(n) {
+  return { article: `#/article/${n.targetId}`, post: `#/post/${n.targetId}`, help: `#/discuss/help/${n.targetId}`, contest: `#/contest/${n.targetId}`, problem: `#/problem/${n.targetId}` }[n.targetType] || '';
+}
+async function viewNotifications() {
+  if (needLogin()) return;
+  const d = await api('/api/notifications');
+  const notifTotal = Math.max(1, Math.ceil(d.notifications.length / PAGE_SIZE));
+  const notifItem = (n) => `
+    <div class="item notif-item ${n.read ? '' : 'unread'}" data-nid="${n.id}" data-href="${notifUrl(n)}">
+      <div style="align-self:center;font-size:20px;width:28px;text-align:center">${NOTIF_ICON[n.type] || '🔔'}</div>
+      <div style="flex:1;min-width:0">
+        <div class="title"><span class="notif-from">${n.from ? esc(n.from.nickname) : '📢 系统'}</span>
+          <span style="font-weight:400;color:var(--text2)">${esc(n.content)}</span></div>
+        <div class="meta"><span>${fmtTime(n.createdAt)}</span></div>
+      </div>
+      ${n.read ? '' : '<span class="badge open">未读</span>'}
+    </div>`;
+  const renderNotifPage = () => {
+    const pg = viewNotifications._page || 1;
+    document.getElementById('notifList').innerHTML =
+      d.notifications.slice((pg - 1) * PAGE_SIZE, pg * PAGE_SIZE).map(notifItem).join('') ||
+      '<div class="empty">🔔 还没有收到通知<br><span style="font-size:12px">有人点赞、评论你的文章，或你参加的比赛开始时，会在这里提醒你</span></div>';
+    document.getElementById('notifPager').innerHTML = pagerHtml(pg, notifTotal, 'pgNotif');
+    document.querySelectorAll('.notif-item').forEach(el => el.onclick = async () => {
+      try { await api(`/api/notifications/${el.dataset.nid}/read`, { method: 'POST' }); } catch (e) {}
+      refreshUnread();
+      if (el.dataset.href) go(el.dataset.href); else route();
+    });
+  };
+  window.pgNotif = (p) => {
+    viewNotifications._page = Math.min(Math.max(1, p), notifTotal);
+    renderNotifPage();
+    document.querySelector('.page-title').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  $app.innerHTML = `
+  <div class="container" style="max-width:860px">
+    <div class="page-title">
+      <div><h1>🔔 通知中心</h1><div class="sub">点赞、评论、回复、比赛提醒都在这里</div></div>
+      <button class="btn ghost sm" id="readAllBtn">✓ 全部已读</button>
+    </div>
+    <div class="card">
+      <div id="notifList"></div>
+      <div id="notifPager"></div>
+    </div>
+  </div>`;
+  document.getElementById('readAllBtn').onclick = async () => {
+    await api('/api/notifications/read-all', { method: 'POST' });
+    toast('已全部标记为已读');
+    refreshUnread();
+    route();
+  };
+  renderNotifPage();
+}
+
+/* ---------- 公告 ---------- */
+async function viewAnnouncements() {
+  const d = await api('/api/announcements');
+  $app.innerHTML = `
+  <div class="container" style="max-width:860px">
+    <div class="page-title"><div><h1>📢 公告</h1><div class="sub">站点通知与使用指南</div></div></div>
+    ${d.announcements.map(a => `
+    <div class="card ann-card">
+      <div class="ann-head"><h2>${esc(a.title)}</h2><span class="meta">${fmtTime(a.createdAt)}</span></div>
+      <div class="ann-body">${md(a.content)}</div>
+    </div>`).join('') || '<div class="card"><div class="empty">暂无公告</div></div>'}
+  </div>`;
+}
+/* 新用户必读弹窗：进主页时检查 localStorage，有未读公告就弹一次 */
+function showAnnModal(list) {
+  if (!Array.isArray(list) || !list.length) return;
+  let read = [];
+  try { read = JSON.parse(localStorage.getItem('annReadIds') || '[]'); } catch (e) {}
+  const target = list.find(a => a && a.id && !read.includes(a.id));
+  if (!target) return;
+  const ov = document.createElement('div');
+  ov.className = 'modal-mask';
+  ov.innerHTML = `
+    <div class="modal-card ann-modal">
+      <h2 style="margin-bottom:12px">${esc(target.title)}</h2>
+      <div class="ann-body">${md(target.content || '')}</div>
+      <div style="text-align:center;margin-top:16px"><button class="btn primary" id="annOk">我知道了</button></div>
+    </div>`;
+  document.body.appendChild(ov);
+  const close = () => {
+    ov.classList.add('closing');
+    setTimeout(() => ov.remove(), 220);
+    try {
+      const arr = JSON.parse(localStorage.getItem('annReadIds') || '[]');
+      if (!arr.includes(target.id)) { arr.push(target.id); localStorage.setItem('annReadIds', JSON.stringify(arr)); }
+    } catch (e) {}
+  };
+  ov.querySelector('#annOk').onclick = close;
+  ov.onclick = (e) => { if (e.target === ov) close(); };
+}
 async function viewHome() {
   hideAiFab();
+  api('/api/announcements').then(d => showAnnModal(d.announcements || [])).catch(() => {});
   const [d, cd] = await Promise.all([
     api('/api/home').catch(() => ({ stats: {}, latestArticles: [], latestPosts: [], activeContests: [] })),
     state.me ? api('/api/checkins/today').catch(() => ({ daily: null, streak: 0, myCheckin: null })) : { daily: null, streak: 0, myCheckin: null }

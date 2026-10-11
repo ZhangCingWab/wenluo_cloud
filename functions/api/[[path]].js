@@ -356,6 +356,44 @@ async function ensureSeedData(env) {
     } catch {}
     await dbRun(env, `CREATE INDEX IF NOT EXISTS idx_help_replies_post ON help_replies(post_id)`);
     await dbRun(env, `CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_messages(created_at)`);
+    // 公告表（站点公告，先只有一条「文汇新用户必读」，固定 id + OR IGNORE 幂等）
+    await dbRun(env, `CREATE TABLE IF NOT EXISTS announcements (
+      id TEXT PRIMARY KEY, title TEXT NOT NULL, content TEXT, created_at INTEGER
+    )`);
+    try {
+      await env.DB.prepare(`INSERT OR IGNORE INTO announcements (id, title, content, created_at) VALUES (?,?,?,?)`)
+        .bind('ann_readme', '📢 文汇新用户必读', [
+          '欢迎来到「文汇」！这是一份 5 分钟看完的新手指南，帮你快速上手：',
+          '',
+          '## ✍️ 写文章与审核',
+          '- 点侧边栏「📖 文章库」→ 右上角「✍️ 我要写文章」，支持 Markdown 排版',
+          '- 管理员的文章发布即通过；普通用户提交后进入「待审核」，管理员通过后才会出现在文章库',
+          '- 写好的文章在「📝 我的文章」里随时查看、编辑、删除',
+          '',
+          '## 🏁 比赛与题库',
+          '- 「🏁 比赛广场」可以报名比赛，比赛开始后会收到通知提醒',
+          '- 「📚 题库」是写作题目练习：你也可以出题（需审核），出被采纳的题、做练习都能涨积分',
+          '- 报名比赛后在比赛页提交作品，截止时间前可以修改',
+          '',
+          '## 🙋 讨论区（求助 + 群聊）',
+          '- 「🙋 求助问答」：写作遇到问题就发求助，别人回复后你可以采纳最佳答案',
+          '- 「💬 群聊大厅」：目前有 4 个群（官方公告 / 灌水闲聊 / 写作交流 / 兴趣杂谈），加群需要群主（站长）审核',
+          '',
+          '## ❤️ 互动与通知',
+          '- 文章支持点赞、评论、星级点评；帖子和评论也可以互动',
+          '- 所有互动（点赞 / 评论 / 回复 / 采纳 / 比赛开始 / 题目审核）都会在右上角 🔔 通知中心提醒你',
+          '',
+          '## 🏆 积分与排行',
+          '- 积分 = 文章×10 + 帖子×5 + 获赞×3 + 评论×2，排行见「🏆 排行榜」',
+          '- 每天来「🔥 每日打卡」也有积分拿',
+          '',
+          '## 📤 其他',
+          '- 「📤 文件投稿」支持上传 pdf / doc / zip 等文件，审核通过后自动转成文章展示',
+          '- 有问题可以进讨论区发求助，管理员和热心网友都会帮你！',
+          '',
+          '> 祝你在文汇玩得开心，写出好文章！🎉'
+        ].join('\n'), 1791706692076).run();
+    } catch {}
   } catch {}
 
   /* ---------- 旧 camelCase 表一次性迁移为 snake_case（saveDB 时代遗留） ---------- */
@@ -1060,15 +1098,28 @@ function requestQuery(request) {
   } catch { return {}; }
 }
 
-/* 添加通知（写内存 + D1） */
-async function addNotif(env, db, fromUserId, type, toUserId, targetType, targetId, content) {
-  if (!toUserId || toUserId === fromUserId) return; // 不给自己发通知
-  if (!db || !db.notifications) return;
-  const n = { id: uid('n'), userId: toUserId, type, fromId: fromUserId, targetType, targetId, content, read: 0, createdAt: Date.now() };
-  db.notifications.push(n);
+/* 添加通知（直接写 D1，多 isolate 安全；fromUserId 为空表示系统通知） */
+async function addNotif(env, fromUserId, type, toUserId, targetType, targetId, content) {
+  if (!toUserId) return;
+  if (fromUserId && fromUserId === toUserId) return;
   try {
     await env.DB.prepare(`INSERT INTO notifications (id,user_id,type,from_id,target_type,target_id,content,read,created_at) VALUES (?,?,?,?,?,?,?,?,?)`)
-      .bind(n.id, n.userId, n.type, n.fromId, n.targetType, n.targetId, n.content, 0, n.createdAt).run();
+      .bind(uid('n'), toUserId, type, fromUserId || '', targetType, targetId, content, 0, Date.now()).run();
+  } catch {}
+}
+
+/* 惰性检查：我报名的比赛已开始且未通知过 → 补发通知（Workers 无 cron，靠用户轮询触发） */
+async function checkContestStart(env, me) {
+  try {
+    const now = Date.now();
+    const r = await env.DB.prepare(`SELECT id, title, participants FROM contests WHERE start_time <= ?`).bind(now).all();
+    for (const c of (r.results || [])) {
+      let parts = safeJSON(c.participants);
+      if (!Array.isArray(parts) || !parts.includes(me.id)) continue;
+      const hit = await env.DB.prepare(`SELECT id FROM notifications WHERE user_id=? AND type='contest_start' AND target_id=? LIMIT 1`).bind(me.id, c.id).first();
+      if (hit) continue;
+      await addNotif(env, null, 'contest_start', me.id, 'contest', c.id, `你参加的比赛《${c.title}》已开始，快去提交作品吧！`);
+    }
   } catch {}
 }
 
@@ -1476,7 +1527,7 @@ export async function onRequest(context) {
       if (!me) return bad('请先登录', 401);
       // 直接查 D1：内存行 likes 是 JSON 字符串（曾导致 a.likes.push is not a function）
       let row;
-      try { row = await env.DB.prepare(`SELECT id, likes FROM articles WHERE id=? AND status='approved'`).bind(m.id).first(); } catch (e) { return bad(e.message); }
+      try { row = await env.DB.prepare(`SELECT id, likes, author_id, title FROM articles WHERE id=? AND status='approved'`).bind(m.id).first(); } catch (e) { return bad(e.message); }
       if (!row) return bad('文章不存在', 404);
       let likes = safeJSON(row.likes);
       if (!Array.isArray(likes)) likes = [];
@@ -1484,6 +1535,7 @@ export async function onRequest(context) {
       if (i >= 0) likes.splice(i, 1); else likes.push(me.id);
       try { await env.DB.prepare(`UPDATE articles SET likes=? WHERE id=?`).bind(JSON.stringify(likes), m.id).run(); } catch (e) { return bad(e.message); }
       invalidateCache();
+      if (i < 0) await addNotif(env, me.id, 'like', row.author_id, 'article', m.id, `赞了你的文章《${row.title}》`);
       return json({ liked: i < 0, likeCount: likes.length });
     }
 
@@ -1658,15 +1710,12 @@ export async function onRequest(context) {
           .bind(c.id, c.targetType, c.targetId, c.parentId, c.authorId, c.content, '[]', c.createdAt).run();
       } catch (e) { return bad('评论失败: ' + e.message); }
       invalidateCache();
-      // 通知
-      await addNotif(env, db, me.id, 'comment', me.id, targetType, targetId, `评论了${targetType === 'article' ? '文章' : '帖子'}`);
+      // 通知：回复楼中楼 → 通知父评论作者；普通评论 → 通知文章/帖子作者（直接 SQL 查，不依赖内存）
       if (parentId) {
-        const parent = db.comments.find(x => x.id === parentId);
-        if (parent && parent.authorId !== me.id) {
-          await addNotif(env, db, me.id, 'reply', parent.authorId, 'comment', parentId, '回复了你的评论');
-        }
-      } else if (target.author_id && target.author_id !== me.id) {
-        await addNotif(env, db, me.id, 'comment', target.author_id, targetType, targetId, `评论了你的${targetType === 'article' ? '文章' : '帖子'}`);
+        const pr = await env.DB.prepare(`SELECT author_id FROM comments WHERE id=?`).bind(parentId).first().catch(() => null);
+        if (pr && pr.author_id) await addNotif(env, me.id, 'reply', pr.author_id, targetType, targetId, '回复了你的评论');
+      } else if (target.author_id) {
+        await addNotif(env, me.id, 'comment', target.author_id, targetType, targetId, `评论了你的${targetType === 'article' ? '文章' : '帖子'}`);
       }
       const out = { ...c, author: pub(me), replies: [], likeCount: 0, liked: false };
       return json({ comment: out }, 201);
@@ -1703,61 +1752,57 @@ export async function onRequest(context) {
       return json({ liked: idx < 0, likeCount: likes.length });
     }
 
-    // ========== 通知系统 ==========
-    // GET /api/notifications
+    // ========== 通知系统（直接查 D1，多 isolate 一致） ==========
+    // GET /api/notifications 通知列表（顺带惰性检查比赛开始）
     if (match(path, 'notifications') && method === 'GET') {
       const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
-      const qs = requestQuery(request);
-      const limit = Math.min(50, parseInt(qs.limit, 10) || 20);
-      const list = db.notifications
-        .filter(n => n.userId === me.id)
-        .sort((a, b) => b.createdAt - a.createdAt)
-        .slice(0, limit)
-        .map(n => ({ ...n, from: pub(userByIdSync(db, n.fromId)) }));
+      await checkContestStart(env, me);
+      let list = [];
+      try {
+        const r = await env.DB.prepare(`SELECT n.*, u.nickname AS f_nick FROM notifications n LEFT JOIN users u ON n.from_id = u.id WHERE n.user_id=? ORDER BY n.created_at DESC LIMIT 50`).bind(me.id).all();
+        list = (r.results || []).map(row => ({
+          id: row.id, type: row.type, targetType: row.target_type, targetId: row.target_id,
+          content: row.content, read: row.read, createdAt: row.created_at,
+          from: row.from_id ? { id: row.from_id, nickname: row.f_nick || '用户' } : null
+        }));
+      } catch {}
       return json({ notifications: list });
     }
-    // GET /api/notifications/unread（未读通知列表）
-    if (match(path, 'notifications/unread') && method === 'GET') {
-      const me = await auth(request, env);
-      if (!me) return bad('请先登录', 401);
-      const list = db.notifications.filter(n => n.userId === me.id && !n.read).sort((a,b)=>b.createdAt-a.createdAt);
-      return json({ notifications: list, count: list.length });
-    }
-    // GET /api/notifications（全部通知列表）
-    if (match(path, 'notifications') && method === 'GET') {
-      const me = await auth(request, env);
-      if (!me) return bad('请先登录', 401);
-      const list = db.notifications.filter(n => n.userId === me.id).sort((a,b)=>b.createdAt-a.createdAt).slice(0, 50);
-      return json({ notifications: list, total: list.length });
-    }
-    // GET /api/notifications/unread-count
+    // GET /api/notifications/unread-count 未读数（轮询时顺带惰性检查比赛开始）
     if (match(path, 'notifications/unread-count') && method === 'GET') {
       const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
-      const c = db.notifications.filter(n => n.userId === me.id && !n.read).length;
-      return json({ count: c });
+      await checkContestStart(env, me);
+      const c = await env.DB.prepare(`SELECT COUNT(*) AS c FROM notifications WHERE user_id=? AND read=0`).bind(me.id).first().catch(() => null);
+      return json({ count: c ? c.c : 0 });
     }
-    // POST /api/notifications/read-all
+    // POST /api/notifications/read-all 全部已读
     if (match(path, 'notifications/read-all') && method === 'POST') {
       const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
-      db.notifications.forEach(n => { if (n.userId === me.id) n.read = 1; });
-      try { await env.DB.prepare(`UPDATE notifications SET read=1 WHERE user_id=? OR user=?`).bind(me.id, me.id).run(); } catch (e) {}
+      try { await env.DB.prepare(`UPDATE notifications SET read=1 WHERE user_id=?`).bind(me.id).run(); } catch (e) {}
       invalidateCache();
       return json({ ok: true });
     }
-    // POST /api/notifications/:id/read
+    // POST /api/notifications/:id/read 单条已读
     m = match(path, 'notifications/:id');
     if (m && method === 'POST') {
       const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
-      const n = db.notifications.find(x => x.id === m.id);
-      if (!n || n.userId !== me.id) return bad('不存在', 404);
-      n.read = 1;
-      try { await env.DB.prepare(`UPDATE notifications SET read=1 WHERE id=?`).bind(m.id).run(); } catch (e) {}
+      try { await env.DB.prepare(`UPDATE notifications SET read=1 WHERE id=? AND user_id=?`).bind(m.id, me.id).run(); } catch (e) {}
       invalidateCache();
       return json({ ok: true });
+    }
+
+    // GET /api/announcements 公告列表（公开，无需登录）
+    if (match(path, 'announcements') && method === 'GET') {
+      let list = [];
+      try {
+        const r = await env.DB.prepare(`SELECT * FROM announcements ORDER BY created_at DESC`).all();
+        list = (r.results || []).map(row => ({ id: row.id, title: row.title, content: row.content, createdAt: row.created_at }));
+      } catch {}
+      return json({ announcements: list });
     }
 
     // ==================== 讨论区 ====================
@@ -1841,8 +1886,8 @@ export async function onRequest(context) {
           .bind(r.id, m.id, me.id, content, r.createdAt).run();
       } catch (e) { return bad('回复失败: ' + e.message); }
       // 通知求助作者
-      if (post.author_id && post.author_id !== me.id) {
-        await addNotif(env, db, me.id, 'reply', post.author_id, 'help', m.id, '回复了你的求助');
+      if (post.author_id) {
+        await addNotif(env, me.id, 'reply', post.author_id, 'help', m.id, '回复了你的求助');
       }
       return json({ reply: { ...r, author: pub(me) } });
     }
@@ -1860,11 +1905,13 @@ export async function onRequest(context) {
       const isOwner = post.author_id === me.id || post.authorId === me.id;
       if (!isAdmin && !isOwner) return bad('只有求助发起人可以采纳答案', 403);
       if (replyId) {
-        const rp = await dbFirst(env, `SELECT id, post_id FROM help_replies WHERE id = ?`, [replyId]);
+        const rp = await dbFirst(env, `SELECT id, post_id, author_id FROM help_replies WHERE id = ?`, [replyId]);
         if (!rp || (rp.post_id || rp.postId) !== m.id) return bad('回复不存在', 404);
         try {
           await env.DB.prepare(`UPDATE help_replies SET is_solution = 1 WHERE id = ?`).bind(replyId).run();
         } catch (e) { return bad('操作失败: ' + e.message); }
+        // 通知回复者：你的回复被采纳
+        if (rp.author_id) await addNotif(env, me.id, 'adopt', rp.author_id, 'help', m.id, '你的回复被采纳为答案');
       }
       try {
         await env.DB.prepare(`UPDATE help_posts SET status = 'solved' WHERE id = ?`).bind(m.id).run();
@@ -2479,6 +2526,8 @@ export async function onRequest(context) {
           .bind(s.id, s.problemId, s.authorId, s.title, s.content, s.wordCount, s.createdAt).run(); } catch (e) { return bad(e.message); }
       }
       invalidateCache();
+      // 通知出题人：有人提交了练习
+      if (p.createdBy) await addNotif(env, me.id, 'practice', p.createdBy, 'problem', p.id, `提交了你的题目《${p.title}》的练习`);
       return json({ practice: s });
     }
 
@@ -2792,6 +2841,9 @@ export async function onRequest(context) {
       const reviewedAt = Date.now();
       try { await env.DB.prepare(`UPDATE problems SET status=?, reviewed_at=? WHERE id=?`).bind(newStatus, reviewedAt, m.id).run(); } catch (e) { return bad(e.message); }
       invalidateCache();
+      // 通知出题人审核结果
+      await addNotif(env, me.id, 'problem_review', row.created_by, 'problem', m.id,
+        newStatus === 'approved' ? `你出的题目《${row.title}》已通过审核，进入题库啦！` : `你出的题目《${row.title}》未通过审核，可修改后重新提交`);
       return json({ ok: true, status: newStatus });
     }
     // GET /api/admin/stats
