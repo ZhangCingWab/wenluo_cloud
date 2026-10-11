@@ -943,8 +943,11 @@ html.dark #userMenu { background: #161d33; }
 }
 
 /* ============ 桌面端洛谷式侧边栏（>900px 收成图标条，悬停展开浮层） ============ */
+/* 性能关键：所有行固定 232px 宽、永远处于"展开后的最终位置"。
+   展开动画只是 #sidebar 的裁剪边缘从 64px → 232px，内部元素零回流、图标零位移 → 不掉帧。
+   （旧方案 width + 15 行文字 max-width 同时动画，每帧全树重排 = 卡顿根源） */
 @media (min-width: 901px) {
-  #sidebar { width: 64px; overflow: hidden; transition: width .22s cubic-bezier(.4, 0, .2, 1); }
+  #sidebar { width: 64px; overflow: hidden; transition: width .24s cubic-bezier(.4, 0, .2, 1), box-shadow .24s ease; }
   #sidebar:hover { width: 232px; box-shadow: 8px 0 28px rgba(31, 56, 88, .16); }
   /* 内容区左右各留 64px 对称边距（左侧正好被收起的图标条占住）→ 容器永远严格屏幕居中 */
   #main { margin-left: 0; padding: 24px 64px 60px; }
@@ -953,25 +956,17 @@ html.dark #userMenu { background: #161d33; }
   /* 收起时纵横都不出滚动条，展开后才允许纵向滚动 */
   #sidebar .nav { overflow: hidden; }
   #sidebar:hover .nav { overflow-y: auto; overflow-x: hidden; }
-  /* 文字用 max-width 折叠为 0（透明但占位会把图标挤出屏幕），悬停展开淡入 → 图标永不位移 */
-  .logo-text, .nav a span.txt, .user-card .uinfo, .login-btn span.txt, .theme-toggle span.txt {
-    max-width: 0; opacity: 0; overflow: hidden; white-space: nowrap;
-    transition: opacity .18s ease .05s, max-width .22s cubic-bezier(.4, 0, .2, 1);
+  /* 所有行固定宽度 + 左对齐最终位：Logo 标 13+19=32 正好在 64px 条居中；导航图标 22+11=33 ≈ 居中 */
+  #sidebar .logo, #sidebar .nav a { width: 232px; }
+  #sidebar .logo { justify-content: flex-start; gap: 10px; padding: 14px 0 14px 13px; }
+  .nav a { justify-content: flex-start; gap: 10px; padding: 10px 12px 10px 22px; }
+  .nav a.active { padding-left: 19px; }
+  /* 收起态激活项无蓝色高亮（用户要求：蓝色只在展开时出现）；颜色过渡无回流，不卡 */
+  #sidebar:not(:hover) .nav a.active { background: transparent; border-left-color: transparent; }
+  /* 文字已在最终位置，展开只做淡入（不参与宽度动画） */
+  .logo-text, .nav a span.txt, .nav-label, .user-card .uinfo {
+    max-width: none; opacity: 0; white-space: nowrap; transition: opacity .18s ease .08s;
   }
-  #sidebar:hover .logo-text, #sidebar:hover .nav a span.txt, #sidebar:hover .user-card .uinfo,
-  #sidebar:hover .login-btn span.txt, #sidebar:hover .theme-toggle span.txt { max-width: 220px; opacity: 1; }
-  .nav-label { opacity: 0; white-space: nowrap; transition: opacity .18s ease .05s; }
-  #sidebar:hover .nav-label { opacity: 1; }
-  /* Logo：收起时只显示标（单独一行、严格居中）；gap 归零避免隐形文字挤偏图标 */
-  .logo { justify-content: center; gap: 0; padding: 14px 0; }
-  #sidebar:hover .logo { justify-content: flex-start; padding-left: 13px; }
-  #sidebar:hover .logo-text { padding-left: 10px; }
-  /* 收起态：图标严格居中（gap 归零消除隐形文字占位），激活项无蓝底无边框（蓝色高亮只在展开时出现） */
-  .nav a { justify-content: center; gap: 0; padding: 10px 0; }
-  .nav a.active { background: transparent; border-left: none; padding-left: 0; }
-  /* 展开浮层：恢复左对齐 + 间距 + 蓝色高亮 */
-  #sidebar:hover .nav a { justify-content: flex-start; gap: 10px; padding: 10px 12px 10px 22px; }
-  #sidebar:hover .nav a.active { background: var(--blue-light); border-left: 3px solid var(--blue); padding-left: 19px; }
-  .user-card { padding-left: 4px; }
-  .theme-toggle { padding-left: 15px; }
+  #sidebar:hover .logo-text, #sidebar:hover .nav a span.txt,
+  #sidebar:hover .nav-label, #sidebar:hover .user-card .uinfo { opacity: 1; }
 }
