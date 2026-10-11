@@ -1,0 +1,16 @@
+{
+  "name": "文汇 · 文章竞赛社区",
+  "short_name": "文汇",
+  "description": "写作、交流、比赛 —— 一个简洁流畅的创作家园",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f6f9",
+  "theme_color": "#3498db",
+  "lang": "zh-CN",
+  "icons": [
+    { "src": "/img/logo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/img/logo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
