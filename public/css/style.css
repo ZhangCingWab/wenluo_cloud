@@ -920,7 +920,10 @@ html.dark #userMenu { background: #161d33; }
 @media (min-width: 901px) {
   #sidebar { width: 64px; overflow: hidden; transition: width .22s cubic-bezier(.4, 0, .2, 1); }
   #sidebar:hover { width: 232px; box-shadow: 8px 0 28px rgba(31, 56, 88, .16); }
-  #main { margin-left: 66px; }
+  /* 内容区左右各留 64px 对称边距（左侧正好被收起的图标条占住）→ 容器永远严格屏幕居中 */
+  #main { margin-left: 0; padding: 24px 64px 60px; }
+  /* 分屏工作台是全宽布局（不用 container），留出侧边栏安全距离 */
+  .ws-wrap { margin-left: 74px; margin-right: 12px; }
   /* 收起时纵横都不出滚动条，展开后才允许纵向滚动 */
   #sidebar .nav { overflow: hidden; }
   #sidebar:hover .nav { overflow-y: auto; overflow-x: hidden; }
@@ -941,13 +944,4 @@ html.dark #userMenu { background: #161d33; }
   .nav a.active { padding-left: 19px; }
   .user-card { padding-left: 4px; }
   .theme-toggle { padding-left: 15px; }
-}
-
-/* ============ 宽屏（≥1141px）：内容在整屏真正居中 ============ */
-/* 之前 #main 让开侧边栏 66px 后再居中 → 内容中心比屏幕中心偏右 33px，左边空白显得特别大。
-   现在 ≥1141px 时 #main 占满整屏，1010px 容器 margin auto = 严格屏幕居中（左侧起点 ≥65px，不会钻到 64px 侧边栏下面） */
-@media (min-width: 1141px) {
-  #main { margin-left: 0; padding: 24px 0 60px; }
-  /* 分屏工作台是全宽布局（不用 container），留出侧边栏安全距离 */
-  .ws-wrap { margin-left: 74px; margin-right: 12px; }
 }
