@@ -942,3 +942,12 @@ html.dark #userMenu { background: #161d33; }
   .user-card { padding-left: 4px; }
   .theme-toggle { padding-left: 15px; }
 }
+
+/* ============ 宽屏（≥1141px）：内容在整屏真正居中 ============ */
+/* 之前 #main 让开侧边栏 66px 后再居中 → 内容中心比屏幕中心偏右 33px，左边空白显得特别大。
+   现在 ≥1141px 时 #main 占满整屏，1010px 容器 margin auto = 严格屏幕居中（左侧起点 ≥65px，不会钻到 64px 侧边栏下面） */
+@media (min-width: 1141px) {
+  #main { margin-left: 0; padding: 24px 0 60px; }
+  /* 分屏工作台是全宽布局（不用 container），留出侧边栏安全距离 */
+  .ws-wrap { margin-left: 74px; margin-right: 12px; }
+}
