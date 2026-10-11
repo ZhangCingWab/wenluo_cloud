@@ -225,6 +225,7 @@ function renderSidebar() {
     ${link('/home', '🏠', '主页')}
     ${link('/daily', '🔥', '每日打卡')}
     ${link('/forum', '💬', '论坛广场')}
+    ${link('/discuss', '🙋', '讨论区')}
     ${link('/articles', '📖', '文章库')}
     ${link('/problems', '📚', '题库')}
     ${link('/templates', '📝', '写作模板')}
@@ -317,6 +318,7 @@ async function refreshUnread() {
 /* ---------- 路由 ---------- */
 const routes = {
   home: viewHome, forum: viewForum, post: viewPostDetail, newpost: viewNewPost,
+  discuss: viewDiscuss,
   articles: viewArticles, article: viewArticleDetail, write: viewWrite,
   rank: viewRank, contests: viewContests, contest: viewContestDetail,
   submit: viewSubmit, mine: viewMine, user: viewProfile, settings: viewSettings,
@@ -359,6 +361,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-11 23:55', author: 'ZhangCing', items: ['🎉 新增「讨论区」模块：🙋 求助问答（发求助/回复/采纳答案/标记已解决，未解决自动置顶）+ 💬 群聊大厅（全员聊天室，5 秒自动刷新新消息）', '📱 讨论区适配手机端与深色模式'] },
   { date: '2026-10-11 16:00', author: 'ZhangCing', items: ['🎨 全站换上正式标志「开卷文汇」：浅蓝圆角方印 + 蓝字「文」+ 摊开书页', '🔖 浏览器标签页 favicon 同步替换为新标志'] },
   { date: '2026-10-11 12:00', author: 'ZhangCing', items: ['🔴 修复深色模式开关失效（菜单在头像内，头像的 stopPropagation 拦截了事件；改为直接绑定，切换后菜单不关闭可立即看到效果）', '✨ 全局流畅动效：页面切换淡入上移、卡片/列表依次上升、弹出菜单弹性缩放、toast 滑入（尊重系统减少动效设置）'] },
   { date: '2026-10-04 20:00', author: 'ZhangCing', items: ['🔄 用户区搬到页面右上角：头像+名字常驻右上角（点击弹出个人主页/私信/深色模式/登出菜单），未登录显示「登录 / 注册」按钮', '🖥️ 侧边栏底部不再放用户信息，纯导航更清爽', '🖥️ 修复导航图标没对齐：emoji 装进固定宽度盒子，文字严格排成一列'] },
@@ -539,6 +542,208 @@ async function viewForum() {
     document.querySelector('.tabs').scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
   renderPostPage();
+}
+
+/* ---------- 讨论区（求助问答 + 群聊大厅） ---------- */
+async function viewDiscuss(arg) {
+  const parts = (arg || '').split('/').filter(Boolean);
+  const sub = parts[0] || 'help';
+  const tab = (t, icon, label) =>
+    `<a class="dtab ${sub === t ? 'active' : ''}" href="#/discuss/${t === 'help' ? '' : t}"><span class="icon">${icon}</span>${label}</a>`;
+  $app.innerHTML = `
+  <div class="container">
+    <div class="page-title">
+      <div><h1>讨论区</h1><div class="sub">遇到问题来求助，或者到群聊和大家畅所欲言</div></div>
+    </div>
+    <div class="dtabs">${tab('help', '🙋', '求助问答')}${tab('chat', '💬', '群聊大厅')}</div>
+    <div id="discussBody"></div>
+  </div>`;
+  const body = document.getElementById('discussBody');
+  if (sub === 'chat') return viewDiscussChat(body);
+  if (parts[1]) return viewHelpDetail(body, parts[1]);
+  return viewHelpList(body);
+}
+
+async function viewHelpList(body) {
+  body.innerHTML = '<div class="card"><div class="loading-block">加载中…</div></div>';
+  const st = viewHelpList._st || '';
+  const d = await api('/api/discuss/help' + (st ? '?status=' + st : ''));
+  const items = d.posts.map(p => `
+    <div class="item">
+      ${avatarHtml(p.author, 'xs')}
+      <div style="flex:1">
+        <div class="title"><a href="#/discuss/help/${p.id}">${esc(p.title)}</a>
+          <span class="badge ${p.status === 'solved' ? 'solved' : 'open'}">${p.status === 'solved' ? '已解决' : '待解决'}</span></div>
+        <div class="meta"><span>${esc(p.author.nickname)}</span><span>${fmtTime(p.createdAt)}</span><span>💬 <span class="num">${p.replyCount || 0}</span></span></div>
+      </div>
+    </div>`).join('');
+  body.innerHTML = `
+  <div class="card">
+    <div class="tabs" style="align-items:center">
+      <span style="display:flex;gap:6px;flex-wrap:wrap">
+        <span class="t ${st === '' ? 'active' : ''}" data-s="">全部</span>
+        <span class="t ${st === 'open' ? 'active' : ''}" data-s="open">待解决</span>
+        <span class="t ${st === 'solved' ? 'active' : ''}" data-s="solved">已解决</span>
+      </span>
+      <button class="btn primary" id="newHelpBtn">＋ 发求助</button>
+    </div>
+    <div id="newHelpForm" style="display:none;margin-bottom:14px;padding:14px;background:var(--blue-light);border-radius:var(--radius-sm)">
+      <div class="form-item"><label>标题</label><input id="hTitle" maxlength="80" placeholder="一句话描述你的问题"></div>
+      <div class="form-item"><label>详细描述</label><textarea id="hContent" style="min-height:130px" placeholder="把问题背景、遇到的现象写清楚，方便大家帮你"></textarea></div>
+      <button class="btn primary" id="hSubmit">发布求助</button>
+    </div>
+    <div id="helpList">${items || '<div class="empty">还没有求助，点「发求助」提问吧！</div>'}</div>
+  </div>`;
+  body.querySelectorAll('.tabs .t').forEach(t => t.onclick = () => { viewHelpList._st = t.dataset.s; viewDiscuss('help'); });
+  document.getElementById('newHelpBtn').onclick = () => {
+    if (needLogin()) return;
+    const f = document.getElementById('newHelpForm');
+    f.style.display = f.style.display === 'none' ? 'block' : 'none';
+  };
+  document.getElementById('hSubmit').onclick = async (e) => {
+    e.target.disabled = true;
+    try {
+      await api('/api/discuss/help', { method: 'POST', body: { title: hTitle.value, content: hContent.value } });
+      toast('发布成功');
+      viewDiscuss('help');
+    } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
+  };
+}
+
+async function viewHelpDetail(body, id) {
+  body.innerHTML = '<div class="card"><div class="loading-block">加载中…</div></div>';
+  let d;
+  try { d = await api('/api/discuss/help/' + id); }
+  catch (e) { body.innerHTML = `<div class="card"><div class="empty">😕 ${esc(e.message)}</div></div>`; return; }
+  const p = d.post;
+  const me = state.me;
+  const canManage = me && (me.role === 'admin' || me.id === p.authorId);
+  const solved = p.status === 'solved';
+  const replies = (d.replies || []).map(r => `
+    <div class="item ${r.isSolution ? 'hp-solution' : ''}">
+      ${avatarHtml(r.author, 'xs')}
+      <div style="flex:1">
+        <div class="meta" style="margin:0 0 4px"><b>${esc(r.author.nickname)}</b><span>${fmtTime(r.createdAt)}</span>
+          ${r.isSolution ? '<span class="badge solved">✔ 已采纳</span>' : ''}
+          ${canManage && !solved && !r.isSolution ? `<span class="lnk" data-adopt="${r.id}">采纳为答案</span>` : ''}
+        </div>
+        <div class="hp-text">${esc(r.content)}</div>
+      </div>
+    </div>`).join('');
+  body.innerHTML = `
+  <a class="back-link" href="#/discuss">← 返回讨论区</a>
+  <div class="card">
+    <div class="hp-head">
+      <h2 style="margin:0">${esc(p.title)}</h2>
+      <span class="badge ${solved ? 'solved' : 'open'}">${solved ? '✔ 已解决' : '待解决'}</span>
+    </div>
+    <div class="meta" style="margin:8px 0 12px"><span>${esc(p.author.nickname)}</span><span>${fmtTime(p.createdAt)}</span>
+      ${canManage && !solved ? '<span class="lnk" id="markSolved">标记为已解决</span>' : ''}
+      ${canManage ? '<span class="lnk danger" id="delHelp">删除</span>' : ''}
+    </div>
+    <div class="hp-text" style="font-size:14.5px">${esc(p.content)}</div>
+  </div>
+  <div class="card">
+    <h2>回复（${(d.replies || []).length}）</h2>
+    <div id="replyList">${replies || '<div class="empty">还没有回复，来帮帮他吧！</div>'}</div>
+  </div>
+  <div class="card">
+    ${me ? `
+      <div class="form-item"><textarea id="rContent" style="min-height:90px" placeholder="写下你的回答或建议…"></textarea></div>
+      <button class="btn primary" id="rSubmit">回复</button>` :
+      '<div class="empty"><a href="#/login">登录</a> 后可以回复</div>'}
+  </div>`;
+  const refresh = () => viewDiscuss('help/' + id);
+  body.querySelectorAll('[data-adopt]').forEach(el => el.onclick = async () => {
+    try {
+      await api(`/api/discuss/help/${id}/solve`, { method: 'POST', body: { replyId: el.dataset.adopt } });
+      toast('已采纳为答案');
+      refresh();
+    } catch (e) { toast(e.message, 'err'); }
+  });
+  const ms = document.getElementById('markSolved');
+  if (ms) ms.onclick = async () => {
+    try {
+      await api(`/api/discuss/help/${id}/solve`, { method: 'POST', body: {} });
+      toast('已标记为已解决');
+      refresh();
+    } catch (e) { toast(e.message, 'err'); }
+  };
+  const del = document.getElementById('delHelp');
+  if (del) del.onclick = async () => {
+    if (!confirm('确定删除这个求助吗？回复也会一起删除')) return;
+    try {
+      await api('/api/discuss/help/' + id, { method: 'DELETE' });
+      toast('已删除');
+      go('#/discuss');
+    } catch (e) { toast(e.message, 'err'); }
+  };
+  const rs = document.getElementById('rSubmit');
+  if (rs) rs.onclick = async (e) => {
+    e.target.disabled = true;
+    try {
+      await api(`/api/discuss/help/${id}/reply`, { method: 'POST', body: { content: rContent.value } });
+      toast('回复成功');
+      refresh();
+    } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
+  };
+}
+
+async function viewDiscussChat(body) {
+  body.innerHTML = `
+  <div class="card chat-card">
+    <div class="chat-scroll" id="chatScroll"><div class="empty" style="padding:40px 0">加载中…</div></div>
+    <div class="chat-input-bar">
+      <input id="chatInput" maxlength="500" placeholder="${state.me ? '和大家聊点什么…（Enter 发送）' : '登录后才能发言'}" ${state.me ? '' : 'disabled'}>
+      <button class="btn primary" id="chatSend" ${state.me ? '' : 'disabled'}>发送</button>
+    </div>
+  </div>`;
+  const scroll = document.getElementById('chatScroll');
+  let lastTs = 0, timer = null, sending = false;
+  const bubble = (m) => {
+    const mine = state.me && m.authorId === state.me.id;
+    return `
+    <div class="chat-msg ${mine ? 'mine' : ''}">
+      ${avatarHtml(m.author, 'xs')}
+      <div class="chat-bubble">
+        <div class="cb-head">${esc(m.author.nickname || '')}<span class="cb-time">${fmtTime(m.createdAt)}</span></div>
+        <div class="cb-text">${esc(m.content)}</div>
+      </div>
+    </div>`;
+  };
+  const renderMsgs = (msgs, append) => {
+    const atBottom = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 90;
+    if (append) scroll.insertAdjacentHTML('beforeend', msgs.map(bubble).join(''));
+    else scroll.innerHTML = msgs.map(bubble).join('') || '<div class="empty" style="padding:40px 0">还没有消息，来抢个沙发！</div>';
+    if (atBottom || !append) scroll.scrollTop = scroll.scrollHeight;
+  };
+  const pull = async (init) => {
+    try {
+      const d = await api('/api/discuss/chat' + (lastTs ? '?after=' + lastTs : ''));
+      if (d.messages.length) {
+        lastTs = d.messages[d.messages.length - 1].createdAt;
+        renderMsgs(d.messages, !init);
+      } else if (init) renderMsgs([], false);
+    } catch (e) {}
+  };
+  await pull(true);
+  timer = setInterval(() => pull(false), 5000);
+  window.addEventListener('routeCleanup', viewDiscuss._chatCleanup = () => clearInterval(timer), { once: true });
+  const send = async () => {
+    const inp = document.getElementById('chatInput');
+    const v = inp.value.trim();
+    if (!v || sending) return;
+    sending = true;
+    try {
+      const d = await api('/api/discuss/chat', { method: 'POST', body: { content: v } });
+      inp.value = '';
+      lastTs = Math.max(lastTs, d.message.createdAt);
+      renderMsgs([d.message], true);
+    } catch (e) { toast(e.message, 'err'); }
+    sending = false;
+  };
+  document.getElementById('chatSend').onclick = send;
+  document.getElementById('chatInput').onkeydown = (e) => { if (e.key === 'Enter') send(); };
 }
 
 async function viewNewPost() {

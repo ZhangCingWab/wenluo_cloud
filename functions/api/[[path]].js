@@ -292,6 +292,22 @@ async function ensureSeedData(env) {
       code TEXT PRIMARY KEY, purpose TEXT NOT NULL, created_by TEXT NOT NULL,
       created_at INTEGER NOT NULL, used INTEGER DEFAULT 0, used_by TEXT, used_at INTEGER
     )`);
+    // 讨论区：求助帖
+    await dbRun(env, `CREATE TABLE IF NOT EXISTS help_posts (
+      id TEXT PRIMARY KEY, author_id TEXT NOT NULL, title TEXT NOT NULL,
+      content TEXT, status TEXT DEFAULT 'open', created_at INTEGER
+    )`);
+    // 讨论区：求助回复
+    await dbRun(env, `CREATE TABLE IF NOT EXISTS help_replies (
+      id TEXT PRIMARY KEY, post_id TEXT NOT NULL, author_id TEXT NOT NULL,
+      content TEXT NOT NULL, is_solution INTEGER DEFAULT 0, created_at INTEGER
+    )`);
+    // 讨论区：群聊消息
+    await dbRun(env, `CREATE TABLE IF NOT EXISTS chat_messages (
+      id TEXT PRIMARY KEY, author_id TEXT NOT NULL, content TEXT NOT NULL, created_at INTEGER
+    )`);
+    await dbRun(env, `CREATE INDEX IF NOT EXISTS idx_help_replies_post ON help_replies(post_id)`);
+    await dbRun(env, `CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_messages(created_at)`);
   } catch {}
 
   /* ---------- 旧 camelCase 表一次性迁移为 snake_case（saveDB 时代遗留） ---------- */
@@ -1694,6 +1710,171 @@ export async function onRequest(context) {
       try { await env.DB.prepare(`UPDATE notifications SET read=1 WHERE id=?`).bind(m.id).run(); } catch (e) {}
       invalidateCache();
       return json({ ok: true });
+    }
+
+    // ==================== 讨论区 ====================
+    // 求助帖 JOIN 作者 → 前端可用的对象
+    function helpOut(r) {
+      const o = toCamel(r);
+      o.author = (r.a_nick || r.a_name) ? { id: o.authorId, nickname: r.a_nick || r.a_name, username: r.a_name || '', role: r.a_role || 'user' } : { nickname: '已注销用户' };
+      delete o.a_nick; delete o.a_name; delete o.a_role;
+      return o;
+    }
+
+    // GET /api/discuss/help 列表（?status=open|solved）
+    if (match(path, 'discuss/help') && method === 'GET') {
+      const st = new URL(request.url).searchParams.get('status');
+      let sql = `SELECT h.*, u.nickname AS a_nick, u.username AS a_name, u.role AS a_role
+        FROM help_posts h LEFT JOIN users u ON h.author_id = u.id`;
+      const binds = [];
+      if (st === 'open' || st === 'solved') { sql += ` WHERE h.status = ?`; binds.push(st); }
+      sql += ` ORDER BY CASE h.status WHEN 'solved' THEN 1 ELSE 0 END, h.created_at DESC LIMIT 100`;
+      let rows = [];
+      try { rows = (await env.DB.prepare(sql).bind(...binds).all()).results || []; } catch (e) { return bad('加载失败: ' + e.message); }
+      // 回复数
+      let cntMap = {};
+      try {
+        const cs = (await env.DB.prepare(`SELECT post_id, COUNT(*) AS cnt FROM help_replies GROUP BY post_id`).all()).results || [];
+        cs.forEach(c => { cntMap[c.post_id] = c.cnt; });
+      } catch {}
+      return json({ posts: rows.map(r => { const o = helpOut(r); o.replyCount = cntMap[o.id] || 0; return o; }) });
+    }
+
+    // POST /api/discuss/help 发布求助
+    if (match(path, 'discuss/help') && method === 'POST') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const body = await request.json();
+      const title = clean(body.title, 80);
+      const content = clean(body.content, 5000);
+      if (!title) return bad('标题不能为空');
+      if (!content) return bad('内容不能为空');
+      const p = { id: uid('h'), status: 'open', createdAt: Date.now() };
+      try {
+        await env.DB.prepare(`INSERT INTO help_posts (id, author_id, title, content, status, created_at) VALUES (?,?,?,?,?,?)`)
+          .bind(p.id, me.id, title, content, p.status, p.createdAt).run();
+      } catch (e) { return bad('发布失败: ' + e.message); }
+      return json({ post: { id: p.id, authorId: me.id, title, content, status: p.status, createdAt: p.createdAt, author: pub(me), replyCount: 0 } });
+    }
+
+    // GET /api/discuss/help/:id 详情（含回复）
+    m = match(path, 'discuss/help/:id');
+    if (m && method === 'GET') {
+      let row = null;
+      try {
+        row = (await env.DB.prepare(`SELECT h.*, u.nickname AS a_nick, u.username AS a_name, u.role AS a_role
+          FROM help_posts h LEFT JOIN users u ON h.author_id = u.id WHERE h.id = ?`).bind(m.id).first());
+      } catch (e) { return bad('加载失败: ' + e.message); }
+      if (!row) return bad('求助不存在', 404);
+      const post = helpOut(row);
+      let replies = [];
+      try {
+        const rs = (await env.DB.prepare(`SELECT r.*, u.nickname AS a_nick, u.username AS a_name, u.role AS a_role
+          FROM help_replies r LEFT JOIN users u ON r.author_id = u.id WHERE r.post_id = ? ORDER BY r.created_at ASC`)
+          .bind(m.id).all()).results || [];
+        replies = rs.map(helpOut);
+      } catch {}
+      return json({ post, replies });
+    }
+
+    // POST /api/discuss/help/:id/reply 回复
+    m = match(path, 'discuss/help/:id/reply');
+    if (m && method === 'POST') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const body = await request.json();
+      const content = clean(body.content, 3000);
+      if (!content) return bad('内容不能为空');
+      const post = await dbFirst(env, `SELECT id, author_id FROM help_posts WHERE id = ?`, [m.id]);
+      if (!post) return bad('求助不存在', 404);
+      const r = { id: uid('hr'), postId: m.id, authorId: me.id, content, isSolution: 0, createdAt: Date.now() };
+      try {
+        await env.DB.prepare(`INSERT INTO help_replies (id, post_id, author_id, content, is_solution, created_at) VALUES (?,?,?,?,0,?)`)
+          .bind(r.id, m.id, me.id, content, r.createdAt).run();
+      } catch (e) { return bad('回复失败: ' + e.message); }
+      // 通知求助作者
+      if (post.author_id && post.author_id !== me.id) {
+        await addNotif(env, db, me.id, 'reply', post.author_id, 'help', m.id, '回复了你的求助');
+      }
+      return json({ reply: { ...r, author: pub(me) } });
+    }
+
+    // POST /api/discuss/help/:id/solve 采纳答案（作者或管理员）
+    m = match(path, 'discuss/help/:id/solve');
+    if (m && method === 'POST') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const body = await request.json().catch(() => ({}));
+      const replyId = body.replyId || '';
+      const post = await dbFirst(env, `SELECT id, author_id, status FROM help_posts WHERE id = ?`, [m.id]);
+      if (!post) return bad('求助不存在', 404);
+      const isAdmin = (me.role === 'admin');
+      const isOwner = post.author_id === me.id || post.authorId === me.id;
+      if (!isAdmin && !isOwner) return bad('只有求助发起人可以采纳答案', 403);
+      if (replyId) {
+        const rp = await dbFirst(env, `SELECT id, post_id FROM help_replies WHERE id = ?`, [replyId]);
+        if (!rp || (rp.post_id || rp.postId) !== m.id) return bad('回复不存在', 404);
+        try {
+          await env.DB.prepare(`UPDATE help_replies SET is_solution = 1 WHERE id = ?`).bind(replyId).run();
+        } catch (e) { return bad('操作失败: ' + e.message); }
+      }
+      try {
+        await env.DB.prepare(`UPDATE help_posts SET status = 'solved' WHERE id = ?`).bind(m.id).run();
+      } catch (e) { return bad('操作失败: ' + e.message); }
+      invalidateCache();
+      return json({ ok: true });
+    }
+
+    // DELETE /api/discuss/help/:id 删除求助（作者或管理员）
+    m = match(path, 'discuss/help/:id');
+    if (m && method === 'DELETE') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const post = await dbFirst(env, `SELECT id, author_id FROM help_posts WHERE id = ?`, [m.id]);
+      if (!post) return bad('求助不存在', 404);
+      const isAdmin = (me.role === 'admin');
+      const isOwner = post.author_id === me.id || post.authorId === me.id;
+      if (!isAdmin && !isOwner) return bad('无权删除', 403);
+      try {
+        await env.DB.prepare(`DELETE FROM help_replies WHERE post_id = ?`).bind(m.id).run();
+        await env.DB.prepare(`DELETE FROM help_posts WHERE id = ?`).bind(m.id).run();
+      } catch (e) { return bad('删除失败: ' + e.message); }
+      invalidateCache();
+      return json({ ok: true });
+    }
+
+    // GET /api/discuss/chat 群聊消息（?after=毫秒时间戳 增量拉取）
+    if (match(path, 'discuss/chat') && method === 'GET') {
+      const after = Number(new URL(request.url).searchParams.get('after') || 0);
+      let rows = [];
+      try {
+        if (after > 0) {
+          rows = (await env.DB.prepare(`SELECT c.*, u.nickname AS a_nick, u.username AS a_name, u.role AS a_role
+            FROM chat_messages c LEFT JOIN users u ON c.author_id = u.id
+            WHERE c.created_at > ? ORDER BY c.created_at ASC LIMIT 200`).bind(after).all()).results || [];
+        } else {
+          const rs = (await env.DB.prepare(`SELECT c.*, u.nickname AS a_nick, u.username AS a_name, u.role AS a_role
+            FROM chat_messages c LEFT JOIN users u ON c.author_id = u.id
+            ORDER BY c.created_at DESC LIMIT 50`).all()).results || [];
+          rows = rs.reverse();
+        }
+      } catch (e) { return bad('加载失败: ' + e.message); }
+      return json({ messages: rows.map(helpOut) });
+    }
+
+    // POST /api/discuss/chat 发送群聊消息
+    if (match(path, 'discuss/chat') && method === 'POST') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const body = await request.json();
+      const content = clean(body.content, 500);
+      if (!content) return bad('内容不能为空');
+      const c = { id: uid('c'), authorId: me.id, content, createdAt: Date.now() };
+      try {
+        await env.DB.prepare(`INSERT INTO chat_messages (id, author_id, content, created_at) VALUES (?,?,?,?)`)
+          .bind(c.id, me.id, content, c.createdAt).run();
+      } catch (e) { return bad('发送失败: ' + e.message); }
+      return json({ message: { ...c, author: pub(me) } });
     }
 
     // ---- 私信：发送 ----
