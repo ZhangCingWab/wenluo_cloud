@@ -226,7 +226,6 @@ function renderSidebar() {
     ${link('/daily', '🔥', '每日打卡')}
     ${link('/forum', '💬', '论坛广场')}
     ${link('/discuss', '🙋', '讨论区')}
-    ${link('/announcements', '📢', '公告')}
     ${link('/articles', '📖', '文章库')}
     ${link('/problems', '📚', '题库')}
     ${link('/templates', '📝', '写作模板')}
@@ -254,9 +253,7 @@ function renderUserChip() {
   const me = state.me;
   if (me) {
     chip.className = 'userchip-in';
-    chip.innerHTML = `<a class="bell" href="#/notifications" title="通知中心">🔔<span class="notif-badge" id="notifBadge" style="display:none">0</span></a>${avatarHtml(me)}<span class="chip-name">${esc(me.nickname)}</span>`;
-    const bell = chip.querySelector('.bell');
-    if (bell) bell.onclick = (e) => { e.stopPropagation(); };
+    chip.innerHTML = `${avatarHtml(me)}<span class="chip-name">${esc(me.nickname)}</span><span class="chip-dot" id="notifDot" style="display:none" title="有新通知"></span>`;
     chip.onclick = (e) => { e.stopPropagation(); toggleUserMenu(); };
   } else {
     chip.className = 'userchip-out';
@@ -275,6 +272,7 @@ function toggleUserMenu() {
     <div class="p-head">${esc(me.nickname)} <span style="font-weight:400;font-size:12px">@${esc(me.username)}</span></div>
     <a href="#/user/${me.id}">👤 个人主页</a>
     <a href="#/messages">✉️ 私信</a>
+    <a href="#/notifications">🔔 通知中心<span class="msg-badge" id="notifBadge" style="display:none">0</span></a>
     <a href="#/mine">📝 我的文章</a>
     <a href="#/settings">⚙️ 偏好设置</a>
     <div class="divider"></div>
@@ -320,6 +318,8 @@ async function refreshUnread() {
       nb.textContent = nd.count > 99 ? '99+' : nd.count;
       nb.style.display = nd.count > 0 ? 'inline-block' : 'none';
     }
+    const dot = document.getElementById('notifDot');
+    if (dot) dot.style.display = nd.count > 0 ? 'inline-block' : 'none';
   } catch (e) {}
 }
 setInterval(refreshUnread, 60000);
@@ -371,6 +371,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-12 03:00', author: 'ZhangCing', items: ['🏠 公告移到主页显示：hero 下方公告卡片，点击展开全文（新用户仍会自动弹出必读）', '🔔 通知藏进右上角名字菜单：点名字 →「通知中心」，有新通知时名字旁亮小红点'] },
   { date: '2026-10-12 02:20', author: 'ZhangCing', items: ['🔔 新增「通知中心」：右上角铃铛 + 未读红点，点赞/评论/回复/采纳答案/比赛开始/题目审核/练习提交都会提醒，点击通知直达对应页面', '📢 新增「公告」模块：上线第一篇《文汇新用户必读》，新用户进主页自动弹出，侧边栏可随时查看'] },
   { date: '2026-10-12 01:10', author: 'ZhangCing', items: ['📄 长列表加分页按钮：求助问答、排行榜（每页20）、我的文章/帖子/投稿、后台审核列表（每页10），翻页自动回到列表顶部', '🌙 分页按钮适配深色模式'] },
   { date: '2026-10-12 00:30', author: 'ZhangCing', items: ['👥 群聊升级为多群制：预置「官方公告 / 灌水闲聊 / 写作交流 / 兴趣杂谈」四个群（群主都是站长）', '🔐 加群需群主审核：申请后群主在群聊里点「通过 / 拒绝」，结果站内通知，审核卡片里可一键处理'] },
@@ -502,9 +503,10 @@ function showAnnModal(list) {
 async function viewHome() {
   hideAiFab();
   api('/api/announcements').then(d => showAnnModal(d.announcements || [])).catch(() => {});
-  const [d, cd] = await Promise.all([
+  const [d, cd, ad] = await Promise.all([
     api('/api/home').catch(() => ({ stats: {}, latestArticles: [], latestPosts: [], activeContests: [] })),
-    state.me ? api('/api/checkins/today').catch(() => ({ daily: null, streak: 0, myCheckin: null })) : { daily: null, streak: 0, myCheckin: null }
+    state.me ? api('/api/checkins/today').catch(() => ({ daily: null, streak: 0, myCheckin: null })) : { daily: null, streak: 0, myCheckin: null },
+    api('/api/announcements').catch(() => ({ announcements: [] }))
   ]);
   const itemList = (arr, type) => arr.map(x => `
     <div class="item">
@@ -516,6 +518,15 @@ async function viewHome() {
         </div>
       </div>
     </div>`).join('') || '<div class="empty">暂无内容</div>';
+
+  const annCard = (ad.announcements || []).length ? `
+    <div class="card ann-details">
+      ${ad.announcements.map(a => `
+      <details ${a.id === 'ann_readme' ? 'class="ann-important"' : ''}>
+        <summary>📢 ${esc(a.title)}</summary>
+        <div class="ann-body">${md(a.content || '')}</div>
+      </details>`).join('')}
+    </div>` : '';
 
   const checkinCard = cd && cd.daily ? `
     <div class="checkin-card" style="cursor:pointer" onclick="location.hash='#/daily'">
@@ -544,6 +555,7 @@ async function viewHome() {
         <button class="btn-hero ghost" id="hFile">📤 文件投稿</button>
       </div>
     </div>
+    ${annCard}
     ${checkinCard}
     <div class="stats">
       <div class="stat"><div class="num">${d.stats.users || 0}</div><div class="lab">注册用户</div></div>
