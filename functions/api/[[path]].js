@@ -302,10 +302,43 @@ async function ensureSeedData(env) {
       id TEXT PRIMARY KEY, post_id TEXT NOT NULL, author_id TEXT NOT NULL,
       content TEXT NOT NULL, is_solution INTEGER DEFAULT 0, created_at INTEGER
     )`);
-    // 讨论区：群聊消息
+    // 讨论区：群聊消息（group_id 为空的历史数据是旧大厅消息，不再展示）
     await dbRun(env, `CREATE TABLE IF NOT EXISTS chat_messages (
       id TEXT PRIMARY KEY, author_id TEXT NOT NULL, content TEXT NOT NULL, created_at INTEGER
     )`);
+    try { await dbRun(env, `ALTER TABLE chat_messages ADD COLUMN group_id TEXT`); } catch {}
+    // 讨论区：群聊（多群制 + 群主审核入群）
+    await dbRun(env, `CREATE TABLE IF NOT EXISTS chat_groups (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT DEFAULT '',
+      emoji TEXT DEFAULT '💬', owner_id TEXT, created_at INTEGER
+    )`);
+    await dbRun(env, `CREATE TABLE IF NOT EXISTS chat_members (
+      group_id TEXT NOT NULL, user_id TEXT NOT NULL,
+      status TEXT DEFAULT 'pending', joined_at INTEGER,
+      PRIMARY KEY (group_id, user_id)
+    )`);
+    // 预置群（仅群表为空时插入一次，群主 = 站长 admin）
+    try {
+      const gcnt = (await env.DB.prepare(`SELECT COUNT(*) AS n FROM chat_groups`).first()).n;
+      if (!gcnt) {
+        const admin = (await env.DB.prepare(`SELECT id FROM users WHERE role='admin' LIMIT 1`).first());
+        const seeds = [
+          ['📢', '官方公告', '网站更新、比赛通知、重要事项都在这里'],
+          ['💬', '灌水闲聊', '天南海北随便聊，开心就好'],
+          ['📖', '写作交流', '分享写作技巧，互相点评文章'],
+          ['🎮', '兴趣杂谈', '游戏、动漫、音乐，在这里找到同好']
+        ];
+        for (const [emoji, name, desc] of seeds) {
+          const gid = uid('g'), now = Date.now();
+          await env.DB.prepare(`INSERT INTO chat_groups (id, name, description, emoji, owner_id, created_at) VALUES (?,?,?,?,?,?)`)
+            .bind(gid, name, desc, emoji, admin ? admin.id : null, now).run();
+          if (admin) {
+            await env.DB.prepare(`INSERT OR IGNORE INTO chat_members (group_id, user_id, status, joined_at) VALUES (?,?,'approved',?)`)
+              .bind(gid, admin.id, now).run();
+          }
+        }
+      }
+    } catch {}
     await dbRun(env, `CREATE INDEX IF NOT EXISTS idx_help_replies_post ON help_replies(post_id)`);
     await dbRun(env, `CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_messages(created_at)`);
   } catch {}
@@ -1843,36 +1876,165 @@ export async function onRequest(context) {
       return json({ ok: true });
     }
 
-    // GET /api/discuss/chat 群聊消息（?after=毫秒时间戳 增量拉取）
+    // ==================== 群聊（多群制 + 群主审核） ====================
+    // GET /api/discuss/groups 群列表（含我的成员状态、成员数、群主可见的待审数）
+    if (match(path, 'discuss/groups') && method === 'GET') {
+      const me = await auth(request, env);
+      let rows = [];
+      try {
+        rows = (await env.DB.prepare(`SELECT g.*, u.nickname AS a_nick FROM chat_groups g
+          LEFT JOIN users u ON g.owner_id = u.id ORDER BY g.created_at ASC`).all()).results || [];
+      } catch (e) { return bad('加载失败: ' + e.message); }
+      let cntMap = {}, pendMap = {}, mine = {};
+      try {
+        (await env.DB.prepare(`SELECT group_id, COUNT(*) AS cnt FROM chat_members WHERE status='approved' GROUP BY group_id`).all()).results
+          .forEach(r => { cntMap[r.group_id] = r.cnt; });
+      } catch {}
+      if (me) {
+        try {
+          (await env.DB.prepare(`SELECT group_id, status FROM chat_members WHERE user_id = ?`).bind(me.id).all()).results
+            .forEach(r => { mine[r.group_id] = r.status; });
+        } catch {}
+        try {
+          (await env.DB.prepare(`SELECT group_id, COUNT(*) AS cnt FROM chat_members WHERE status='pending' GROUP BY group_id`).all()).results
+            .forEach(r => { pendMap[r.group_id] = r.cnt; });
+        } catch {}
+      }
+      return json({
+        groups: rows.map(r => {
+          const o = toCamel(r);
+          o.ownerName = r.a_nick || '';
+          delete o.a_nick;
+          o.memberCount = cntMap[o.id] || 0;
+          o.myStatus = mine[o.id] || 'none';
+          if (me && (o.ownerId === me.id || me.role === 'admin')) o.pendingCount = pendMap[o.id] || 0;
+          return o;
+        })
+      });
+    }
+
+    // POST /api/discuss/groups/:id/join 申请加群
+    m = match(path, 'discuss/groups/:id/join');
+    if (m && method === 'POST') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const g = await dbFirst(env, `SELECT id, name, owner_id FROM chat_groups WHERE id = ?`, [m.id]);
+      if (!g) return bad('群不存在', 404);
+      const ex = await dbFirst(env, `SELECT status FROM chat_members WHERE group_id = ? AND user_id = ?`, [m.id, me.id]);
+      if (ex && (ex.status === 'approved' || ex.status === 'pending')) return json({ ok: true, status: ex.status });
+      try {
+        await env.DB.prepare(`INSERT INTO chat_members (group_id, user_id, status, joined_at) VALUES (?,?,'pending',?)`)
+          .bind(m.id, me.id, Date.now()).run();
+      } catch (e) { return bad('申请失败: ' + e.message); }
+      const ownerId = g.owner_id || g.ownerId;
+      if (ownerId && ownerId !== me.id) {
+        await addNotif(env, db, me.id, 'group', ownerId, 'group', m.id, `申请加入群聊「${g.name}」`);
+      }
+      return json({ ok: true, status: 'pending' });
+    }
+
+    // GET /api/discuss/groups/:id/requests 群主查待审申请
+    m = match(path, 'discuss/groups/:id/requests');
+    if (m && method === 'GET') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const g = await dbFirst(env, `SELECT id, owner_id FROM chat_groups WHERE id = ?`, [m.id]);
+      if (!g) return bad('群不存在', 404);
+      const ownerId = g.owner_id || g.ownerId;
+      if (ownerId !== me.id && me.role !== 'admin') return bad('只有群主可以查看申请', 403);
+      let rows = [];
+      try {
+        rows = (await env.DB.prepare(`SELECT cm.user_id, cm.joined_at, u.nickname, u.username, u.role
+          FROM chat_members cm LEFT JOIN users u ON cm.user_id = u.id
+          WHERE cm.group_id = ? AND cm.status = 'pending' ORDER BY cm.joined_at ASC`).bind(m.id).all()).results || [];
+      } catch (e) { return bad('加载失败: ' + e.message); }
+      return json({
+        requests: rows.map(r => ({
+          userId: r.user_id, joinedAt: r.joined_at,
+          user: { id: r.user_id, nickname: r.nickname || '已注销用户', username: r.username || '', role: r.role || 'user' }
+        }))
+      });
+    }
+
+    // POST /api/discuss/groups/:id/review 群主审核 {userId, approve}
+    m = match(path, 'discuss/groups/:id/review');
+    if (m && method === 'POST') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const body = await request.json();
+      const targetId = body.userId || '';
+      if (!targetId) return bad('缺少 userId');
+      const g = await dbFirst(env, `SELECT id, name, owner_id FROM chat_groups WHERE id = ?`, [m.id]);
+      if (!g) return bad('群不存在', 404);
+      const ownerId = g.owner_id || g.ownerId;
+      if (ownerId !== me.id && me.role !== 'admin') return bad('只有群主可以审核', 403);
+      const ex = await dbFirst(env, `SELECT status FROM chat_members WHERE group_id = ? AND user_id = ?`, [m.id, targetId]);
+      if (!ex || ex.status !== 'pending') return bad('该用户没有待审申请');
+      if (body.approve) {
+        try {
+          await env.DB.prepare(`UPDATE chat_members SET status = 'approved' WHERE group_id = ? AND user_id = ?`).bind(m.id, targetId).run();
+        } catch (e) { return bad('操作失败: ' + e.message); }
+        await addNotif(env, db, me.id, 'group', targetId, 'group', m.id, `你已通过群聊「${g.name}」的审核`);
+      } else {
+        try {
+          await env.DB.prepare(`DELETE FROM chat_members WHERE group_id = ? AND user_id = ?`).bind(m.id, targetId).run();
+        } catch (e) { return bad('操作失败: ' + e.message); }
+        await addNotif(env, db, me.id, 'group', targetId, 'group', m.id, `你加入群聊「${g.name}」的申请未通过`);
+      }
+      invalidateCache();
+      return json({ ok: true });
+    }
+
+    // GET /api/discuss/chat 群消息（?group=<群id>&after=毫秒时间戳 增量拉取，需已是成员）
     if (match(path, 'discuss/chat') && method === 'GET') {
-      const after = Number(new URL(request.url).searchParams.get('after') || 0);
+      const url = new URL(request.url);
+      const gId = url.searchParams.get('group') || '';
+      if (!gId) return bad('缺少群参数');
+      const after = Number(url.searchParams.get('after') || 0);
+      const me = await auth(request, env);
+      if (me) {
+        const mb = await dbFirst(env, `SELECT status FROM chat_members WHERE group_id = ? AND user_id = ?`, [gId, me.id]);
+        const g = await dbFirst(env, `SELECT owner_id FROM chat_groups WHERE id = ?`, [gId]);
+        const isOwner = g && ((g.owner_id || g.ownerId) === me.id || me.role === 'admin');
+        const st = mb ? (mb.status || 'none') : 'none';
+        if (st !== 'approved' && !isOwner) return bad(st === 'pending' ? '申请审核中，群主通过后即可进入' : '请先申请加入该群', 403);
+      } else {
+        return bad('请先登录', 401);
+      }
       let rows = [];
       try {
         if (after > 0) {
           rows = (await env.DB.prepare(`SELECT c.*, u.nickname AS a_nick, u.username AS a_name, u.role AS a_role
             FROM chat_messages c LEFT JOIN users u ON c.author_id = u.id
-            WHERE c.created_at > ? ORDER BY c.created_at ASC LIMIT 200`).bind(after).all()).results || [];
+            WHERE c.group_id = ? AND c.created_at > ? ORDER BY c.created_at ASC LIMIT 200`).bind(gId, after).all()).results || [];
         } else {
           const rs = (await env.DB.prepare(`SELECT c.*, u.nickname AS a_nick, u.username AS a_name, u.role AS a_role
             FROM chat_messages c LEFT JOIN users u ON c.author_id = u.id
-            ORDER BY c.created_at DESC LIMIT 50`).all()).results || [];
+            WHERE c.group_id = ? ORDER BY c.created_at DESC LIMIT 50`).bind(gId).all()).results || [];
           rows = rs.reverse();
         }
       } catch (e) { return bad('加载失败: ' + e.message); }
       return json({ messages: rows.map(helpOut) });
     }
 
-    // POST /api/discuss/chat 发送群聊消息
+    // POST /api/discuss/chat 发送群消息 {groupId, content}
     if (match(path, 'discuss/chat') && method === 'POST') {
       const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       const body = await request.json();
+      const gId = body.groupId || body.group_id || '';
+      if (!gId) return bad('缺少群参数');
+      const mb = await dbFirst(env, `SELECT status FROM chat_members WHERE group_id = ? AND user_id = ?`, [gId, me.id]);
+      const g = await dbFirst(env, `SELECT owner_id FROM chat_groups WHERE id = ?`, [gId]);
+      const isOwner = g && ((g.owner_id || g.ownerId) === me.id || me.role === 'admin');
+      const st = mb ? (mb.status || 'none') : 'none';
+      if (st !== 'approved' && !isOwner) return bad(st === 'pending' ? '申请审核中，还不能发言' : '请先申请加入该群', 403);
       const content = clean(body.content, 500);
       if (!content) return bad('内容不能为空');
-      const c = { id: uid('c'), authorId: me.id, content, createdAt: Date.now() };
+      const c = { id: uid('c'), groupId: gId, authorId: me.id, content, createdAt: Date.now() };
       try {
-        await env.DB.prepare(`INSERT INTO chat_messages (id, author_id, content, created_at) VALUES (?,?,?,?)`)
-          .bind(c.id, me.id, content, c.createdAt).run();
+        await env.DB.prepare(`INSERT INTO chat_messages (id, group_id, author_id, content, created_at) VALUES (?,?,?,?,?)`)
+          .bind(c.id, gId, me.id, content, c.createdAt).run();
       } catch (e) { return bad('发送失败: ' + e.message); }
       return json({ message: { ...c, author: pub(me) } });
     }

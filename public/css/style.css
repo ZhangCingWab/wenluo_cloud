@@ -468,6 +468,38 @@ table.rank tr:last-child td { border: none; }
   border-top: 1px solid var(--border); background: var(--card);
 }
 .chat-input-bar input { flex: 1; }
+/* 群聊多群制 */
+.group-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.group-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px; box-shadow: var(--shadow-sm);
+  transition: transform .18s, box-shadow .18s;
+}
+.group-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-hover); }
+.g-top { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.g-emoji { font-size: 30px; line-height: 1; }
+.g-emoji.sm { font-size: 22px; }
+.g-name { font-weight: 700; font-size: 15px; }
+.g-desc { font-size: 12.5px; color: var(--text2); min-height: 36px; margin-bottom: 10px; line-height: 1.5; }
+.g-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.g-meta { font-size: 12px; color: var(--text2); }
+.g-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+}
+.g-head .g-meta { margin-left: auto; }
+.req-card {
+  margin: 12px 16px 0; padding: 12px 14px;
+  background: var(--blue-light); border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+.req-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 0; border-bottom: 1px dashed rgba(52, 152, 219, .25);
+}
+.req-row:last-child { border-bottom: none; padding-bottom: 0; }
+.rq-btn { padding: 5px 12px; font-size: 12px; flex: none; }
+.badge.pending { background: #fdf3e2; color: var(--orange); }
 
 .loading-block { text-align: center; color: var(--text2); padding: 60px 0; }
 
@@ -877,6 +909,13 @@ html.dark .chat-msg.mine .chat-bubble { background:#2f6fb3; border-color:#2f6fb3
 html.dark .cb-head { color:#6a7599; }
 html.dark .chat-msg.mine .cb-head { color:rgba(255,255,255,.85); }
 html.dark .chat-input-bar { background:#161d33; border-top-color:#2a3154; }
+html.dark .group-card { background:#161d33; border-color:#2a3154; }
+html.dark .g-head { border-bottom-color:#2a3154; }
+html.dark .g-head b, html.dark .g-name { color:#e4e8f0; }
+html.dark .g-desc, html.dark .g-meta { color:#6a7599; }
+html.dark .req-card { background:#1a2240; }
+html.dark .req-row { border-bottom-color:#2a3154; }
+html.dark .badge.pending { background:#3a2f14; color:#f5b04c; }
 
 /* 深色模式 toggle */
 .theme-toggle { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:8px; cursor:pointer; font-size:13px; color:#a0a8c0; user-select:none; }
@@ -973,6 +1012,8 @@ html.dark #userMenu { background: #161d33; }
   .chat-card { height: 74vh; min-height: 340px; }
   .chat-bubble { max-width: 84%; }
   .chat-scroll { padding: 12px 10px 4px; }
+  .group-grid { grid-template-columns: 1fr; }
+  .g-desc { min-height: 0; }
   .tabs { align-items: stretch !important; }
 }
 

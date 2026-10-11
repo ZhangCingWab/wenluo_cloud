@@ -361,6 +361,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-12 00:30', author: 'ZhangCing', items: ['👥 群聊升级为多群制：预置「官方公告 / 灌水闲聊 / 写作交流 / 兴趣杂谈」四个群（群主都是站长）', '🔐 加群需群主审核：申请后群主在群聊里点「通过 / 拒绝」，结果站内通知，审核卡片里可一键处理'] },
   { date: '2026-10-11 23:55', author: 'ZhangCing', items: ['🎉 新增「讨论区」模块：🙋 求助问答（发求助/回复/采纳答案/标记已解决，未解决自动置顶）+ 💬 群聊大厅（全员聊天室，5 秒自动刷新新消息）', '📱 讨论区适配手机端与深色模式'] },
   { date: '2026-10-11 16:00', author: 'ZhangCing', items: ['🎨 全站换上正式标志「开卷文汇」：浅蓝圆角方印 + 蓝字「文」+ 摊开书页', '🔖 浏览器标签页 favicon 同步替换为新标志'] },
   { date: '2026-10-11 12:00', author: 'ZhangCing', items: ['🔴 修复深色模式开关失效（菜单在头像内，头像的 stopPropagation 拦截了事件；改为直接绑定，切换后菜单不关闭可立即看到效果）', '✨ 全局流畅动效：页面切换淡入上移、卡片/列表依次上升、弹出菜单弹性缩放、toast 滑入（尊重系统减少动效设置）'] },
@@ -555,11 +556,11 @@ async function viewDiscuss(arg) {
     <div class="page-title">
       <div><h1>讨论区</h1><div class="sub">遇到问题来求助，或者到群聊和大家畅所欲言</div></div>
     </div>
-    <div class="dtabs">${tab('help', '🙋', '求助问答')}${tab('chat', '💬', '群聊大厅')}</div>
+    <div class="dtabs">${tab('help', '🙋', '求助问答')}${tab('chat', '💬', '群聊')}</div>
     <div id="discussBody"></div>
   </div>`;
   const body = document.getElementById('discussBody');
-  if (sub === 'chat') return viewDiscussChat(body);
+  if (sub === 'chat') return viewDiscussChat(body, parts[1]);
   if (parts[1]) return viewHelpDetail(body, parts[1]);
   return viewHelpList(body);
 }
@@ -689,25 +690,91 @@ async function viewHelpDetail(body, id) {
   };
 }
 
-async function viewDiscussChat(body) {
+async function viewDiscussChat(body, gId) {
+  if (!gId) return viewGroupList(body);
+  body.innerHTML = '<div class="card"><div class="loading-block">加载中…</div></div>';
+  const gd = await api('/api/discuss/groups');
+  const g = gd.groups.find(x => x.id === gId);
+  if (!g) { body.innerHTML = '<div class="card"><div class="empty">😕 群不存在</div></div>'; return; }
+  const me = state.me;
+  const isOwner = me && (me.role === 'admin' || g.ownerId === me.id);
+  // 非成员：展示群卡片 + 申请加入
+  if (!me || (g.myStatus !== 'approved' && !isOwner)) {
+    body.innerHTML = `
+    <a class="back-link" href="#/discuss/chat">← 返回群列表</a>
+    <div class="card" style="text-align:center;padding:40px 20px">
+      <div style="font-size:36px;margin-bottom:10px">${g.emoji || '💬'}</div>
+      <h2 style="margin-bottom:6px">${esc(g.name)}</h2>
+      <div class="empty" style="padding:6px 0 18px">${g.myStatus === 'pending' ? '⏳ 申请已提交，群主审核通过后就能进来聊天了' : esc(g.description || '申请加入后即可和群友聊天')}</div>
+      ${!me ? '<a class="btn primary" href="#/login">先登录</a>'
+        : g.myStatus === 'pending' ? '<button class="btn ghost" disabled>审核中…</button>'
+        : '<button class="btn primary" id="gJoinBtn">申请加入</button>'}
+    </div>`;
+    const jb = document.getElementById('gJoinBtn');
+    if (jb) jb.onclick = async () => {
+      jb.disabled = true;
+      try {
+        await api(`/api/discuss/groups/${gId}/join`, { method: 'POST' });
+        toast('已提交申请，等群主审核');
+        viewDiscuss('chat/' + gId);
+      } catch (e) { toast(e.message, 'err'); jb.disabled = false; }
+    };
+    return;
+  }
+  // 成员/群主：群聊视图
   body.innerHTML = `
+  <a class="back-link" href="#/discuss/chat">← 返回群列表</a>
   <div class="card chat-card">
+    <div class="g-head"><span class="g-emoji sm">${g.emoji || '💬'}</span><b>${esc(g.name)}</b><span class="g-meta">👥 ${g.memberCount} 人</span></div>
+    <div id="reqBox"></div>
     <div class="chat-scroll" id="chatScroll"><div class="empty" style="padding:40px 0">加载中…</div></div>
     <div class="chat-input-bar">
-      <input id="chatInput" maxlength="500" placeholder="${state.me ? '和大家聊点什么…（Enter 发送）' : '登录后才能发言'}" ${state.me ? '' : 'disabled'}>
-      <button class="btn primary" id="chatSend" ${state.me ? '' : 'disabled'}>发送</button>
+      <input id="chatInput" maxlength="500" placeholder="和群友聊点什么…（Enter 发送）">
+      <button class="btn primary" id="chatSend">发送</button>
     </div>
   </div>`;
   const scroll = document.getElementById('chatScroll');
+  const reqBox = document.getElementById('reqBox');
+  // 群主：入群申请审核
+  const renderReqs = async () => {
+    if (!isOwner) return;
+    try {
+      const r = await api(`/api/discuss/groups/${gId}/requests`);
+      if (!r.requests.length) { reqBox.innerHTML = ''; return; }
+      reqBox.innerHTML = `
+      <div class="req-card">
+        <b>👥 入群申请（${r.requests.length}）</b>
+        ${r.requests.map(q => `
+        <div class="req-row">
+          ${avatarHtml(q.user, 'xs')}
+          <div style="flex:1;min-width:0">
+            <b style="font-size:13px">${esc(q.user.nickname)}</b> <span style="font-size:11px;color:var(--text2)">@${esc(q.user.username)}</span>
+            <div style="font-size:11px;color:var(--text2)">${fmtTime(q.joinedAt)} 申请</div>
+          </div>
+          <button class="btn primary rq-btn" data-u="${q.userId}" data-ok="1">通过</button>
+          <button class="btn ghost rq-btn" data-u="${q.userId}" data-ok="">拒绝</button>
+        </div>`).join('')}
+      </div>`;
+      reqBox.querySelectorAll('.rq-btn').forEach(b => b.onclick = async () => {
+        b.disabled = true;
+        try {
+          await api(`/api/discuss/groups/${gId}/review`, { method: 'POST', body: { userId: b.dataset.u, approve: !!b.dataset.ok } });
+          toast(b.dataset.ok ? '已通过，对方已加入群聊' : '已拒绝');
+          renderReqs();
+        } catch (e) { toast(e.message, 'err'); b.disabled = false; }
+      });
+    } catch (e) { reqBox.innerHTML = ''; }
+  };
+  renderReqs();
   let lastTs = 0, timer = null, sending = false;
-  const bubble = (m) => {
-    const mine = state.me && m.authorId === state.me.id;
+  const bubble = (mm) => {
+    const mine = me && mm.authorId === me.id;
     return `
     <div class="chat-msg ${mine ? 'mine' : ''}">
-      ${avatarHtml(m.author, 'xs')}
+      ${avatarHtml(mm.author, 'xs')}
       <div class="chat-bubble">
-        <div class="cb-head">${esc(m.author.nickname || '')}<span class="cb-time">${fmtTime(m.createdAt)}</span></div>
-        <div class="cb-text">${esc(m.content)}</div>
+        <div class="cb-head">${esc(mm.author.nickname || '')}<span class="cb-time">${fmtTime(mm.createdAt)}</span></div>
+        <div class="cb-text">${esc(mm.content)}</div>
       </div>
     </div>`;
   };
@@ -719,7 +786,7 @@ async function viewDiscussChat(body) {
   };
   const pull = async (init) => {
     try {
-      const d = await api('/api/discuss/chat' + (lastTs ? '?after=' + lastTs : ''));
+      const d = await api(`/api/discuss/chat?group=${gId}` + (lastTs ? '&after=' + lastTs : ''));
       if (d.messages.length) {
         lastTs = d.messages[d.messages.length - 1].createdAt;
         renderMsgs(d.messages, !init);
@@ -735,7 +802,7 @@ async function viewDiscussChat(body) {
     if (!v || sending) return;
     sending = true;
     try {
-      const d = await api('/api/discuss/chat', { method: 'POST', body: { content: v } });
+      const d = await api('/api/discuss/chat', { method: 'POST', body: { groupId: gId, content: v } });
       inp.value = '';
       lastTs = Math.max(lastTs, d.message.createdAt);
       renderMsgs([d.message], true);
@@ -744,6 +811,44 @@ async function viewDiscussChat(body) {
   };
   document.getElementById('chatSend').onclick = send;
   document.getElementById('chatInput').onkeydown = (e) => { if (e.key === 'Enter') send(); };
+}
+
+/* 群列表：卡片网格 */
+async function viewGroupList(body) {
+  body.innerHTML = '<div class="card"><div class="loading-block">加载中…</div></div>';
+  const d = await api('/api/discuss/groups');
+  body.innerHTML = `
+  <div class="group-grid">
+    ${d.groups.map(g => `
+    <div class="group-card">
+      <div class="g-top">
+        <span class="g-emoji">${g.emoji || '💬'}</span>
+        <div style="min-width:0">
+          <div class="g-name">${esc(g.name)}</div>
+          ${g.pendingCount ? `<span class="badge pending">${g.pendingCount} 人待审</span>` : ''}
+        </div>
+      </div>
+      <div class="g-desc">${esc(g.description || '')}</div>
+      <div class="g-foot">
+        <span class="g-meta">👥 ${g.memberCount} 人${g.ownerName ? ' · 群主 ' + esc(g.ownerName) : ''}</span>
+        ${g.myStatus === 'approved'
+          ? `<button class="btn primary g-enter" data-g="${g.id}">进入群聊</button>`
+          : g.myStatus === 'pending'
+            ? '<span class="badge pending">审核中…</span>'
+            : '<button class="btn ghost g-join" data-g="' + g.id + '">申请加入</button>'}
+      </div>
+    </div>`).join('') || '<div class="empty" style="grid-column:1/-1">还没有群聊</div>'}
+  </div>`;
+  body.querySelectorAll('.g-enter').forEach(b => b.onclick = () => go('#/discuss/chat/' + b.dataset.g));
+  body.querySelectorAll('.g-join').forEach(b => b.onclick = async () => {
+    if (needLogin()) return;
+    b.disabled = true;
+    try {
+      await api(`/api/discuss/groups/${b.dataset.g}/join`, { method: 'POST' });
+      toast('已提交申请，等群主审核');
+      viewDiscuss('chat');
+    } catch (e) { toast(e.message, 'err'); b.disabled = false; }
+  });
 }
 
 async function viewNewPost() {
