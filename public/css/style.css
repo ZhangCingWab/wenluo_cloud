@@ -951,8 +951,9 @@ html.dark #userMenu { background: #161d33; }
   #main { margin-left: 0; padding: 24px 64px 60px; }
   /* 分屏工作台是全宽布局（不用 container），留出侧边栏安全距离 */
   .ws-wrap { margin-left: 74px; margin-right: 12px; }
-  /* 收起时纵横都不出滚动条，展开后才允许纵向滚动 */
-  #sidebar .nav { overflow: hidden; }
+  /* 收起时纵横都不出滚动条，展开后才允许纵向滚动。
+     左右内边距必须归零：行是固定 232px 左对齐布局，nav 自带的 10px 水平 padding 会把图标整体推向右侧 */
+  #sidebar .nav { overflow: hidden; padding-left: 0; padding-right: 0; }
   #sidebar:hover .nav { overflow-y: auto; overflow-x: hidden; }
   /* 所有行固定宽度 + 左对齐最终位：Logo 标 13+19=32 正好在 64px 条居中；导航图标 22+11=33 ≈ 居中 */
   #sidebar .logo, #sidebar .nav a { width: 232px; }
