@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">
+  <rect x="4" y="4" width="88" height="88" rx="24" fill="#eef3ff"/>
+  <text x="48" y="50" text-anchor="middle" font-size="42" font-weight="900" fill="#4f7cff" font-family="'Microsoft YaHei','PingFang SC',sans-serif">文</text>
+  <path d="M20 62 C30 56 40 56 48 60 C56 56 66 56 76 62 L76 76 C66 70 56 70 48 74 C40 70 30 70 20 76 Z" fill="#4f7cff"/>
+  <path d="M48 60 L48 74" stroke="#eef3ff" stroke-width="3" stroke-linecap="round"/>
+</svg>

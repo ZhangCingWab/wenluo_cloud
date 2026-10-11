@@ -65,12 +65,10 @@ button, input, textarea, select, .nav a, .btn, .item, .tpl-card {
   border-bottom: 1px solid var(--border);
 }
 .logo-mark {
-  width: 38px; height: 38px; border-radius: 10px;
-  background: linear-gradient(135deg, #3498db, #6fb3f2);
-  color: #fff; font-weight: 700; font-size: 20px;
-  display: flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px; border-radius: 10px; overflow: hidden; flex: none;
   box-shadow: 0 3px 10px var(--blue-glow);
 }
+.logo-mark img { width: 100%; height: 100%; display: block; }
 .logo-name { font-size: 17px; font-weight: 700; letter-spacing: 1px; }
 .logo-sub { font-size: 10px; color: var(--text2); display: block; letter-spacing: 2px; }
 .nav { flex: 1; overflow-y: auto; padding: 8px 10px; }

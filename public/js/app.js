@@ -218,7 +218,7 @@ function renderSidebar() {
     `<a href="#${h}" class="${cur === h || cur.startsWith(h + '/') ? 'active' : ''}"><span class="icon">${icon}</span><span class="txt">${label}</span>${extra || ''}</a>`;
   let html = `
   <div class="logo">
-    <div class="logo-mark">文</div>
+    <div class="logo-mark"><img src="/img/logo.svg" alt="文汇"></div>
     <div class="logo-text"><span class="logo-name">文汇</span><span class="logo-sub">WENHUI</span></div>
   </div>
   <nav class="nav">
@@ -359,6 +359,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-11 16:00', author: 'ZhangCing', items: ['🎨 全站换上正式标志「开卷文汇」：浅蓝圆角方印 + 蓝字「文」+ 摊开书页', '🔖 浏览器标签页 favicon 同步替换为新标志'] },
   { date: '2026-10-11 12:00', author: 'ZhangCing', items: ['🔴 修复深色模式开关失效（菜单在头像内，头像的 stopPropagation 拦截了事件；改为直接绑定，切换后菜单不关闭可立即看到效果）', '✨ 全局流畅动效：页面切换淡入上移、卡片/列表依次上升、弹出菜单弹性缩放、toast 滑入（尊重系统减少动效设置）'] },
   { date: '2026-10-04 20:00', author: 'ZhangCing', items: ['🔄 用户区搬到页面右上角：头像+名字常驻右上角（点击弹出个人主页/私信/深色模式/登出菜单），未登录显示「登录 / 注册」按钮', '🖥️ 侧边栏底部不再放用户信息，纯导航更清爽', '🖥️ 修复导航图标没对齐：emoji 装进固定宽度盒子，文字严格排成一列'] },
   { date: '2026-10-04 19:00', author: 'ZhangCing', items: ['🖥️ 侧边栏收起时登录入口显示「登录」二字（不再是看不懂的孤零零钥匙图标）', '🔴 修复展开后「登录 / 注册」白底白字看不见（去掉旧样式里的 color:#fff !important）'] },
