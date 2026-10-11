@@ -584,50 +584,6 @@ function rowToBinds(row, cols) {
   });
 }
 
-/* debounce saveDB：合并多次调用 + 不阻塞响应（后台执行） */
-let _savePending = false;
-function saveDB(env) {
-  if (_savePending) return Promise.resolve(); // 已排，直接返回
-  _savePending = true;
-  // 后台执行，不阻塞当前响应
-  queueMicrotask(async () => {
-    try { await doSaveDB(env); } catch {}
-    finally { _savePending = false; }
-  });
-  return Promise.resolve();
-}
-
-/* 真正执行的全量保存（只被内部调用） */
-async function doSaveDB(env) {
-  if (!_cache || !env.DB) return;
-  // tokens 表不参与全量覆盖（register/login 已经单独 INSERT，saveDB 会把新 token 清掉！）
-  const SKIP_TABLES = new Set(['tokens']);
-  for (const table of CACHED_TABLES) {
-    if (SKIP_TABLES.has(table)) continue;
-    const rows = _cache[table];
-    if (!rows || rows.length === 0) {
-      try { await env.DB.prepare(`DELETE FROM ${table}`).run(); } catch {}
-      continue;
-    }
-    const cols = await getTableCols(env, table);
-    if (!cols.length) continue;
-    await env.DB.prepare(`DELETE FROM ${table}`).run();
-    const colStr = cols.join(',');
-    const ph = cols.map(() => '?').join(',');
-    for (const row of rows) {
-      const binds = rowToBinds(row, cols);
-      try { await env.DB.prepare(`INSERT INTO ${table} (${colStr}) VALUES (${ph})`).bind(...binds).run(); } catch {}
-    }
-  }
-}
-
-// 迁移端点用：从旧 KV 读取完整 JSON（用于一次性灌入 D1）
-async function loadOldKV(env) {
-  try {
-    const raw = await env.DATA.get('database');
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
-}
 function toCamel(obj) {
   if (!obj || typeof obj !== 'object') return obj;
   const out = {};
@@ -645,18 +601,18 @@ async function dbFirst(env, sql, binds = []) {
   try {
     const r = await env.DB.prepare(sql).bind(...binds).first();
     return r ? toCamel(r) : null;
-  } catch { return null; }
+  } catch (e) { console.error('dbFirst:', sql.slice(0, 60), e.message); return null; }
 }
 async function dbAll(env, sql, binds = []) {
   if (!env.DB) return [];
   try {
     const r = await env.DB.prepare(sql).bind(...binds).all();
     return (r.results || []).map(toCamel);
-  } catch { return []; }
+  } catch (e) { console.error('dbAll:', sql.slice(0, 60), e.message); return []; }
 }
 async function dbRun(env, sql, binds = []) {
   if (!env.DB) return null;
-  try { return await env.DB.prepare(sql).bind(...binds).run(); } catch { return null; }
+  try { return await env.DB.prepare(sql).bind(...binds).run(); } catch (e) { console.error('dbRun:', sql.slice(0, 60), e.message); return null; }
 }
 
 /* ---------------- 辅助函数 ---------------- */

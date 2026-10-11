@@ -371,6 +371,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-12 04:00', author: 'ZhangCing', items: ['🧹 全面体检：清理已废弃的 saveDB 全量覆盖代码（历史事故根源，现已无调用）', '🩺 数据库操作失败不再静默：dbFirst/dbAll/dbRun 失败会记录日志，方便排查问题', '⚡ 主页公告请求去重：进主页少发一次请求'] },
   { date: '2026-10-12 03:20', author: 'ZhangCing', items: ['🏠 主页公告改为正常展示栏：hero 下方「📢 公告」栏直接显示公告全文，不再折叠'] },
   { date: '2026-10-12 03:00', author: 'ZhangCing', items: ['🏠 公告移到主页显示：hero 下方公告卡片，点击展开全文（新用户仍会自动弹出必读）', '🔔 通知藏进右上角名字菜单：点名字 →「通知中心」，有新通知时名字旁亮小红点'] },
   { date: '2026-10-12 02:20', author: 'ZhangCing', items: ['🔔 新增「通知中心」：右上角铃铛 + 未读红点，点赞/评论/回复/采纳答案/比赛开始/题目审核/练习提交都会提醒，点击通知直达对应页面', '📢 新增「公告」模块：上线第一篇《文汇新用户必读》，新用户进主页自动弹出，侧边栏可随时查看'] },
@@ -503,12 +504,12 @@ function showAnnModal(list) {
 }
 async function viewHome() {
   hideAiFab();
-  api('/api/announcements').then(d => showAnnModal(d.announcements || [])).catch(() => {});
   const [d, cd, ad] = await Promise.all([
     api('/api/home').catch(() => ({ stats: {}, latestArticles: [], latestPosts: [], activeContests: [] })),
     state.me ? api('/api/checkins/today').catch(() => ({ daily: null, streak: 0, myCheckin: null })) : { daily: null, streak: 0, myCheckin: null },
     api('/api/announcements').catch(() => ({ announcements: [] }))
   ]);
+  showAnnModal(ad.announcements || []);
   const itemList = (arr, type) => arr.map(x => `
     <div class="item">
       ${avatarHtml(x.author, 'xs')}
