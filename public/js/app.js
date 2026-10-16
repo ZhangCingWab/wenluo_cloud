@@ -232,6 +232,7 @@ function renderSidebar() {
     ${link('/rank', '🏆', '排行榜')}
     ${link('/contests', '🏁', '比赛广场')}
     ${link('/submit', '📤', '文件投稿')}
+    ${link('/downloads', '⬇️', '下载站')}
     ${link('/mine', '📝', '我的文章')}
     ${me ? link('/messages', '✉️', '私信', '<span class="msg-badge" id="msgBadge" style="display:none">0</span>') : ''}
     ${me && me.role === 'admin' ? `
@@ -334,7 +335,8 @@ const routes = {
   login: viewLogin, admin: viewAdmin, messages: viewMessages, chat: viewChat,
   problems: viewProblems, problem: viewProblemDetail, work: viewWorkspace,
   templates: viewTemplates, daily: viewDaily, 'contest-create': contestCreate,
-  notifications: viewNotifications, announcements: viewAnnouncements, announcement: viewAnnouncement
+  notifications: viewNotifications, announcements: viewAnnouncements, announcement: viewAnnouncement,
+  downloads: viewDownload
 };
 async function route() {
   closeMenu();
@@ -371,6 +373,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-17 14:00', author: 'ZhangCing', items: ['⬇️ 新增「下载站」：Windows 安装版 / 安卓 APK / 网页版三种获取方式，侧边栏和主页均可进入'] },
   { date: '2026-10-17 12:00', author: 'ZhangCing', items: ['📢 主页公告改为链接列表（洛谷式）：只显示公告标题，点击进入公告详情页阅读全文'] },
   { date: '2026-10-16 12:00', author: 'ZhangCing', items: ['📦 上线安卓 APK 下载：文汇手机 App 可直接安装，支持全屏运行', '🪟 桌面安装版发布：文汇.exe 支持选目录安装+桌面快捷方式'] },
   { date: '2026-10-12 05:00', author: 'ZhangCing', items: ['📱 网站升级为 PWA 应用：手机浏览器「添加到主屏幕」即可像 App 一样全屏使用（带图标、启动页）', '🔄 新增 Service Worker：样式/脚本/图标本地缓存，弱网时页面壳加载更快'] },
@@ -489,6 +492,45 @@ async function viewAnnouncement(arg) {
     <div style="margin-top:12px"><a href="#/announcements">← 查看全部公告</a></div>
   </div>`;
 }
+/* ---------- 下载站 ---------- */
+async function viewDownload() {
+  $app.innerHTML = `
+  <div class="container" style="max-width:860px">
+    <div class="page-title"><div><h1>⬇️ 下载文汇</h1><div class="sub">桌面版 · 安卓版 · 免安装版</div></div></div>
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="font-size:36px;line-height:1">🪟</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:16px">文汇 · Windows 安装版</div>
+          <div style="color:var(--text2);font-size:13px;margin-top:3px">支持选目录安装，自动创建桌面快捷方式 · 约 106MB</div>
+        </div>
+      </div>
+      <button class="btn primary" id="dlWin" style="width:100%;justify-content:center;margin-top:14px">📥 下载 Windows 版</button>
+    </div>
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="font-size:36px;line-height:1">📱</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:16px">文汇 · Android 版</div>
+          <div style="color:var(--text2);font-size:13px;margin-top:3px">下载 APK 安装包 · 约 16.5KB · 安装时需允许未知来源</div>
+        </div>
+      </div>
+      <a class="btn primary" href="/app/wenhui.apk" download="wenhui.apk" style="width:100%;justify-content:center;text-decoration:none;margin-top:14px">📥 下载安卓 APK</a>
+    </div>
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="font-size:36px;line-height:1">🌐</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:16px">文汇 · 网页版</div>
+          <div style="color:var(--text2);font-size:13px;margin-top:3px">手机浏览器添加到主屏幕即可像 App 使用，无需下载</div>
+        </div>
+      </div>
+      <a class="btn primary" href="#/home" style="width:100%;justify-content:center;text-decoration:none;margin-top:14px">立即使用</a>
+    </div>
+    <div class="card" style="text-align:center;color:var(--text2);font-size:12.5px;padding:10px 16px">版本 v1.0.0 · 更新日期 2026-10-17</div>
+  </div>`;
+  document.getElementById('dlWin').onclick = () => toast('Windows 安装包暂未开放，敬请期待', 'err');
+}
 /* 新用户必读弹窗：进主页时检查 localStorage，有未读公告就弹一次 */
 function showAnnModal(list) {
   if (!Array.isArray(list) || !list.length) return;
@@ -566,6 +608,7 @@ async function viewHome() {
         <button class="btn-hero solid" id="hWrite">✍️ 立即开始创作</button>
         <button class="btn-hero solid" id="hPost">💬 发帖 · 论坛</button>
         <button class="btn-hero ghost" id="hFile">📤 文件投稿</button>
+        <button class="btn-hero ghost" id="hDown">⬇️ 下载 App</button>
       </div>
     </div>
     ${annCard}
@@ -599,6 +642,7 @@ async function viewHome() {
   document.getElementById('hWrite').onclick = () => needLogin() || go('#/write');
   document.getElementById('hPost').onclick = () => needLogin() || go('#/newpost');
   document.getElementById('hFile').onclick = () => needLogin() || go('#/submit');
+  document.getElementById('hDown').onclick = () => go('#/downloads');
 }
 const contestRow = (c) => `
   <div class="item contest" style="cursor:pointer" onclick="location.hash='#/contest/${c.id}'">
