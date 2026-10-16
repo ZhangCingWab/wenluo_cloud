@@ -1762,8 +1762,9 @@ export async function onRequest(context) {
     }
 
     // GET /api/announcements/:id 公告详情（公开）
-    if (match(path, 'announcements/:id') && method === 'GET') {
-      const r = await dbFirst(env, `SELECT * FROM announcements WHERE id=?`, [path.split('/')[2]]);
+    const annMatch = match(path, 'announcements/:id');
+    if (annMatch && method === 'GET') {
+      const r = await dbFirst(env, `SELECT * FROM announcements WHERE id=?`, [annMatch.id]);
       if (!r) return json({ error: '公告不存在' }, 404);
       return json({ id: r.id, title: r.title, content: r.content, createdAt: r.createdAt });
     }
