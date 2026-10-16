@@ -1769,6 +1769,14 @@ export async function onRequest(context) {
       return json({ id: r.id, title: r.title, content: r.content, createdAt: r.createdAt });
     }
 
+    // GET /api/download/exe 从 R2 流式下载 Windows 安装包（公开，无需登录）
+    if (match(path, 'download/exe') && method === 'GET') {
+      if (!env.DOWNLOADS) return json({ error: '下载服务未配置' }, 503);
+      const obj = await env.DOWNLOADS.get('wenhui-setup-1.0.0.exe');
+      if (!obj) return json({ error: '安装包不存在' }, 404);
+      return new Response(obj.body, { headers: { 'Content-Type': 'application/octet-stream', 'Content-Disposition': 'attachment; filename="WenHui-Setup-1.0.0.exe"', 'Content-Length': String(obj.size), 'Cache-Control': 'public, max-age=3600' } });
+    }
+
     // ==================== 讨论区 ====================
     // 求助帖 JOIN 作者 → 前端可用的对象
     function helpOut(r) {
