@@ -928,6 +928,8 @@ html.dark .pager .pg.cur { background:#4f7cff; border-color:#4f7cff; color:#fff;
 .notif-item.unread { background:var(--blue-light); border-radius:var(--radius-sm); }
 .notif-item.unread .notif-from { font-weight:700; color:var(--blue-dark); }
 .notif-from { font-weight:600; }
+.ann-list .ann-link { padding:9px 2px; border-bottom:1px solid var(--border); font-size:14px; }
+.ann-list .ann-link:last-child { border-bottom:none; }
 .ann-body { color:var(--text); line-height:1.9; }
 .modal-mask { position:fixed; inset:0; background:rgba(20,30,50,.45); backdrop-filter:blur(3px); z-index:200; display:flex; align-items:center; justify-content:center; padding:20px; opacity:1; transition:opacity .22s; animation:annFadeIn .22s; }
 .modal-mask.closing { opacity:0; }
@@ -939,6 +941,7 @@ html.dark .notif-item:hover { background:#1a2240; }
 html.dark .notif-item.unread { background:#1a2240; }
 html.dark .notif-item.unread .notif-from { color:#8fa7ff; }
 html.dark .modal-card { background:#161d33; }
+html.dark .ann-list .ann-link { border-bottom-color:#2a3154; }
 
 /* 深色模式 toggle */
 .theme-toggle { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:8px; cursor:pointer; font-size:13px; color:#a0a8c0; user-select:none; }

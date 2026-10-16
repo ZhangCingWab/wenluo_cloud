@@ -334,7 +334,7 @@ const routes = {
   login: viewLogin, admin: viewAdmin, messages: viewMessages, chat: viewChat,
   problems: viewProblems, problem: viewProblemDetail, work: viewWorkspace,
   templates: viewTemplates, daily: viewDaily, 'contest-create': contestCreate,
-  notifications: viewNotifications, announcements: viewAnnouncements
+  notifications: viewNotifications, announcements: viewAnnouncements, announcement: viewAnnouncement
 };
 async function route() {
   closeMenu();
@@ -371,6 +371,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-17 12:00', author: 'ZhangCing', items: ['📢 主页公告改为链接列表（洛谷式）：只显示公告标题，点击进入公告详情页阅读全文'] },
   { date: '2026-10-16 12:00', author: 'ZhangCing', items: ['📦 上线安卓 APK 下载：文汇手机 App 可直接安装，支持全屏运行', '🪟 桌面安装版发布：文汇.exe 支持选目录安装+桌面快捷方式'] },
   { date: '2026-10-12 05:00', author: 'ZhangCing', items: ['📱 网站升级为 PWA 应用：手机浏览器「添加到主屏幕」即可像 App 一样全屏使用（带图标、启动页）', '🔄 新增 Service Worker：样式/脚本/图标本地缓存，弱网时页面壳加载更快'] },
   { date: '2026-10-12 04:00', author: 'ZhangCing', items: ['🧹 全面体检：清理已废弃的 saveDB 全量覆盖代码（历史事故根源，现已无调用）', '🩺 数据库操作失败不再静默：dbFirst/dbAll/dbRun 失败会记录日志，方便排查问题', '⚡ 主页公告请求去重：进主页少发一次请求'] },
@@ -477,6 +478,17 @@ async function viewAnnouncements() {
     </div>`).join('') || '<div class="card"><div class="empty">暂无公告</div></div>'}
   </div>`;
 }
+async function viewAnnouncement(arg) {
+  const id = decodeURIComponent(arg || '');
+  if (!id) { location.hash = '#/home'; return; }
+  const a = await api('/api/announcements/' + encodeURIComponent(id));
+  $app.innerHTML = `
+  <div class="container" style="max-width:860px">
+    <div class="page-title"><div><h1>📢 ${esc(a.title)}</h1><div class="sub">发布于 ${fmtTime(a.createdAt)}</div></div></div>
+    <div class="card"><div class="ann-body">${md(a.content || '')}</div></div>
+    <div style="margin-top:12px"><a href="#/announcements">← 查看全部公告</a></div>
+  </div>`;
+}
 /* 新用户必读弹窗：进主页时检查 localStorage，有未读公告就弹一次 */
 function showAnnModal(list) {
   if (!Array.isArray(list) || !list.length) return;
@@ -524,15 +536,9 @@ async function viewHome() {
     </div>`).join('') || '<div class="empty">暂无内容</div>';
 
   const annCard = (ad.announcements || []).length ? `
-    <div class="card">
+    <div class="card ann-list">
       <h2>📢 公告</h2>
-      ${ad.announcements.map(a => `
-      <div class="item">
-        <div style="flex:1;min-width:0">
-          <div class="title" style="color:var(--orange);font-weight:700">${esc(a.title)}</div>
-          <div class="ann-body">${md(a.content || '')}</div>
-        </div>
-      </div>`).join('')}
+      ${ad.announcements.map(a => `<div class="ann-link"><a href="#/announcement/${encodeURIComponent(a.id)}">${esc(a.title)}</a></div>`).join('')}
     </div>` : '';
 
   const checkinCard = cd && cd.daily ? `

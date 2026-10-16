@@ -1761,6 +1761,13 @@ export async function onRequest(context) {
       return json({ announcements: list });
     }
 
+    // GET /api/announcements/:id 公告详情（公开）
+    if (match(path, 'announcements/:id') && method === 'GET') {
+      const r = await dbFirst(env, `SELECT * FROM announcements WHERE id=?`, [path.split('/')[2]]);
+      if (!r) return json({ error: '公告不存在' }, 404);
+      return json({ id: r.id, title: r.title, content: r.content, createdAt: r.createdAt });
+    }
+
     // ==================== 讨论区 ====================
     // 求助帖 JOIN 作者 → 前端可用的对象
     function helpOut(r) {
