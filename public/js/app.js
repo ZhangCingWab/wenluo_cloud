@@ -371,6 +371,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-16 12:00', author: 'ZhangCing', items: ['📦 上线安卓 APK 下载：文汇手机 App 可直接安装，支持全屏运行', '🪟 桌面安装版发布：文汇.exe 支持选目录安装+桌面快捷方式'] },
   { date: '2026-10-12 05:00', author: 'ZhangCing', items: ['📱 网站升级为 PWA 应用：手机浏览器「添加到主屏幕」即可像 App 一样全屏使用（带图标、启动页）', '🔄 新增 Service Worker：样式/脚本/图标本地缓存，弱网时页面壳加载更快'] },
   { date: '2026-10-12 04:00', author: 'ZhangCing', items: ['🧹 全面体检：清理已废弃的 saveDB 全量覆盖代码（历史事故根源，现已无调用）', '🩺 数据库操作失败不再静默：dbFirst/dbAll/dbRun 失败会记录日志，方便排查问题', '⚡ 主页公告请求去重：进主页少发一次请求'] },
   { date: '2026-10-12 03:20', author: 'ZhangCing', items: ['🏠 主页公告改为正常展示栏：hero 下方「📢 公告」栏直接显示公告全文，不再折叠'] },
