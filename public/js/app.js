@@ -336,7 +336,7 @@ const routes = {
   problems: viewProblems, problem: viewProblemDetail, work: viewWorkspace,
   templates: viewTemplates, daily: viewDaily, 'contest-create': contestCreate,
   notifications: viewNotifications, announcements: viewAnnouncements, announcement: viewAnnouncement,
-  downloads: viewDownload
+  changelog: viewChangelog, downloads: viewDownload
 };
 async function route() {
   closeMenu();
@@ -373,6 +373,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-17 18:00', author: 'ZhangCing', items: ['🎨 主页改左右分栏排版', '📜 更新日志主页只显3条，新增详情页+分页', '✨ 全站补齐中间帧动画（入场/按压/弹窗/Toast）'] },
   { date: '2026-10-17 16:30', author: 'ZhangCing', items: ['🚀 Windows 安装包启用 Cloudflare 加速线路：下载走本站中转，国内速度大幅提升'] },
   { date: '2026-10-17 15:30', author: 'ZhangCing', items: ['🪟 Windows 安装版正式开放下载：下载站点击即可获取文汇.exe'] },
   { date: '2026-10-17 14:00', author: 'ZhangCing', items: ['⬇️ 新增「下载站」：Windows 安装版 / 安卓 APK / 网页版三种获取方式，侧边栏和主页均可进入'] },
@@ -605,6 +606,18 @@ async function viewHome() {
       </div>
     </div>` : '';
 
+  const changelogCard = `
+    <div class="card">
+      <h2 class="cl-head"><span>📝 更新日志</span><a class="cl-all" href="#/changelog">查看全部 »</a></h2>
+      ${CHANGELOG.slice(0, 3).map(e => `
+      <div class="item">
+        <div style="flex:1">
+          <div class="title" style="font-size:13.5px">${e.items.map(esc).join('；')}</div>
+          <div class="meta"><span>👤 ${esc(e.author)}</span><span>🕒 ${esc(e.date)}</span></div>
+        </div>
+      </div>`).join('')}
+    </div>`;
+
   $app.innerHTML = `
   <div class="container">
     <div class="hero">
@@ -617,32 +630,27 @@ async function viewHome() {
         <button class="btn-hero ghost" id="hDown">⬇️ 下载 App</button>
       </div>
     </div>
-    ${annCard}
-    ${checkinCard}
+    <div class="home-grid">
+      <div class="hg-col">
+        ${annCard}
+        <div class="card"><h2>📖 最新文章</h2>${itemList(d.latestArticles || [], 'article')}</div>
+      </div>
+      <div class="hg-col">
+        ${checkinCard}
+        <div class="card"><h2>💬 最新帖子</h2>${itemList(d.latestPosts || [], 'post')}</div>
+        ${d.activeContests && d.activeContests.length ? `
+        <div class="card">
+          <h2>🏁 进行中的比赛</h2>
+          ${d.activeContests.map(c => contestRow(c)).join('')}
+        </div>` : ''}
+      </div>
+    </div>
+    ${changelogCard}
     <div class="stats">
       <div class="stat"><div class="num">${d.stats.users || 0}</div><div class="lab">注册用户</div></div>
       <div class="stat"><div class="num">${d.stats.articles || 0}</div><div class="lab">收录文章</div></div>
       <div class="stat"><div class="num">${d.stats.posts || 0}</div><div class="lab">论坛帖子</div></div>
       <div class="stat"><div class="num">${d.stats.contests || 0}</div><div class="lab">举办比赛</div></div>
-    </div>
-    ${d.activeContests && d.activeContests.length ? `
-    <div class="card">
-      <h2>🏁 进行中的比赛</h2>
-      ${d.activeContests.map(c => contestRow(c)).join('')}
-    </div>` : ''}
-    <div class="grid-2">
-      <div class="card"><h2>📖 最新文章</h2>${itemList(d.latestArticles || [], 'article')}</div>
-      <div class="card"><h2>💬 最新帖子</h2>${itemList(d.latestPosts || [], 'post')}</div>
-    </div>
-    <div class="card">
-      <h2>📝 更新说明</h2>
-      ${CHANGELOG.map(e => `
-      <div class="item">
-        <div style="flex:1">
-          <div class="title" style="font-size:13.5px">${e.items.map(esc).join('；')}</div>
-          <div class="meta"><span>👤 ${esc(e.author)}</span><span>🕒 ${esc(e.date)}</span></div>
-        </div>
-      </div>`).join('')}
     </div>
   </div>`;
   document.getElementById('hWrite').onclick = () => needLogin() || go('#/write');
@@ -659,6 +667,36 @@ const contestRow = (c) => `
     </div>
     <span style="color:var(--text2)">›</span>
   </div>`;
+
+/* ---------- 更新日志详情页（每页 8 条，前端分页） ---------- */
+function viewChangelog() {
+  const size = 8;
+  const total = Math.max(1, Math.ceil(CHANGELOG.length / size));
+  const render = () => {
+    const pg = Math.min(Math.max(1, viewChangelog._page || 1), total);
+    viewChangelog._page = pg;
+    $app.innerHTML = `
+    <div class="container">
+      <div class="page-title"><div><h1>📜 更新日志</h1><div class="sub">文汇的每一次更新，都记录在这里</div></div></div>
+      <div class="card">
+        ${CHANGELOG.slice((pg - 1) * size, pg * size).map(e => `
+        <div class="item">
+          <div style="flex:1">
+            <div class="title" style="font-size:13.5px">${e.items.map(esc).join('；')}</div>
+            <div class="meta"><span>👤 ${esc(e.author)}</span><span>🕒 ${esc(e.date)}</span></div>
+          </div>
+        </div>`).join('')}
+      </div>
+      ${pagerHtml(pg, total, 'pgChangelog')}
+    </div>`;
+    window.pgChangelog = (p) => {
+      viewChangelog._page = Math.min(Math.max(1, p), total);
+      render();
+      window.scrollTo(0, 0);
+    };
+  };
+  render();
+}
 
 /* 搜索框 UI */
 function searchBoxHtml(id, q, placeholder) {
