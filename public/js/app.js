@@ -985,6 +985,7 @@ async function viewDiscussChat(body, gId) {
   const scroll = document.getElementById('chatScroll');
   const msgs = document.getElementById('chatMsgs');
   const reqBox = document.getElementById('reqBox');
+  if (!msgs || !document.getElementById('chatSend')) return;
   // 群主：入群申请审核
   const renderReqs = async () => {
     if (!isOwner) return;
