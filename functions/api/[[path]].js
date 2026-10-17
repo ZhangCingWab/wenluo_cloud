@@ -258,6 +258,8 @@ async function ensureSeedData(env) {
     // users 加 email 列
     try { await dbRun(env, `ALTER TABLE users ADD COLUMN email TEXT`); } catch {}
     try { await dbRun(env, `ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0`); } catch {}
+    // email_codes 表（邮箱验证码登录）
+    await dbRun(env, `CREATE TABLE IF NOT EXISTS email_codes (email TEXT PRIMARY KEY, code TEXT, expires_at INTEGER, attempts INTEGER DEFAULT 0, created_at INTEGER)`);
     // reset_tokens 表
     await dbRun(env, `CREATE TABLE IF NOT EXISTS reset_tokens (
       token TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at INTEGER NOT NULL
@@ -1163,6 +1165,66 @@ export async function onRequest(context) {
       const token = header.replace(/^Bearer\s+/i, '');
       if (token) await deleteToken(env, token);
       return json({ ok: true });
+    }
+
+    // ---- 邮箱验证码：发送 ----
+    if (match(path, 'auth/email-code') && method === 'POST') {
+      const body = await request.json().catch(() => ({}));
+      const email = String(body.email || '').trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return bad('请输入正确的邮箱地址');
+      if (!env.MAIL_API_KEY || !env.MAIL_FROM) return bad('邮件服务未配置，请联系站长', 503);
+      const now = Date.now();
+      const old = await dbFirst(env, 'SELECT * FROM email_codes WHERE email=?', [email]);
+      if (old && now - (old.createdAt || 0) < 60000) return bad('发送太频繁，请 1 分钟后再试', 429);
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      await dbRun(env, `INSERT INTO email_codes (email,code,expires_at,attempts,created_at) VALUES (?,?,?,0,?)
+        ON CONFLICT(email) DO UPDATE SET code=excluded.code, expires_at=excluded.expires_at, attempts=0, created_at=excluded.created_at`,
+        [email, code, now + 10 * 60000, now]);
+      try {
+        const r = await fetch('https://api.brevo.com/v3/smtp/email', {
+          method: 'POST',
+          headers: { 'api-key': env.MAIL_API_KEY, 'content-type': 'application/json', 'accept': 'application/json' },
+          body: JSON.stringify({
+            sender: { name: '文汇', email: env.MAIL_FROM },
+            to: [{ email }],
+            subject: '文汇登录验证码',
+            htmlContent: '<div style="font-family:sans-serif"><h2>文汇登录验证码</h2><p>你的验证码是：</p><p style="font-size:28px;font-weight:700;letter-spacing:6px;color:#2980b9">' + code + '</p><p>10 分钟内有效。如果不是你本人操作，请忽略本邮件。</p></div>'
+          })
+        });
+        if (!r.ok) {
+          console.error('Brevo send failed:', r.status, (await r.text()).slice(0, 300));
+          return bad('验证码邮件发送失败，请稍后再试', 502);
+        }
+      } catch (e) { console.error('Brevo send error:', e && e.message); return bad('验证码邮件发送失败，请稍后再试', 502); }
+      return json({ ok: true });
+    }
+
+    // ---- 邮箱验证码：校验登录（新邮箱自动注册） ----
+    if (match(path, 'auth/email-login') && method === 'POST') {
+      const body = await request.json().catch(() => ({}));
+      const email = String(body.email || '').trim().toLowerCase();
+      const code = String(body.code || '').trim();
+      if (!email || !code) return bad('请输入邮箱和验证码');
+      const rec = await dbFirst(env, 'SELECT * FROM email_codes WHERE email=?', [email]);
+      if (!rec || Date.now() > (rec.expiresAt || 0) || (rec.attempts || 0) >= 5) return bad('验证码无效或已过期');
+      if (rec.code !== code) {
+        await dbRun(env, 'UPDATE email_codes SET attempts=attempts+1 WHERE email=?', [email]);
+        return bad('验证码错误');
+      }
+      await dbRun(env, 'DELETE FROM email_codes WHERE email=?', [email]);
+      let user = await dbFirst(env, 'SELECT * FROM users WHERE email=?', [email]);
+      if (!user) {
+        const username = 'wenhui_' + String(Math.floor(100000 + Math.random() * 900000));
+        const nickname = '文友' + String(Math.floor(1000 + Math.random() * 9000));
+        const { salt, hash } = await hashPassword(cryptoRandomHex(16));
+        const now = Date.now();
+        const id = uid('u');
+        await dbRun(env, `INSERT INTO users (id,username,nickname,role,bio,created_at,salt,hash,login_fails,locked_until,score,badges,following,email) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          [id, username, nickname, 'user', '', now, salt, hash, 0, 0, 0, '[]', '[]', email]);
+        user = { id, username, nickname, role: 'user', bio: '', createdAt: now, salt, hash, loginFails: 0, lockedUntil: 0, score: 0, badges: [], following: [], email };
+      }
+      const token = await createToken(env, user.id);
+      return json({ user: pub(user), token });
     }
 
     // ---- 更新资料 ----

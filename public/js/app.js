@@ -373,6 +373,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-17 21:30', author: 'ZhangCing', items: ['📧 新增邮箱验证码登录：输入邮箱收验证码即可登录，新用户自动注册，原有密码登录不受影响'] },
   { date: '2026-10-17 20:00', author: 'ZhangCing', items: ['💬 群聊改为QQ式左右分栏：左侧群列表右侧聊天窗，手机端上下布局'] },
   { date: '2026-10-17 18:00', author: 'ZhangCing', items: ['🎨 主页改左右分栏排版', '📜 更新日志主页只显3条，新增详情页+分页', '✨ 全站补齐中间帧动画（入场/按压/弹窗/Toast）'] },
   { date: '2026-10-17 16:30', author: 'ZhangCing', items: ['🚀 Windows 安装包启用 Cloudflare 加速线路：下载走本站中转，国内速度大幅提升'] },
@@ -2166,6 +2167,20 @@ async function viewSettings() {
 /* ---------- 登录 / 注册 ---------- */
 function viewLogin() {
   let mode = 'login';
+  let cd = 0, cdTimer = null;
+  const startCd = () => {
+    clearInterval(cdTimer);
+    cd = 60;
+    const b = document.getElementById('eSend');
+    if (b) { b.disabled = true; b.textContent = cd + ' s'; }
+    cdTimer = setInterval(() => {
+      cd--;
+      const btn = document.getElementById('eSend');
+      if (!btn) { clearInterval(cdTimer); return; }
+      if (cd <= 0) { clearInterval(cdTimer); btn.disabled = false; btn.textContent = '发送验证码'; }
+      else btn.textContent = cd + ' s';
+    }, 1000);
+  };
   $app.innerHTML = `
   <div class="container">
     <div class="card auth-card">
@@ -2182,21 +2197,47 @@ function viewLogin() {
       <div class="form-item"><label>用户名</label><input id="lUser" placeholder="用户名"></div>
       <div class="form-item"><label>密码</label><input type="password" id="lPass"></div>
       <button class="btn primary" id="lBtn" style="width:100%">登录</button>
-      <div class="hint" style="margin-top:10px;text-align:center">连续输错 5 次密码将锁定账号 10 分钟</div>` : `
+      <div class="hint" style="margin-top:10px;text-align:center">连续输错 5 次密码将锁定账号 10 分钟</div>
+      <div class="hint" style="margin:16px 0 12px;text-align:center">—— 或使用邮箱验证码登录 ——</div>
+      <div class="form-item"><label>邮箱</label><input id="eMail" type="email" placeholder="你的邮箱地址"></div>
+      <button class="btn ghost" id="eSend" style="width:100%">发送验证码</button>
+      <div class="form-item" style="margin-top:12px"><label>验证码</label><input id="eCode" inputmode="numeric" maxlength="6" placeholder="6 位数字验证码"></div>
+      <button class="btn primary" id="eBtn" style="width:100%">登录 / 注册</button>` : `
       <div class="form-item"><label>用户名</label><input id="rUser" placeholder="3-24 位字母 / 数字 / 下划线"></div>
       <div class="form-item"><label>昵称</label><input id="rNick" placeholder="展示昵称（可留空）"></div>
       <div class="form-item"><label>密码</label><input type="password" id="rPass" placeholder="至少 8 位，需包含字母和数字"></div>
       <button class="btn primary" id="rBtn" style="width:100%">注册并登录</button>`;
-    if (mode === 'login') document.getElementById('lBtn').onclick = async (e) => {
-      e.target.disabled = true;
-      try {
-        const d = await api('/api/login', { method: 'POST', body: { username: lUser.value, password: lPass.value } });
-        state.me = d.user;
-        state.token = d.token;
-        localStorage.setItem('token', d.token);
-        toast('欢迎回来，' + d.user.nickname); go('#/home'); route();
-      } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
-    };
+    if (mode === 'login') {
+      if (cd > 0) { const b = document.getElementById('eSend'); b.disabled = true; b.textContent = cd + ' s'; }
+      document.getElementById('lBtn').onclick = async (e) => {
+        e.target.disabled = true;
+        try {
+          const d = await api('/api/login', { method: 'POST', body: { username: lUser.value, password: lPass.value } });
+          state.me = d.user;
+          state.token = d.token;
+          localStorage.setItem('token', d.token);
+          toast('欢迎回来，' + d.user.nickname); go('#/home'); route();
+        } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
+      };
+      document.getElementById('eSend').onclick = async (e) => {
+        e.target.disabled = true;
+        try {
+          await api('/api/auth/email-code', { method: 'POST', body: { email: eMail.value.trim() } });
+          toast('验证码已发送，请到邮箱查收');
+          startCd();
+        } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
+      };
+      document.getElementById('eBtn').onclick = async (e) => {
+        e.target.disabled = true;
+        try {
+          const d = await api('/api/auth/email-login', { method: 'POST', body: { email: eMail.value.trim(), code: eCode.value.trim() } });
+          state.me = d.user;
+          state.token = d.token;
+          localStorage.setItem('token', d.token);
+          toast('欢迎回来，' + d.user.nickname); go('#/home'); route();
+        } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
+      };
+    }
     else document.getElementById('rBtn').onclick = async (e) => {
       e.target.disabled = true;
       try {
