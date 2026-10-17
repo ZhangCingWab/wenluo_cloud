@@ -373,6 +373,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-17 20:00', author: 'ZhangCing', items: ['💬 群聊改为QQ式左右分栏：左侧群列表右侧聊天窗，手机端上下布局'] },
   { date: '2026-10-17 18:00', author: 'ZhangCing', items: ['🎨 主页改左右分栏排版', '📜 更新日志主页只显3条，新增详情页+分页', '✨ 全站补齐中间帧动画（入场/按压/弹窗/Toast）'] },
   { date: '2026-10-17 16:30', author: 'ZhangCing', items: ['🚀 Windows 安装包启用 Cloudflare 加速线路：下载走本站中转，国内速度大幅提升'] },
   { date: '2026-10-17 15:30', author: 'ZhangCing', items: ['🪟 Windows 安装版正式开放下载：下载站点击即可获取文汇.exe'] },
@@ -928,19 +929,30 @@ async function viewHelpDetail(body, id) {
 }
 
 async function viewDiscussChat(body, gId) {
-  if (!gId) return viewGroupList(body);
   body.innerHTML = '<div class="card"><div class="loading-block">加载中…</div></div>';
   const gd = await api('/api/discuss/groups');
-  const g = gd.groups.find(x => x.id === gId);
-  if (!g) { body.innerHTML = '<div class="card"><div class="empty">😕 群不存在</div></div>'; return; }
+  const gs = gd.groups || [];
+  const g = gId ? gs.find(x => x.id == gId) : null;
+  if (gId && !g) { body.innerHTML = '<div class="card"><div class="empty">😕 群不存在</div></div>'; return; }
   const me = state.me;
-  const isOwner = me && (me.role === 'admin' || g.ownerId === me.id);
-  // 非成员：展示群卡片 + 申请加入
+  const isOwner = me && g && (me.role === 'admin' || g.ownerId == me.id);
+  const sideItem = (x) => `
+  <a class="chat-gitem${x.id == gId ? ' active' : ''}" href="#/discuss/chat/${x.id}">
+    <span class="cg-emoji">${esc(x.emoji) || '💬'}</span>
+    <span class="cg-info"><b>${esc(x.name)}</b><span class="cg-meta">👥 ${x.memberCount} 人</span></span>
+    ${x.pendingCount ? `<span class="cg-badge">${x.pendingCount}</span>` : ''}
+  </a>`;
+  body.innerHTML = `
+  <div class="chat-layout">
+    <aside class="chat-side">${gs.map(sideItem).join('') || '<div class="empty" style="padding:14px 6px">还没有群聊</div>'}</aside>
+    <section class="chat-main" id="chatMain"></section>
+  </div>`;
+  const main = document.getElementById('chatMain');
+  if (!g) { main.innerHTML = '<div class="chat-empty">👈 选择一个群开始聊天</div>'; return; }
   if (!me || (g.myStatus !== 'approved' && !isOwner)) {
-    body.innerHTML = `
-    <a class="back-link" href="#/discuss/chat">← 返回群列表</a>
-    <div class="card" style="text-align:center;padding:40px 20px">
-      <div style="font-size:36px;margin-bottom:10px">${g.emoji || '💬'}</div>
+    main.innerHTML = `
+    <div class="chat-join">
+      <div style="font-size:36px;margin-bottom:10px">${esc(g.emoji) || '💬'}</div>
       <h2 style="margin-bottom:6px">${esc(g.name)}</h2>
       <div class="empty" style="padding:6px 0 18px">${g.myStatus === 'pending' ? '⏳ 申请已提交，群主审核通过后就能进来聊天了' : esc(g.description || '申请加入后即可和群友聊天')}</div>
       ${!me ? '<a class="btn primary" href="#/login">先登录</a>'
@@ -958,19 +970,20 @@ async function viewDiscussChat(body, gId) {
     };
     return;
   }
-  // 成员/群主：群聊视图
-  body.innerHTML = `
-  <a class="back-link" href="#/discuss/chat">← 返回群列表</a>
+  main.innerHTML = `
   <div class="card chat-card">
-    <div class="g-head"><span class="g-emoji sm">${g.emoji || '💬'}</span><b>${esc(g.name)}</b><span class="g-meta">👥 ${g.memberCount} 人</span></div>
-    <div id="reqBox"></div>
-    <div class="chat-scroll" id="chatScroll"><div class="empty" style="padding:40px 0">加载中…</div></div>
+    <div class="g-head"><span class="g-emoji sm">${esc(g.emoji) || '💬'}</span><b>${esc(g.name)}</b><span class="g-meta">👥 ${g.memberCount} 人</span></div>
+    <div class="chat-scroll" id="chatScroll">
+      <div id="reqBox"></div>
+      <div id="chatMsgs"><div class="empty" style="padding:40px 0">加载中…</div></div>
+    </div>
     <div class="chat-input-bar">
-      <input id="chatInput" maxlength="500" placeholder="和群友聊点什么…（Enter 发送）">
+      <textarea id="chatInput" maxlength="500" rows="1" placeholder="和群友聊点什么…（Enter 发送，Shift+Enter 换行）"></textarea>
       <button class="btn primary" id="chatSend">发送</button>
     </div>
   </div>`;
   const scroll = document.getElementById('chatScroll');
+  const msgs = document.getElementById('chatMsgs');
   const reqBox = document.getElementById('reqBox');
   // 群主：入群申请审核
   const renderReqs = async () => {
@@ -1015,10 +1028,10 @@ async function viewDiscussChat(body, gId) {
       </div>
     </div>`;
   };
-  const renderMsgs = (msgs, append) => {
+  const renderMsgs = (list, append) => {
     const atBottom = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 90;
-    if (append) scroll.insertAdjacentHTML('beforeend', msgs.map(bubble).join(''));
-    else scroll.innerHTML = msgs.map(bubble).join('') || '<div class="empty" style="padding:40px 0">还没有消息，来抢个沙发！</div>';
+    if (append) msgs.insertAdjacentHTML('beforeend', list.map(bubble).join(''));
+    else msgs.innerHTML = list.map(bubble).join('') || '<div class="empty" style="padding:40px 0">还没有消息，来抢个沙发！</div>';
     if (atBottom || !append) scroll.scrollTop = scroll.scrollHeight;
   };
   const pull = async (init) => {
@@ -1047,45 +1060,7 @@ async function viewDiscussChat(body, gId) {
     sending = false;
   };
   document.getElementById('chatSend').onclick = send;
-  document.getElementById('chatInput').onkeydown = (e) => { if (e.key === 'Enter') send(); };
-}
-
-/* 群列表：卡片网格 */
-async function viewGroupList(body) {
-  body.innerHTML = '<div class="card"><div class="loading-block">加载中…</div></div>';
-  const d = await api('/api/discuss/groups');
-  body.innerHTML = `
-  <div class="group-grid">
-    ${d.groups.map(g => `
-    <div class="group-card">
-      <div class="g-top">
-        <span class="g-emoji">${g.emoji || '💬'}</span>
-        <div style="min-width:0">
-          <div class="g-name">${esc(g.name)}</div>
-          ${g.pendingCount ? `<span class="badge pending">${g.pendingCount} 人待审</span>` : ''}
-        </div>
-      </div>
-      <div class="g-desc">${esc(g.description || '')}</div>
-      <div class="g-foot">
-        <span class="g-meta">👥 ${g.memberCount} 人${g.ownerName ? ' · 群主 ' + esc(g.ownerName) : ''}</span>
-        ${g.myStatus === 'approved'
-          ? `<button class="btn primary g-enter" data-g="${g.id}">进入群聊</button>`
-          : g.myStatus === 'pending'
-            ? '<span class="badge pending">审核中…</span>'
-            : '<button class="btn ghost g-join" data-g="' + g.id + '">申请加入</button>'}
-      </div>
-    </div>`).join('') || '<div class="empty" style="grid-column:1/-1">还没有群聊</div>'}
-  </div>`;
-  body.querySelectorAll('.g-enter').forEach(b => b.onclick = () => go('#/discuss/chat/' + b.dataset.g));
-  body.querySelectorAll('.g-join').forEach(b => b.onclick = async () => {
-    if (needLogin()) return;
-    b.disabled = true;
-    try {
-      await api(`/api/discuss/groups/${b.dataset.g}/join`, { method: 'POST' });
-      toast('已提交申请，等群主审核');
-      viewDiscuss('chat');
-    } catch (e) { toast(e.message, 'err'); b.disabled = false; }
-  });
+  document.getElementById('chatInput').onkeydown = (e) => { if (e.key == 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } };
 }
 
 async function viewNewPost() {
