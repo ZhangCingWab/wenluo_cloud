@@ -1770,7 +1770,7 @@ export async function onRequest(context) {
     }
 
     // GET /api/download/exe 302 重定向到 GitHub Releases 托管的 Windows 安装包（公开，无需登录）
-    if (match(path, 'download/exe') && method === 'GET') {
+    if (match(path, 'download/exe') && (method === 'GET' || method === 'HEAD')) {
       return Response.redirect('https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.0.0/wenhui-setup-1.0.0.exe', 302);
     }
 
