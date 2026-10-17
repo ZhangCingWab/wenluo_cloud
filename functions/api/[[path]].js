@@ -1769,17 +1769,19 @@ export async function onRequest(context) {
       return json({ id: r.id, title: r.title, content: r.content, createdAt: r.createdAt });
     }
 
-    // GET /api/download/exe 从 R2 流式下载 Windows 安装包（公开，无需登录）
+    // GET /api/download/exe Cloudflare 流式代理 GitHub 安装包（用户直连本站，服务端走国际线路拉取）
     if (match(path, 'download/exe') && (method === 'GET' || method === 'HEAD')) {
-      if (!env.DOWNLOADS) return json({ error: '下载服务未配置，请稍后再试' }, 503);
-      if (method === 'HEAD') {
-        const meta = await env.DOWNLOADS.head('wenhui-setup-1.0.0.exe');
-        if (!meta) return json({ error: '安装包不存在' }, 404);
-        return new Response(null, { headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': String(meta.size), 'Content-Disposition': 'attachment; filename="wenhui-setup-1.0.0.exe"' } });
-      }
-      const obj = await env.DOWNLOADS.get('wenhui-setup-1.0.0.exe');
-      if (!obj) return json({ error: '安装包不存在' }, 404);
-      return new Response(obj.body, { headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': String(obj.size), 'Content-Disposition': 'attachment; filename="wenhui-setup-1.0.0.exe"', 'Cache-Control': 'no-cache' } });
+      const GH = 'https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.0.0/wenhui-setup-1.0.0.exe';
+      if (method === 'HEAD') return Response.redirect(GH, 302);
+      const h = {};
+      const rg = request.headers.get('range');
+      if (rg) h['Range'] = rg;
+      const up = await fetch(GH, { redirect: 'follow', headers: h });
+      if (!up.ok) return Response.redirect(GH, 302);
+      const rh = { 'Content-Type': 'application/octet-stream', 'Content-Disposition': 'attachment; filename="wenhui-setup-1.0.0.exe"', 'Cache-Control': 'no-cache' };
+      const cl = up.headers.get('content-length'); if (cl) rh['Content-Length'] = cl;
+      const cr = up.headers.get('content-range'); if (cr) rh['Content-Range'] = cr;
+      return new Response(up.body, { status: up.status, headers: rh });
     }
 
     // ==================== 讨论区 ====================

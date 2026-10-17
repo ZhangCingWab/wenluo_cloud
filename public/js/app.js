@@ -373,7 +373,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
-  { date: '2026-10-17 16:30', author: 'ZhangCing', items: ['🚀 Windows 安装包改用 Cloudflare R2 国内高速下载，告别 GitHub 慢速'] },
+  { date: '2026-10-17 16:30', author: 'ZhangCing', items: ['🚀 Windows 安装包启用 Cloudflare 加速线路：下载走本站中转，国内速度大幅提升'] },
   { date: '2026-10-17 15:30', author: 'ZhangCing', items: ['🪟 Windows 安装版正式开放下载：下载站点击即可获取文汇.exe'] },
   { date: '2026-10-17 14:00', author: 'ZhangCing', items: ['⬇️ 新增「下载站」：Windows 安装版 / 安卓 APK / 网页版三种获取方式，侧边栏和主页均可进入'] },
   { date: '2026-10-17 12:00', author: 'ZhangCing', items: ['📢 主页公告改为链接列表（洛谷式）：只显示公告标题，点击进入公告详情页阅读全文'] },
