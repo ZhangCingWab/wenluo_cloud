@@ -507,7 +507,12 @@ async function viewDownload() {
           <div style="color:var(--text2);font-size:13px;margin-top:3px">支持选目录安装，自动创建桌面快捷方式 · 约 106MB（国内高速下载）</div>
         </div>
       </div>
-      <a class="btn primary" href="/api/download/exe" download="wenhui-setup-1.0.0.exe" style="width:100%;justify-content:center;text-decoration:none;margin-top:14px">📥 下载 Windows 版</a>
+      <a class="btn primary" href="https://gh-proxy.com/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.0.0/wenhui-setup-1.0.0.exe" download="wenhui-setup-1.0.0.exe" style="width:100%;justify-content:center;text-decoration:none;margin-top:14px">📥 高速下载（国内加速线路）</a>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <a class="btn ghost" href="https://ghfast.top/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.0.0/wenhui-setup-1.0.0.exe" download style="flex:1;justify-content:center;text-decoration:none;font-size:13px">备用1</a>
+        <a class="btn ghost" href="https://ghproxy.net/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.0.0/wenhui-setup-1.0.0.exe" download style="flex:1;justify-content:center;text-decoration:none;font-size:13px">备用2</a>
+        <a class="btn ghost" href="/api/download/exe" download style="flex:1;justify-content:center;text-decoration:none;font-size:13px">本站直下</a>
+      </div>
     </div>
     <div class="card">
       <div style="display:flex;align-items:center;gap:14px">
