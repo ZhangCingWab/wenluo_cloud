@@ -1769,12 +1769,9 @@ export async function onRequest(context) {
       return json({ id: r.id, title: r.title, content: r.content, createdAt: r.createdAt });
     }
 
-    // GET /api/download/exe 从 R2 流式下载 Windows 安装包（公开，无需登录）
+    // GET /api/download/exe 302 重定向到 GitHub Releases 托管的 Windows 安装包（公开，无需登录）
     if (match(path, 'download/exe') && method === 'GET') {
-      if (!env.DOWNLOADS) return json({ error: '下载服务未配置' }, 503);
-      const obj = await env.DOWNLOADS.get('wenhui-setup-1.0.0.exe');
-      if (!obj) return json({ error: '安装包不存在' }, 404);
-      return new Response(obj.body, { headers: { 'Content-Type': 'application/octet-stream', 'Content-Disposition': 'attachment; filename="WenHui-Setup-1.0.0.exe"', 'Content-Length': String(obj.size), 'Cache-Control': 'public, max-age=3600' } });
+      return Response.redirect('https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.0.0/wenhui-setup-1.0.0.exe', 302);
     }
 
     // ==================== 讨论区 ====================

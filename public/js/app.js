@@ -373,6 +373,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-17 15:30', author: 'ZhangCing', items: ['🪟 Windows 安装版正式开放下载：下载站点击即可获取文汇.exe'] },
   { date: '2026-10-17 14:00', author: 'ZhangCing', items: ['⬇️ 新增「下载站」：Windows 安装版 / 安卓 APK / 网页版三种获取方式，侧边栏和主页均可进入'] },
   { date: '2026-10-17 12:00', author: 'ZhangCing', items: ['📢 主页公告改为链接列表（洛谷式）：只显示公告标题，点击进入公告详情页阅读全文'] },
   { date: '2026-10-16 12:00', author: 'ZhangCing', items: ['📦 上线安卓 APK 下载：文汇手机 App 可直接安装，支持全屏运行', '🪟 桌面安装版发布：文汇.exe 支持选目录安装+桌面快捷方式'] },
@@ -502,10 +503,10 @@ async function viewDownload() {
         <div style="font-size:36px;line-height:1">🪟</div>
         <div style="flex:1;min-width:0">
           <div style="font-weight:700;font-size:16px">文汇 · Windows 安装版</div>
-          <div style="color:var(--text2);font-size:13px;margin-top:3px">支持选目录安装，自动创建桌面快捷方式 · 约 106MB</div>
+          <div style="color:var(--text2);font-size:13px;margin-top:3px">支持选目录安装，自动创建桌面快捷方式 · 约 106MB（下载源：GitHub）</div>
         </div>
       </div>
-      <button class="btn primary" id="dlWin" style="width:100%;justify-content:center;margin-top:14px">📥 下载 Windows 版</button>
+      <a class="btn primary" href="/api/download/exe" download="WenHui-Setup-1.0.0.exe" style="width:100%;justify-content:center;text-decoration:none;margin-top:14px">📥 下载 Windows 版</a>
     </div>
     <div class="card">
       <div style="display:flex;align-items:center;gap:14px">
@@ -529,7 +530,6 @@ async function viewDownload() {
     </div>
     <div class="card" style="text-align:center;color:var(--text2);font-size:12.5px;padding:10px 16px">版本 v1.0.0 · 更新日期 2026-10-17</div>
   </div>`;
-  document.getElementById('dlWin').onclick = () => toast('Windows 安装包暂未开放，敬请期待', 'err');
 }
 /* 新用户必读弹窗：进主页时检查 localStorage，有未读公告就弹一次 */
 function showAnnModal(list) {
