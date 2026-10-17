@@ -1,5 +1,5 @@
-/* 文汇 Service Worker：静态资源缓存 + 页面网络优先 */
-const CACHE = 'wenhui-v1';
+/* 文汇 Service Worker：静态资源缓存优先(后台更新) + 页面网络优先 */
+const CACHE = 'wenhui-v2';
 const SHELL = ['/css/style.css', '/js/app.js', '/img/logo.svg', '/manifest.json'];
 
 self.addEventListener('install', (e) => {
@@ -17,13 +17,20 @@ self.addEventListener('fetch', (e) => {
   if (url.origin !== location.origin) return;
   if (url.pathname.startsWith('/api/')) return;
   if (e.request.method !== 'GET') return;
+  const isStatic = url.pathname.startsWith('/css/') || url.pathname.startsWith('/js/') || url.pathname.startsWith('/img/');
+  if (isStatic) {
+    e.respondWith(
+      caches.match(e.request, { ignoreSearch: true }).then((hit) => {
+        const net = fetch(e.request).then((res) => {
+          if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(e.request, copy)); }
+          return res;
+        }).catch(() => hit);
+        return hit || net;
+      })
+    );
+    return;
+  }
   e.respondWith(
-    fetch(e.request).then((res) => {
-      if (res.ok && (url.pathname.startsWith('/css/') || url.pathname.startsWith('/js/') || url.pathname.startsWith('/img/'))) {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(e.request, copy));
-      }
-      return res;
-    }).catch(() => caches.match(e.request).then((hit) => hit || (e.request.mode === 'navigate' ? caches.match('/') : undefined)))
+    fetch(e.request).catch(() => caches.match(e.request, { ignoreSearch: true }).then((hit) => hit || (e.request.mode === 'navigate' ? caches.match('/') : undefined)))
   );
 });
