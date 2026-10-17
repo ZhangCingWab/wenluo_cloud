@@ -373,6 +373,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-17 16:30', author: 'ZhangCing', items: ['🚀 Windows 安装包改用 Cloudflare R2 国内高速下载，告别 GitHub 慢速'] },
   { date: '2026-10-17 15:30', author: 'ZhangCing', items: ['🪟 Windows 安装版正式开放下载：下载站点击即可获取文汇.exe'] },
   { date: '2026-10-17 14:00', author: 'ZhangCing', items: ['⬇️ 新增「下载站」：Windows 安装版 / 安卓 APK / 网页版三种获取方式，侧边栏和主页均可进入'] },
   { date: '2026-10-17 12:00', author: 'ZhangCing', items: ['📢 主页公告改为链接列表（洛谷式）：只显示公告标题，点击进入公告详情页阅读全文'] },
@@ -503,10 +504,10 @@ async function viewDownload() {
         <div style="font-size:36px;line-height:1">🪟</div>
         <div style="flex:1;min-width:0">
           <div style="font-weight:700;font-size:16px">文汇 · Windows 安装版</div>
-          <div style="color:var(--text2);font-size:13px;margin-top:3px">支持选目录安装，自动创建桌面快捷方式 · 约 106MB（下载源：GitHub）</div>
+          <div style="color:var(--text2);font-size:13px;margin-top:3px">支持选目录安装，自动创建桌面快捷方式 · 约 106MB（国内高速下载）</div>
         </div>
       </div>
-      <a class="btn primary" href="/api/download/exe" download="WenHui-Setup-1.0.0.exe" style="width:100%;justify-content:center;text-decoration:none;margin-top:14px">📥 下载 Windows 版</a>
+      <a class="btn primary" href="/api/download/exe" download="wenhui-setup-1.0.0.exe" style="width:100%;justify-content:center;text-decoration:none;margin-top:14px">📥 下载 Windows 版</a>
     </div>
     <div class="card">
       <div style="display:flex;align-items:center;gap:14px">
