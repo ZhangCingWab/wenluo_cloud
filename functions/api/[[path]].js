@@ -1111,7 +1111,8 @@ async function smtpSession(env, to, code, port, mode) {
   let reader = socket.readable.getReader();
   const enc = new TextEncoder();
   const b64 = (s) => btoa(String.fromCharCode(...enc.encode(s)));
-  let send = (line) => socket.writer.write(enc.encode(line + '\r\n'));
+  let w = socket.writable.getWriter();
+  let send = (line) => w.write(enc.encode(line + '\r\n'));
   try {
     await smtpRead(reader, 220, '握手');
     await send('EHLO wenhui.pages.dev');
@@ -1121,8 +1122,7 @@ async function smtpSession(env, to, code, port, mode) {
       await smtpRead(reader, 220, 'STARTTLS');
       const up = socket.upgradeTLS();
       reader = up.readable.getReader();
-      const w2 = up.writable;
-      send = (line) => w2.write(enc.encode(line + '\r\n'));
+      w = up.writable.getWriter();
       await send('EHLO wenhui.pages.dev');
       await smtpRead(reader, 250, 'EHLO2');
     }
