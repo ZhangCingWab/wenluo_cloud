@@ -1081,6 +1081,66 @@ async function checkContestStart(env, me) {
   } catch {}
 }
 
+/* ---------------- QQ 邮箱 SMTP 直发 ---------------- */
+async function smtpRead(reader, expect, step) {
+  let buf = '';
+  const end = Date.now() + 8000;
+  const dec = new TextDecoder();
+  while (true) {
+    const lines = buf.split('\r\n');
+    for (let i = 0; i < lines.length - 1; i++) {
+      if (/^\d{3} /.test(lines[i])) {
+        const code = parseInt(lines[i].slice(0, 3), 10);
+        if (code !== expect) throw new Error('SMTP ' + step + ' 失败: ' + lines[i].slice(0, 120));
+        return;
+      }
+    }
+    if (Date.now() > end) throw new Error('SMTP ' + step + ' 响应超时');
+    const left = Math.max(100, end - Date.now());
+    const r = await Promise.race([reader.read(), new Promise((_, rej) => setTimeout(() => rej(new Error('SMTP ' + step + ' 响应超时')), left))]);
+    if (r.done) throw new Error('SMTP ' + step + ' 连接已关闭');
+    buf += dec.decode(r.value, { stream: true });
+  }
+}
+
+async function sendQQMail(env, to, code) {
+  let socket = null;
+  try {
+    const { connect } = await import('cloudflare:sockets');
+    socket = connect('smtp.qq.com:465', { secureTransport: 'on', allowHalfOpen: false });
+    const reader = socket.readable.getReader();
+    const writer = socket.writer;
+    const enc = new TextEncoder();
+    const b64 = (s) => btoa(String.fromCharCode(...enc.encode(s)));
+    const send = (line) => writer.write(enc.encode(line + '\r\n'));
+    await smtpRead(reader, 220, '握手');
+    await send('EHLO wenhui.pages.dev');
+    await smtpRead(reader, 250, 'EHLO');
+    await send('AUTH LOGIN');
+    await smtpRead(reader, 334, 'AUTH 开始');
+    await send(b64(env.SMTP_USER));
+    await smtpRead(reader, 334, 'AUTH 用户名');
+    await send(b64(env.SMTP_PASS));
+    await smtpRead(reader, 235, 'AUTH 认证');
+    await send('MAIL FROM:<' + env.SMTP_USER + '>');
+    await smtpRead(reader, 250, 'MAIL FROM');
+    await send('RCPT TO:<' + to + '>');
+    await smtpRead(reader, 250, 'RCPT TO');
+    await send('DATA');
+    await smtpRead(reader, 354, 'DATA');
+    const html = '<html><body style="font-family:sans-serif"><h2>文汇登录验证码</h2><p>你的验证码是：</p><p style="font-size:28px;font-weight:700;letter-spacing:6px;color:#2980b9">' + code + '</p><p>10 分钟内有效。如果不是你本人操作，请忽略本邮件。</p></body></html>';
+    await send('From: 文汇 <' + env.SMTP_USER + '>\r\nTo: ' + to + '\r\nSubject: =?UTF-8?B?' + b64('文汇登录验证码') + '?=\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n' + html + '\r\n.');
+    await smtpRead(reader, 250, '发送正文');
+    await send('QUIT');
+    writer.close();
+  } catch (e) {
+    console.error('QQ SMTP send error:', e && e.message);
+    throw e;
+  } finally {
+    try { if (socket) socket.close(); } catch (_) {}
+  }
+}
+
 /* ---------------- 主处理器 ---------------- */
 export async function onRequest(context) {
   const { request, env } = context;
@@ -1172,7 +1232,9 @@ export async function onRequest(context) {
       const body = await request.json().catch(() => ({}));
       const email = String(body.email || '').trim().toLowerCase();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return bad('请输入正确的邮箱地址');
-      if (!env.MAIL_API_KEY || !env.MAIL_FROM) return bad('邮件服务未配置，请联系站长', 503);
+      const useBrevo = !!(env.MAIL_API_KEY && env.MAIL_FROM);
+      const useSMTP = !!(env.SMTP_USER && env.SMTP_PASS);
+      if (!useBrevo && !useSMTP) return bad('邮件服务未配置，请联系站长', 503);
       const now = Date.now();
       const old = await dbFirst(env, 'SELECT * FROM email_codes WHERE email=?', [email]);
       if (old && now - (old.createdAt || 0) < 60000) return bad('发送太频繁，请 1 分钟后再试', 429);
@@ -1181,21 +1243,25 @@ export async function onRequest(context) {
         ON CONFLICT(email) DO UPDATE SET code=excluded.code, expires_at=excluded.expires_at, attempts=0, created_at=excluded.created_at`,
         [email, code, now + 10 * 60000, now]);
       try {
-        const r = await fetch('https://api.brevo.com/v3/smtp/email', {
-          method: 'POST',
-          headers: { 'api-key': env.MAIL_API_KEY, 'content-type': 'application/json', 'accept': 'application/json' },
-          body: JSON.stringify({
-            sender: { name: '文汇', email: env.MAIL_FROM },
-            to: [{ email }],
-            subject: '文汇登录验证码',
-            htmlContent: '<div style="font-family:sans-serif"><h2>文汇登录验证码</h2><p>你的验证码是：</p><p style="font-size:28px;font-weight:700;letter-spacing:6px;color:#2980b9">' + code + '</p><p>10 分钟内有效。如果不是你本人操作，请忽略本邮件。</p></div>'
-          })
-        });
-        if (!r.ok) {
-          console.error('Brevo send failed:', r.status, (await r.text()).slice(0, 300));
-          return bad('验证码邮件发送失败，请稍后再试', 502);
+        if (useBrevo) {
+          const r = await fetch('https://api.brevo.com/v3/smtp/email', {
+            method: 'POST',
+            headers: { 'api-key': env.MAIL_API_KEY, 'content-type': 'application/json', 'accept': 'application/json' },
+            body: JSON.stringify({
+              sender: { name: '文汇', email: env.MAIL_FROM },
+              to: [{ email }],
+              subject: '文汇登录验证码',
+              htmlContent: '<div style="font-family:sans-serif"><h2>文汇登录验证码</h2><p>你的验证码是：</p><p style="font-size:28px;font-weight:700;letter-spacing:6px;color:#2980b9">' + code + '</p><p>10 分钟内有效。如果不是你本人操作，请忽略本邮件。</p></div>'
+            })
+          });
+          if (!r.ok) {
+            console.error('Brevo send failed:', r.status, (await r.text()).slice(0, 300));
+            return bad('验证码邮件发送失败，请稍后再试', 502);
+          }
+        } else {
+          await sendQQMail(env, email, code);
         }
-      } catch (e) { console.error('Brevo send error:', e && e.message); return bad('验证码邮件发送失败，请稍后再试', 502); }
+      } catch (e) { console.error('邮件发送失败:', e && e.message); return bad('验证码邮件发送失败，请稍后再试', 502); }
       return json({ ok: true });
     }
 

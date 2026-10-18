@@ -373,6 +373,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-18 00:30', author: 'ZhangCing', items: ['📧 邮箱验证码改用 QQ 邮箱直发，无需注册第三方服务'] },
   { date: '2026-10-17 21:30', author: 'ZhangCing', items: ['📧 新增邮箱验证码登录：输入邮箱收验证码即可登录，新用户自动注册，原有密码登录不受影响'] },
   { date: '2026-10-17 20:00', author: 'ZhangCing', items: ['💬 群聊改为QQ式左右分栏：左侧群列表右侧聊天窗，手机端上下布局'] },
   { date: '2026-10-17 18:00', author: 'ZhangCing', items: ['🎨 主页改左右分栏排版', '📜 更新日志主页只显3条，新增详情页+分页', '✨ 全站补齐中间帧动画（入场/按压/弹窗/Toast）'] },
