@@ -1103,19 +1103,29 @@ async function smtpRead(reader, expect, step) {
   }
 }
 
-async function sendQQMail(env, to, code) {
-  let socket = null;
+async function smtpSession(env, to, code, port, mode) {
+  const { connect } = await import('cloudflare:sockets');
+  const opts = { allowHalfOpen: false };
+  if (mode == 'ssl') opts.secureTransport = 'on'; else opts.secureTransport = 'starttls';
+  const socket = connect('smtp.qq.com:' + port, opts);
+  let reader = socket.readable.getReader();
+  const enc = new TextEncoder();
+  const b64 = (s) => btoa(String.fromCharCode(...enc.encode(s)));
+  let send = (line) => socket.writer.write(enc.encode(line + '\r\n'));
   try {
-    const { connect } = await import('cloudflare:sockets');
-    socket = connect('smtp.qq.com:465', { secureTransport: 'on', allowHalfOpen: false });
-    const reader = socket.readable.getReader();
-    const writer = socket.writer;
-    const enc = new TextEncoder();
-    const b64 = (s) => btoa(String.fromCharCode(...enc.encode(s)));
-    const send = (line) => writer.write(enc.encode(line + '\r\n'));
     await smtpRead(reader, 220, '握手');
     await send('EHLO wenhui.pages.dev');
     await smtpRead(reader, 250, 'EHLO');
+    if (mode == 'starttls') {
+      await send('STARTTLS');
+      await smtpRead(reader, 220, 'STARTTLS');
+      const up = socket.upgradeTLS();
+      reader = up.readable.getReader();
+      const w2 = up.writable;
+      send = (line) => w2.write(enc.encode(line + '\r\n'));
+      await send('EHLO wenhui.pages.dev');
+      await smtpRead(reader, 250, 'EHLO2');
+    }
     await send('AUTH LOGIN');
     await smtpRead(reader, 334, 'AUTH 开始');
     await send(b64(env.SMTP_USER));
@@ -1132,12 +1142,17 @@ async function sendQQMail(env, to, code) {
     await send('From: 文汇 <' + env.SMTP_USER + '>\r\nTo: ' + to + '\r\nSubject: =?UTF-8?B?' + b64('文汇登录验证码') + '?=\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n' + html + '\r\n.');
     await smtpRead(reader, 250, '发送正文');
     await send('QUIT');
-    writer.close();
-  } catch (e) {
-    console.error('QQ SMTP send error:', e && e.message);
-    throw e;
   } finally {
-    try { if (socket) socket.close(); } catch (_) {}
+    try { socket.close(); } catch (_) {}
+  }
+}
+
+async function sendQQMail(env, to, code) {
+  try {
+    return await smtpSession(env, to, code, 465, 'ssl');
+  } catch (e1) {
+    console.error('QQ SMTP 465 失败:', e1 && e1.message);
+    return await smtpSession(env, to, code, 587, 'starttls');
   }
 }
 
@@ -1261,7 +1276,7 @@ export async function onRequest(context) {
         } else {
           await sendQQMail(env, email, code);
         }
-      } catch (e) { console.error('邮件发送失败:', e && e.message); return bad('验证码邮件发送失败，请稍后再试', 502); }
+      } catch (e) { console.error('邮件发送失败:', e && e.message); return bad('验证码邮件发送失败: ' + ((e && e.message) || '未知错误').slice(0, 150), 502); }
       return json({ ok: true });
     }
 
