@@ -634,6 +634,7 @@ function pubFull(u) {
   if (!u) return null;
   return {
     ...pub(u),
+    email: u.email || '',
     badges: u.badges || [],
     following: u.following || [],
     score: u.score || 0
@@ -1280,12 +1281,15 @@ export async function onRequest(context) {
       return json({ ok: true });
     }
 
-    // ---- 邮箱验证码：校验登录（新邮箱自动注册） ----
-    if (match(path, 'auth/email-login') && method === 'POST') {
+    // ---- 找回密码：邮箱验证码重置 ----
+    if (match(path, 'auth/reset-password') && method === 'POST') {
       const body = await request.json().catch(() => ({}));
       const email = String(body.email || '').trim().toLowerCase();
       const code = String(body.code || '').trim();
-      if (!email || !code) return bad('请输入邮箱和验证码');
+      const newPassword = body.newPassword;
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return bad('请输入正确的邮箱地址');
+      if (!code) return bad('请输入验证码');
+      if (typeof newPassword !== 'string' || newPassword.length < 6) return bad('新密码至少 6 位');
       const rec = await dbFirst(env, 'SELECT * FROM email_codes WHERE email=?', [email]);
       if (!rec || Date.now() > (rec.expiresAt || 0) || (rec.attempts || 0) >= 5) return bad('验证码无效或已过期');
       if (rec.code !== code) {
@@ -1293,19 +1297,33 @@ export async function onRequest(context) {
         return bad('验证码错误');
       }
       await dbRun(env, 'DELETE FROM email_codes WHERE email=?', [email]);
-      let user = await dbFirst(env, 'SELECT * FROM users WHERE email=?', [email]);
-      if (!user) {
-        const username = 'wenhui_' + String(Math.floor(100000 + Math.random() * 900000));
-        const nickname = '文友' + String(Math.floor(1000 + Math.random() * 9000));
-        const { salt, hash } = await hashPassword(cryptoRandomHex(16));
-        const now = Date.now();
-        const id = uid('u');
-        await dbRun(env, `INSERT INTO users (id,username,nickname,role,bio,created_at,salt,hash,login_fails,locked_until,score,badges,following,email) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-          [id, username, nickname, 'user', '', now, salt, hash, 0, 0, 0, '[]', '[]', email]);
-        user = { id, username, nickname, role: 'user', bio: '', createdAt: now, salt, hash, loginFails: 0, lockedUntil: 0, score: 0, badges: [], following: [], email };
+      const user = await dbFirst(env, 'SELECT * FROM users WHERE email=?', [email]);
+      if (!user) return bad('该邮箱未绑定任何账号');
+      const { salt, hash } = await hashPassword(newPassword);
+      await dbRun(env, 'UPDATE users SET salt=?, hash=? WHERE id=?', [salt, hash, user.id]);
+      return json({ ok: true });
+    }
+
+    // ---- 绑定邮箱（需登录）----
+    if (match(path, 'auth/bind-email') && method === 'POST') {
+      const u = await auth(request, env);
+      if (!u) return bad('请先登录', 401);
+      const body = await request.json().catch(() => ({}));
+      const email = String(body.email || '').trim().toLowerCase();
+      const code = String(body.code || '').trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return bad('请输入正确的邮箱地址');
+      if (!code) return bad('请输入验证码');
+      const rec = await dbFirst(env, 'SELECT * FROM email_codes WHERE email=?', [email]);
+      if (!rec || Date.now() > (rec.expiresAt || 0) || (rec.attempts || 0) >= 5) return bad('验证码无效或已过期');
+      if (rec.code !== code) {
+        await dbRun(env, 'UPDATE email_codes SET attempts=attempts+1 WHERE email=?', [email]);
+        return bad('验证码错误');
       }
-      const token = await createToken(env, user.id);
-      return json({ user: pub(user), token });
+      await dbRun(env, 'DELETE FROM email_codes WHERE email=?', [email]);
+      const exist = await dbFirst(env, 'SELECT id FROM users WHERE email=?', [email]);
+      if (exist && exist.id !== u.id) return bad('该邮箱已被其他账号绑定');
+      await dbRun(env, 'UPDATE users SET email=? WHERE id=?', [email, u.id]);
+      return json({ ok: true });
     }
 
     // ---- 更新资料 ----

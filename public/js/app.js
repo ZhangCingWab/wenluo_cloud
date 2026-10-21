@@ -373,6 +373,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-21 12:00', author: 'ZhangCing', items: ['🔑 邮箱验证码改为找回密码：设置页绑定邮箱后，忘记密码可用邮箱+验证码重置', '🧪 注册页改为「内测注册」：用户名+密码直接注册，无需邮箱'] },
   { date: '2026-10-18 00:30', author: 'ZhangCing', items: ['📧 邮箱验证码改用 QQ 邮箱直发，无需注册第三方服务'] },
   { date: '2026-10-17 21:30', author: 'ZhangCing', items: ['📧 新增邮箱验证码登录：输入邮箱收验证码即可登录，新用户自动注册，原有密码登录不受影响'] },
   { date: '2026-10-17 20:00', author: 'ZhangCing', items: ['💬 群聊改为QQ式左右分栏：左侧群列表右侧聊天窗，手机端上下布局'] },
@@ -2150,6 +2151,16 @@ async function viewSettings() {
       <div class="form-item"><label>新密码（至少 8 位，包含字母和数字）</label><input type="password" id="sNew"></div>
       <button class="btn primary" id="sPwd">修改密码</button>
     </div>
+    <div class="card">
+      <h2>📧 绑定邮箱</h2>
+      ${me.email
+        ? `<div class="hint">已绑定：<b>${esc(me.email.replace(/^([^@]{1,3})[^@]*(@.*)$/, '$1****$2'))}</b></div>`
+        : `<div class="hint" style="margin-bottom:10px">未绑定，绑定后可找回密码</div>
+      <div class="form-item"><label>邮箱</label><input id="bMail" type="email" placeholder="你的邮箱地址"></div>
+      <button class="btn ghost" id="bSend" style="width:100%">发送验证码</button>
+      <div class="form-item" style="margin-top:12px"><label>验证码</label><input id="bCode" inputmode="numeric" maxlength="6" placeholder="6 位数字验证码"></div>
+      <button class="btn primary" id="bBind" style="width:100%">绑定</button>`}
+    </div>
   </div>`;
   document.getElementById('sSave').onclick = async () => {
     try {
@@ -2163,6 +2174,35 @@ async function viewSettings() {
       toast('密码已修改'); sOld.value = sNew.value = '';
     } catch (e) { toast(e.message, 'err'); }
   };
+  const bSend = document.getElementById('bSend');
+  if (bSend) {
+    let bcd = 0, bTimer = null;
+    bSend.onclick = async (e) => {
+      e.target.disabled = true;
+      try {
+        await api('/api/auth/email-code', { method: 'POST', body: { email: bMail.value.trim() } });
+        toast('验证码已发送，请到邮箱查收');
+        clearInterval(bTimer);
+        bcd = 60; bSend.textContent = bcd + ' s';
+        bTimer = setInterval(() => {
+          bcd--;
+          if (bcd <= 0) { clearInterval(bTimer); bSend.disabled = false; bSend.textContent = '发送验证码'; }
+          else bSend.textContent = bcd + ' s';
+        }, 1000);
+      } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
+    };
+    document.getElementById('bBind').onclick = async (e) => {
+      e.target.disabled = true;
+      try {
+        await api('/api/auth/bind-email', { method: 'POST', body: { email: bMail.value.trim(), code: bCode.value.trim() } });
+        clearInterval(bTimer);
+        toast('绑定成功');
+        const d = await api('/api/me');
+        state.me = d.user;
+        viewSettings();
+      } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
+    };
+  }
 }
 
 /* ---------- 登录 / 注册 ---------- */
@@ -2199,17 +2239,30 @@ function viewLogin() {
       <div class="form-item"><label>密码</label><input type="password" id="lPass"></div>
       <button class="btn primary" id="lBtn" style="width:100%">登录</button>
       <div class="hint" style="margin-top:10px;text-align:center">连续输错 5 次密码将锁定账号 10 分钟</div>
-      <div class="hint" style="margin:16px 0 12px;text-align:center">—— 或使用邮箱验证码登录 ——</div>
-      <div class="form-item"><label>邮箱</label><input id="eMail" type="email" placeholder="你的邮箱地址"></div>
-      <button class="btn ghost" id="eSend" style="width:100%">发送验证码</button>
-      <div class="form-item" style="margin-top:12px"><label>验证码</label><input id="eCode" inputmode="numeric" maxlength="6" placeholder="6 位数字验证码"></div>
-      <button class="btn primary" id="eBtn" style="width:100%">登录 / 注册</button>` : `
+      <div style="margin-top:12px;text-align:center"><a href="javascript:void(0)" id="fpToggle" style="font-size:13px">忘记密码？</a></div>
+      <div id="fpBox" style="display:none;margin-top:14px;padding-top:14px;border-top:1px dashed var(--border)">
+        <div class="hint" style="text-align:center;margin-bottom:12px">—— 通过绑定邮箱找回密码 ——</div>
+        <div class="form-item"><label>邮箱</label><input id="fpMail" type="email" placeholder="账号绑定的邮箱地址"></div>
+        <button class="btn ghost" id="fpSend" style="width:100%">发送验证码</button>
+        <div class="form-item" style="margin-top:12px"><label>验证码</label><input id="fpCode" inputmode="numeric" maxlength="6" placeholder="6 位数字验证码"></div>
+        <div class="form-item"><label>新密码</label><input type="password" id="fpPass" placeholder="设置新密码（至少6位）"></div>
+        <button class="btn primary" id="fpBtn" style="width:100%">重置密码</button>
+      </div>` : `
+      <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:4px">
+        <h2 style="margin:0;font-size:18px">内测注册</h2>
+        <span class="badge approved">内测</span>
+      </div>
+      <div class="hint" style="text-align:center;margin-bottom:14px">内测期间：用户名 + 密码直接注册，无需邮箱</div>
       <div class="form-item"><label>用户名</label><input id="rUser" placeholder="3-24 位字母 / 数字 / 下划线"></div>
       <div class="form-item"><label>昵称</label><input id="rNick" placeholder="展示昵称（可留空）"></div>
       <div class="form-item"><label>密码</label><input type="password" id="rPass" placeholder="至少 8 位，需包含字母和数字"></div>
       <button class="btn primary" id="rBtn" style="width:100%">注册并登录</button>`;
     if (mode === 'login') {
-      if (cd > 0) { const b = document.getElementById('eSend'); b.disabled = true; b.textContent = cd + ' s'; }
+      if (cd > 0) { const b = document.getElementById('fpSend'); b.disabled = true; b.textContent = cd + ' s'; }
+      document.getElementById('fpToggle').onclick = () => {
+        const box = document.getElementById('fpBox');
+        box.style.display = box.style.display === 'none' ? '' : 'none';
+      };
       document.getElementById('lBtn').onclick = async (e) => {
         e.target.disabled = true;
         try {
@@ -2220,23 +2273,22 @@ function viewLogin() {
           toast('欢迎回来，' + d.user.nickname); go('#/home'); route();
         } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
       };
-      document.getElementById('eSend').onclick = async (e) => {
+      document.getElementById('fpSend').onclick = async (e) => {
         e.target.disabled = true;
         try {
-          await api('/api/auth/email-code', { method: 'POST', body: { email: eMail.value.trim() } });
+          await api('/api/auth/email-code', { method: 'POST', body: { email: fpMail.value.trim() } });
           toast('验证码已发送，请到邮箱查收');
           startCd();
         } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
       };
-      document.getElementById('eBtn').onclick = async (e) => {
+      document.getElementById('fpBtn').onclick = async (e) => {
         e.target.disabled = true;
         try {
-          const d = await api('/api/auth/email-login', { method: 'POST', body: { email: eMail.value.trim(), code: eCode.value.trim() } });
-          state.me = d.user;
-          state.token = d.token;
-          localStorage.setItem('token', d.token);
-          toast('欢迎回来，' + d.user.nickname); go('#/home'); route();
-        } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
+          await api('/api/auth/reset-password', { method: 'POST', body: { email: fpMail.value.trim(), code: fpCode.value.trim(), newPassword: fpPass.value } });
+          toast('密码已重置，请用新密码登录');
+          document.getElementById('fpBox').style.display = 'none';
+        } catch (err) { toast(err.message, 'err'); }
+        e.target.disabled = false;
       };
     }
     else document.getElementById('rBtn').onclick = async (e) => {
