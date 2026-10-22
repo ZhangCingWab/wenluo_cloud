@@ -373,6 +373,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-22 12:00', author: 'ZhangCing', items: ['📧 注册页新增「邮箱注册」：邮箱+验证码+用户名密码一步注册，原内测注册保留'] },
   { date: '2026-10-21 12:00', author: 'ZhangCing', items: ['🔑 邮箱验证码改为找回密码：设置页绑定邮箱后，忘记密码可用邮箱+验证码重置', '🧪 注册页改为「内测注册」：用户名+密码直接注册，无需邮箱'] },
   { date: '2026-10-18 00:30', author: 'ZhangCing', items: ['📧 邮箱验证码改用 QQ 邮箱直发，无需注册第三方服务'] },
   { date: '2026-10-17 21:30', author: 'ZhangCing', items: ['📧 新增邮箱验证码登录：输入邮箱收验证码即可登录，新用户自动注册，原有密码登录不受影响'] },
@@ -2208,6 +2209,7 @@ async function viewSettings() {
 /* ---------- 登录 / 注册 ---------- */
 function viewLogin() {
   let mode = 'login';
+  let regMode = 'beta';
   let cd = 0, cdTimer = null;
   const startCd = () => {
     clearInterval(cdTimer);
@@ -2248,6 +2250,22 @@ function viewLogin() {
         <div class="form-item"><label>新密码</label><input type="password" id="fpPass" placeholder="设置新密码（至少6位）"></div>
         <button class="btn primary" id="fpBtn" style="width:100%">重置密码</button>
       </div>` : `
+      <div class="tabs" style="justify-content:center">
+        <div class="t ${regMode === 'beta' ? 'active' : ''}" data-r="beta">🧪 内测注册</div>
+        <div class="t ${regMode === 'email' ? 'active' : ''}" data-r="email">📧 邮箱注册</div>
+      </div>
+      ${regMode === 'email' ? `
+      <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:4px">
+        <h2 style="margin:0;font-size:18px">邮箱注册</h2>
+        <span class="badge approved">邮箱</span>
+      </div>
+      <div class="hint" style="text-align:center;margin-bottom:14px">邮箱验证码 + 用户名密码一步注册，注册即绑定邮箱，可用于找回密码</div>
+      <div class="form-item"><label>邮箱</label><input id="rMail" type="email" placeholder="你的邮箱地址"></div>
+      <button class="btn ghost" id="rSend" style="width:100%">发送验证码</button>
+      <div class="form-item" style="margin-top:12px"><label>验证码</label><input id="rCode" inputmode="numeric" maxlength="6" placeholder="6 位数字验证码"></div>
+      <div class="form-item"><label>用户名</label><input id="rUser2" placeholder="3-24 位字母 / 数字 / 下划线"></div>
+      <div class="form-item"><label>密码</label><input type="password" id="rPass2" placeholder="至少 8 位，需包含字母和数字"></div>
+      <button class="btn primary" id="rBtn2" style="width:100%">📧 注册</button>` : `
       <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:4px">
         <h2 style="margin:0;font-size:18px">内测注册</h2>
         <span class="badge approved">内测</span>
@@ -2256,7 +2274,7 @@ function viewLogin() {
       <div class="form-item"><label>用户名</label><input id="rUser" placeholder="3-24 位字母 / 数字 / 下划线"></div>
       <div class="form-item"><label>昵称</label><input id="rNick" placeholder="展示昵称（可留空）"></div>
       <div class="form-item"><label>密码</label><input type="password" id="rPass" placeholder="至少 8 位，需包含字母和数字"></div>
-      <button class="btn primary" id="rBtn" style="width:100%">注册并登录</button>`;
+      <button class="btn primary" id="rBtn" style="width:100%">注册并登录</button>`}`;
     if (mode === 'login') {
       if (cd > 0) { const b = document.getElementById('fpSend'); b.disabled = true; b.textContent = cd + ' s'; }
       document.getElementById('fpToggle').onclick = () => {
@@ -2291,16 +2309,51 @@ function viewLogin() {
         e.target.disabled = false;
       };
     }
-    else document.getElementById('rBtn').onclick = async (e) => {
-      e.target.disabled = true;
-      try {
-        const d = await api('/api/register', { method: 'POST', body: { username: rUser.value, nickname: rNick.value, password: rPass.value } });
+    else {
+      body.querySelectorAll('.tabs .t[data-r]').forEach(t => t.onclick = () => {
+        regMode = t.dataset.r;
+        body.querySelectorAll('.tabs .t[data-r]').forEach(x => x.classList.toggle('active', x === t));
+        render();
+      });
+      const afterReg = (d) => {
         state.me = d.user;
         state.token = d.token;
         localStorage.setItem('token', d.token);
         toast('注册成功，欢迎加入文汇！'); go('#/home'); route();
-      } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
-    };
+      };
+      if (regMode === 'email') {
+        const rSend = document.getElementById('rSend');
+        let rcd = 0, rTimer = null;
+        rSend.onclick = async (e) => {
+          e.target.disabled = true;
+          try {
+            await api('/api/auth/email-code', { method: 'POST', body: { email: rMail.value.trim() } });
+            toast('验证码已发送，请到邮箱查收');
+            clearInterval(rTimer);
+            rcd = 60; rSend.textContent = rcd + ' s';
+            rTimer = setInterval(() => {
+              rcd--;
+              if (rcd <= 0) { clearInterval(rTimer); rSend.disabled = false; rSend.textContent = '发送验证码'; }
+              else rSend.textContent = rcd + ' s';
+            }, 1000);
+          } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
+        };
+        document.getElementById('rBtn2').onclick = async (e) => {
+          e.target.disabled = true;
+          try {
+            const d = await api('/api/auth/register-email', { method: 'POST', body: { email: rMail.value.trim(), code: rCode.value.trim(), username: rUser2.value, password: rPass2.value } });
+            clearInterval(rTimer);
+            afterReg(d);
+          } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
+        };
+      } else document.getElementById('rBtn').onclick = async (e) => {
+        e.target.disabled = true;
+        try {
+          const d = await api('/api/register', { method: 'POST', body: { username: rUser.value, nickname: rNick.value, password: rPass.value } });
+          afterReg(d);
+        } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
+      };
+    }
   };
   render();
   document.querySelectorAll('.auth-tabs .tab').forEach(t => t.onclick = () => {

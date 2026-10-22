@@ -1326,6 +1326,37 @@ export async function onRequest(context) {
       return json({ ok: true });
     }
 
+    // ---- 邮箱注册 ----
+    if (match(path, 'auth/register-email') && method === 'POST') {
+      const body = await request.json().catch(() => ({}));
+      const email = String(body.email || '').trim().toLowerCase();
+      const code = String(body.code || '').trim();
+      const username = clean(body.username, 24);
+      const password = body.password;
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return bad('请输入正确的邮箱地址');
+      if (!code) return bad('请输入验证码');
+      if (!/^[a-zA-Z0-9_]{3,24}$/.test(username)) return bad('用户名需为 3-24 位字母、数字或下划线');
+      if (!validPassword(password)) return bad('密码至少 8 位，且需同时包含字母和数字');
+      const rec = await dbFirst(env, 'SELECT * FROM email_codes WHERE email=?', [email]);
+      if (!rec || Date.now() > (rec.expiresAt || 0) || (rec.attempts || 0) >= 5) return bad('验证码无效或已过期');
+      if (rec.code !== code) {
+        await dbRun(env, 'UPDATE email_codes SET attempts=attempts+1 WHERE email=?', [email]);
+        return bad('验证码错误');
+      }
+      await dbRun(env, 'DELETE FROM email_codes WHERE email=?', [email]);
+      const existEmail = await dbFirst(env, 'SELECT id FROM users WHERE email=?', [email]);
+      if (existEmail) return bad('该邮箱已被注册');
+      if (db.users.some(u => u.username.toLowerCase() === username.toLowerCase())) return bad('用户名已被占用');
+      const { salt, hash } = await hashPassword(password);
+      const now = Date.now();
+      const user = { id: uid('u'), username, nickname: username, role: 'user', bio: '', createdAt: now, salt, hash, loginFails: 0, lockedUntil: 0, score: 0, badges: [], following: [], email };
+      db.users.push(user);
+      await dbRun(env, `INSERT INTO users (id,username,nickname,role,bio,created_at,salt,hash,login_fails,locked_until,score,badges,following,email) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [user.id, user.username, user.nickname, user.role, user.bio, user.createdAt, user.salt, user.hash, 0, 0, 0, '[]', '[]', user.email]);
+      const token = await createToken(env, user.id);
+      return json({ user: pubFull(user), token });
+    }
+
     // ---- 更新资料 ----
     if (match(path, 'me/profile') && method === 'PUT') {
       const u = await auth(request, env);
