@@ -117,6 +117,33 @@ function md(src) {
 
 /* 正文分段分页渲染：按空行切段逐段 md()，每页只渲染当前页段落 */
 const PROSE_PAGE_SIZE = 8;
+const pgFold = (pg, total) => {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const set = new Set([1, total, pg - 1, pg, pg + 1]);
+  if (pg <= 4) [2, 3, 4, 5].forEach(i => set.add(i));
+  if (pg >= total - 3) [total - 4, total - 3, total - 2, total - 1].forEach(i => set.add(i));
+  const out = [];
+  let prev = 0;
+  for (const p of [...set].filter(p => p >= 1 && p <= total).sort((a, b) => a - b)) {
+    if (p - prev > 1) out.push(0);
+    out.push(p);
+    prev = p;
+  }
+  return out;
+};
+const pgBar = (pg, total, go) => {
+  const pager = document.createElement('div');
+  pager.className = 'pager';
+  pager.innerHTML = `<button class="pg" data-p="1" ${pg <= 1 ? 'disabled' : ''}>«</button><button class="pg" data-p="${pg - 1}" ${pg <= 1 ? 'disabled' : ''}>‹</button>`
+    + pgFold(pg, total).map(p => p ? `<button class="pg ${p === pg ? 'cur' : ''}" data-p="${p}">${p}</button>` : '<span class="dots">…</span>').join('')
+    + `<button class="pg" data-p="${pg + 1}" ${pg >= total ? 'disabled' : ''}>›</button><button class="pg" data-p="${total}" ${pg >= total ? 'disabled' : ''}>»</button><span class="pg-info">${pg} / ${total} 页</span>`;
+  pager.querySelectorAll('button.pg').forEach(b => b.onclick = () => {
+    const p = +b.dataset.p;
+    if (!(p >= 1 && p <= total) || p === pg) return;
+    go(p);
+  });
+  return pager;
+};
 function paginateBody(box, raw) {
   const parts = [];
   for (let s of String(raw || '').split(/\n\s*\n/)) {
@@ -128,35 +155,23 @@ function paginateBody(box, raw) {
   }
   const paras = parts.map(md);
   const total = Math.max(1, Math.ceil(paras.length / PROSE_PAGE_SIZE));
-  const fold = (pg) => {
-    if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
-    const set = new Set([1, total, pg - 1, pg, pg + 1]);
-    if (pg <= 4) [2, 3, 4, 5].forEach(i => set.add(i));
-    if (pg >= total - 3) [total - 4, total - 3, total - 2, total - 1].forEach(i => set.add(i));
-    const out = [];
-    let prev = 0;
-    for (const p of [...set].filter(p => p >= 1 && p <= total).sort((a, b) => a - b)) {
-      if (p - prev > 1) out.push(0);
-      out.push(p);
-      prev = p;
-    }
-    return out;
-  };
   const render = (pg) => {
     box.innerHTML = paras.slice((pg - 1) * PROSE_PAGE_SIZE, pg * PROSE_PAGE_SIZE).join('');
-    if (total <= 1) return;
-    const pager = document.createElement('div');
-    pager.className = 'pager';
-    pager.innerHTML = `<button class="pg" data-p="1" ${pg <= 1 ? 'disabled' : ''}>«</button><button class="pg" data-p="${pg - 1}" ${pg <= 1 ? 'disabled' : ''}>‹</button>`
-      + fold(pg).map(p => p ? `<button class="pg ${p === pg ? 'cur' : ''}" data-p="${p}">${p}</button>` : '<span class="dots">…</span>').join('')
-      + `<button class="pg" data-p="${pg + 1}" ${pg >= total ? 'disabled' : ''}>›</button><button class="pg" data-p="${total}" ${pg >= total ? 'disabled' : ''}>»</button><span class="pg-info">${pg} / ${total} 页</span>`;
-    pager.querySelectorAll('button.pg').forEach(b => b.onclick = () => {
-      const p = +b.dataset.p;
-      if (!(p >= 1 && p <= total) || p === pg) return;
-      render(p);
-      box.closest('.card')?.scrollIntoView({ behavior: 'smooth' });
-    });
-    box.appendChild(pager);
+    if (total > 1) box.appendChild(pgBar(pg, total, p => { render(p); box.closest('.card')?.scrollIntoView({ behavior: 'smooth' }); }));
+  };
+  render(1);
+}
+function paginateHtml(box, html) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = String(html || '');
+  const styles = Array.from(tmp.children).filter(n => n.tagName === 'STYLE');
+  const nodes = Array.from(tmp.children).filter(n => n.tagName !== 'STYLE' && n.tagName !== 'SCRIPT');
+  const total = nodes.length <= 10 ? 1 : Math.ceil(nodes.length / PROSE_PAGE_SIZE);
+  const render = (pg) => {
+    box.innerHTML = '';
+    styles.forEach(s => box.appendChild(s));
+    (total <= 1 ? nodes : nodes.slice((pg - 1) * PROSE_PAGE_SIZE, pg * PROSE_PAGE_SIZE)).forEach(n => box.appendChild(n));
+    if (total > 1) box.appendChild(pgBar(pg, total, p => { render(p); box.scrollIntoView({ behavior: 'smooth' }); }));
   };
   render(1);
 }
@@ -426,6 +441,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-25 00:30', author: 'ZhangCing', items: ['📄 文件投稿转文章也支持分段分页：长文档（Word 转正文）不再一次性渲染，翻页阅读更流畅'] },
   { date: '2026-10-24 23:30', author: 'ZhangCing', items: ['🎨 全站视觉升级：毛玻璃质感、渐变按钮、光斑 Hero、精致阴影层次', '🌈 新增主题色自定义：7 款配色即时切换，与深色模式自由组合'] },
   { date: '2026-10-24 22:00', author: 'ZhangCing', items: ['📖 阅读页排版全面美化：正文居中、行距加大、标题/引用/代码块样式', '📄 长文按段分页：每页 8 段，只渲染当前页内容，长文加载更快'] },
   { date: '2026-10-24 20:00', author: 'ZhangCing', items: ['🖼 支持上传图片头像：设置页选择图片自动裁剪压缩，全站头像位生效，可恢复默认'] },
@@ -1384,9 +1400,10 @@ async function viewArticleDetail(id) {
         } else if (ext === 'docx') {
           await loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js');
           const r = await window.mammoth.convertToHtml({ arrayBuffer: await res.arrayBuffer() });
-          fbox.innerHTML = r.value && r.value.trim() ? r.value : '<div class="empty">（文档内容为空）</div>';
+          if (r.value && r.value.trim()) paginateHtml(fbox, r.value);
+          else fbox.innerHTML = '<div class="empty">（文档内容为空）</div>';
         } else {
-          fbox.innerHTML = md(await res.text());
+          paginateHtml(fbox, md(await res.text()));
         }
       } catch (e) {
         fbox.innerHTML = `<div class="empty">文档内容加载失败：${esc(e.message)}<br>可点击上方「⬇ 下载文件」查看原文</div>`;
