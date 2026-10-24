@@ -1131,7 +1131,7 @@ async function smtpSession(env, to, code, port, mode) {
   let send = (line) => w.write(enc.encode(line + '\r\n'));
   try {
     await smtpRead(reader, 220, '握手');
-    await send('EHLO wenhui.pages.dev');
+    await send('EHLO wenluo.pages.dev');
     await smtpRead(reader, 250, 'EHLO');
     if (mode == 'starttls') {
       await send('STARTTLS');
@@ -1139,7 +1139,7 @@ async function smtpSession(env, to, code, port, mode) {
       const up = socket.upgradeTLS();
       reader = up.readable.getReader();
       w = up.writable.getWriter();
-      await send('EHLO wenhui.pages.dev');
+      await send('EHLO wenluo.pages.dev');
       await smtpRead(reader, 250, 'EHLO2');
     }
     await send('AUTH LOGIN');
