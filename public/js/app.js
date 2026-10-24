@@ -110,6 +110,52 @@ function md(src) {
   return s;
 }
 
+/* 正文分段分页渲染：按空行切段逐段 md()，每页只渲染当前页段落 */
+const PROSE_PAGE_SIZE = 8;
+function paginateBody(box, raw) {
+  const parts = [];
+  for (let s of String(raw || '').split(/\n\s*\n/)) {
+    s = s.trim();
+    if (!s) continue;
+    const prev = parts[parts.length - 1];
+    if (prev && (prev.match(/```/g) || []).length % 2) parts[parts.length - 1] = prev + '\n\n' + s;
+    else parts.push(s);
+  }
+  const paras = parts.map(md);
+  const total = Math.max(1, Math.ceil(paras.length / PROSE_PAGE_SIZE));
+  const fold = (pg) => {
+    if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+    const set = new Set([1, total, pg - 1, pg, pg + 1]);
+    if (pg <= 4) [2, 3, 4, 5].forEach(i => set.add(i));
+    if (pg >= total - 3) [total - 4, total - 3, total - 2, total - 1].forEach(i => set.add(i));
+    const out = [];
+    let prev = 0;
+    for (const p of [...set].filter(p => p >= 1 && p <= total).sort((a, b) => a - b)) {
+      if (p - prev > 1) out.push(0);
+      out.push(p);
+      prev = p;
+    }
+    return out;
+  };
+  const render = (pg) => {
+    box.innerHTML = paras.slice((pg - 1) * PROSE_PAGE_SIZE, pg * PROSE_PAGE_SIZE).join('');
+    if (total <= 1) return;
+    const pager = document.createElement('div');
+    pager.className = 'pager';
+    pager.innerHTML = `<button class="pg" data-p="1" ${pg <= 1 ? 'disabled' : ''}>«</button><button class="pg" data-p="${pg - 1}" ${pg <= 1 ? 'disabled' : ''}>‹</button>`
+      + fold(pg).map(p => p ? `<button class="pg ${p === pg ? 'cur' : ''}" data-p="${p}">${p}</button>` : '<span class="dots">…</span>').join('')
+      + `<button class="pg" data-p="${pg + 1}" ${pg >= total ? 'disabled' : ''}>›</button><button class="pg" data-p="${total}" ${pg >= total ? 'disabled' : ''}>»</button><span class="pg-info">${pg} / ${total} 页</span>`;
+    pager.querySelectorAll('button.pg').forEach(b => b.onclick = () => {
+      const p = +b.dataset.p;
+      if (!(p >= 1 && p <= total) || p === pg) return;
+      render(p);
+      box.closest('.card')?.scrollIntoView({ behavior: 'smooth' });
+    });
+    box.appendChild(pager);
+  };
+  render(1);
+}
+
 function fmtTime(ts) {
   if (!ts) return '';
   const d = new Date(ts);
@@ -375,6 +421,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-24 22:00', author: 'ZhangCing', items: ['📖 阅读页排版全面美化：正文居中、行距加大、标题/引用/代码块样式', '📄 长文按段分页：每页 8 段，只渲染当前页内容，长文加载更快'] },
   { date: '2026-10-24 20:00', author: 'ZhangCing', items: ['🖼 支持上传图片头像：设置页选择图片自动裁剪压缩，全站头像位生效，可恢复默认'] },
   { date: '2026-10-24 18:00', author: 'ZhangCing', items: ['🐛 修复关闭浏览器后重开网站显示旧版页面的问题', '🔑 登录有效期延长至一年，常用自动续期，基本告别重新登录'] },
   { date: '2026-10-24 12:00', author: 'ZhangCing', items: ['⚡ 加载提速：首页/公告等公开数据本地秒开+后台静默更新，首页骨架屏'] },
@@ -1136,9 +1183,9 @@ async function viewPostDetail(id) {
           ${state.me && (state.me.id === p.authorId || state.me.role === 'admin') ? '<button class="btn red sm" id="delPost">删除</button>' : ''}
         </div>
       </div>
-      <div class="doc-content">${md(p.content)}</div>
+      <div class="doc-content prose" id="postBody"></div>
     </div>
-    <div class="card">
+    <div class="card gap-top">
       <h2>全部回复（${p.commentCount}）</h2>
       <div id="postComments">${renderComments(p._cmRoots || [], 'post', id)}</div>
       ${state.me ? `
@@ -1148,6 +1195,7 @@ async function viewPostDetail(id) {
       </div>` : `<div class="empty"><a href="#/login">登录</a> 后参与讨论</div>`}
     </div>
   </div>`;
+  paginateBody(document.getElementById('postBody'), p.content);
   const del = document.getElementById('delPost');
   if (del) del.onclick = async () => {
     if (!confirm('确定删除该帖子？')) return;
@@ -1267,14 +1315,14 @@ async function viewArticleDetail(id) {
           ${state.me && (state.me.id === a.authorId || state.me.role === 'admin') ? `<button class="btn red sm" id="delArt">删除</button>` : ''}
         </div>
       </div>
-      <div class="doc-content">${md(a.content)}</div>
-      ${(a.id || '').startsWith('a_file_') ? `<div class="doc-content" id="fileDocBox" style="margin-top:16px;border-top:1px dashed var(--border);padding-top:16px"><div class="empty">📄 正在加载文档内容…</div></div>` : ''}
+      <div class="doc-content prose" id="artBody"></div>
+      ${(a.id || '').startsWith('a_file_') ? `<div class="doc-content prose" id="fileDocBox" style="margin-top:16px;border-top:1px dashed var(--border);padding-top:16px"><div class="empty">📄 正在加载文档内容…</div></div>` : ''}
       <div style="margin-top:22px;text-align:center">
         <button class="btn like-btn ${a.liked ? 'liked' : ''}" id="likeBtn">${a.liked ? '❤️ 已赞' : '🤍 点赞'} · ${a.likeCount}</button>
       </div>
     </div>
 
-    <div class="card">
+    <div class="card gap-top">
       <h2>⭐ 文章点评（${rd.count}）<span class="hint" style="font-weight:400">平均 ${rd.avgRating} 星</span></h2>
       ${state.me ? `
       <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px dashed var(--border)">
@@ -1300,7 +1348,7 @@ async function viewArticleDetail(id) {
       </div>`).join('') || '<div class="empty">还没有点评，来当第一个吧！</div>'}
     </div>
 
-    <div class="card">
+    <div class="card gap-top">
       <h2>💬 评论（${cd.total}）</h2>
       ${state.me ? `
       <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px dashed var(--border)">
@@ -1312,6 +1360,7 @@ async function viewArticleDetail(id) {
 
     <div class="card" id="relatedCard" style="display:none"></div>
   </div>`;
+  paginateBody(document.getElementById('artBody'), a.content);
   // 文件投稿文章：把文档内容直接渲染到正文（docx→HTML / pdf→内嵌预览 / txt→文本）
   if ((id || '').startsWith('a_file_')) {
     const fbox = document.getElementById('fileDocBox');

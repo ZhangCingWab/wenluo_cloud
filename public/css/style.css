@@ -1176,3 +1176,45 @@ html.dark .skeleton::after { background: linear-gradient(90deg, transparent, rgb
 @keyframes skShimmer { to { transform: translateX(100%); } }
 @media (prefers-reduced-motion: reduce) { .skeleton::after { animation: none; } }
 .avatar-img { object-fit: cover; }
+
+/* ============ 阅读页排版美化（.prose）+ 正文分段分页 ============ */
+.prose { max-width: 720px; margin: 0 auto; font-size: 15.5px; line-height: 1.85; color: var(--text); }
+.prose p { margin: 0 0 14px; }
+.prose p:last-child { margin-bottom: 0; }
+.prose h1, .prose h2, .prose h3, .prose h4 { font-weight: 700; line-height: 1.45; margin: 26px 0 12px; }
+.prose h1 { font-size: 21px; }
+.prose h2 { font-size: 19px; border-left: 4px solid var(--blue); padding-left: 12px; }
+.prose h3 { font-size: 17px; }
+.prose h4 { font-size: 15.5px; }
+.prose > h1:first-child, .prose > h2:first-child, .prose > h3:first-child, .prose > p:first-child { margin-top: 2px; }
+.prose blockquote { border-left: 4px solid var(--blue); background: var(--blue-light); padding: 10px 16px; margin: 14px 0; border-radius: 0 10px 10px 0; color: #4a6382; }
+.prose blockquote p { margin: 0 0 6px; }
+.prose blockquote p:last-child { margin-bottom: 0; }
+.prose pre { background: #f4f6fa; border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; overflow-x: auto; margin: 14px 0; }
+.prose pre code { background: none; padding: 0; font-size: 13px; color: inherit; }
+.prose code { background: #eef2f6; padding: 1px 6px; border-radius: 4px; font-size: 13px; font-family: Consolas, 'Courier New', monospace; color: var(--blue-dark); }
+.prose img { max-width: 100%; border-radius: 10px; }
+.prose hr { border: none; border-top: 1px solid var(--border); margin: 22px 0; }
+.prose a { color: var(--blue); }
+.prose a:hover { color: var(--blue-dark); text-decoration: underline; }
+.prose ul, .prose ol { padding-left: 24px; margin: 10px 0; }
+.prose li { margin: 5px 0; }
+.prose .pager { justify-content: center; margin-top: 20px; padding-top: 16px; border-top: 1px dashed var(--border); }
+.pager .dots { min-width: 24px; text-align: center; color: #8a93a6; }
+/* 阅读页头部信息区 */
+.doc-head h1 { font-size: 22px; font-weight: 700; line-height: 1.45; }
+.doc-head .meta { font-size: 13px; }
+/* 阅读卡片与评论/点评卡片间隔加大 */
+.card.gap-top { margin-top: 22px; }
+/* 深色模式 */
+html.dark .prose blockquote { background: #1a2240; color: #a0a8c0; }
+html.dark .prose pre { background: #1a2240; border-color: #2a3154; }
+html.dark .prose code { background: #232b4d; color: #9fc3ff; }
+html.dark .prose pre code { background: none; color: #c8d6f5; }
+html.dark .prose .pager { border-top-color: #2a3154; }
+html.dark .pager .dots { color: #6a7599; }
+/* 手机端 */
+@media (max-width: 768px) {
+  .prose { font-size: 15px; max-width: 100%; }
+  .prose h1, .prose h2, .prose h3, .prose h4 { margin: 20px 0 10px; }
+}
