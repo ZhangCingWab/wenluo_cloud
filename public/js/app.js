@@ -202,7 +202,9 @@ const avatarColor = (id) => {
   return cs[h % cs.length];
 };
 const avatarHtml = (u, cls = '') =>
-  `<div class="avatar ${cls}" style="background:${avatarColor(u && u.id)}">${esc((u && u.nickname || '?')[0].toUpperCase())}</div>`;
+  u && u.avatarUrl
+    ? `<img class="avatar avatar-img ${cls}" src="${esc(u.avatarUrl)}" alt="">`
+    : `<div class="avatar ${cls}" style="background:${avatarColor(u && u.id)}">${esc((u && u.nickname || '?')[0].toUpperCase())}</div>`;
 const statusBadge = (s) => ({ pending: '审核中', approved: '已通过', rejected: '未通过' }[s] || s);
 const contestBadge = (s) => ({ upcoming: '未开始', ongoing: '进行中', ended: '已结束' }[s] || s);
 const needLogin = () => {
@@ -373,6 +375,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-24 20:00', author: 'ZhangCing', items: ['🖼 支持上传图片头像：设置页选择图片自动裁剪压缩，全站头像位生效，可恢复默认'] },
   { date: '2026-10-24 18:00', author: 'ZhangCing', items: ['🐛 修复关闭浏览器后重开网站显示旧版页面的问题', '🔑 登录有效期延长至一年，常用自动续期，基本告别重新登录'] },
   { date: '2026-10-24 12:00', author: 'ZhangCing', items: ['⚡ 加载提速：首页/公告等公开数据本地秒开+后台静默更新，首页骨架屏'] },
   { date: '2026-10-22 12:00', author: 'ZhangCing', items: ['📧 注册页新增「邮箱注册」：邮箱+验证码+用户名密码一步注册，原内测注册保留'] },
@@ -2175,6 +2178,17 @@ async function viewSettings() {
       <button class="btn primary" id="sPwd">修改密码</button>
     </div>
     <div class="card">
+      <h2>🖼 头像</h2>
+      <div id="avPrev" style="margin-bottom:12px">${avatarHtml(me, 'big')}</div>
+      <input type="file" id="avFile" accept="image/*" hidden>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn ghost" id="avPick">选择图片</button>
+        <button class="btn primary" id="avSave" disabled>保存头像</button>
+        ${me.avatarUrl ? '<button class="btn ghost" id="avReset">恢复默认</button>' : ''}
+      </div>
+      <div class="hint" style="margin-top:10px">支持 JPG/PNG/WebP/GIF，自动居中裁剪为方形并压缩到 256×256</div>
+    </div>
+    <div class="card">
       <h2>📧 绑定邮箱</h2>
       ${me.email
         ? `<div class="hint">已绑定：<b>${esc(me.email.replace(/^([^@]{1,3})[^@]*(@.*)$/, '$1****$2'))}</b></div>`
@@ -2196,6 +2210,53 @@ async function viewSettings() {
       await api('/api/me/password', { method: 'PUT', body: { oldPassword: sOld.value, newPassword: sNew.value } });
       toast('密码已修改'); sOld.value = sNew.value = '';
     } catch (e) { toast(e.message, 'err'); }
+  };
+  let avData = '';
+  const avPrev = document.getElementById('avPrev');
+  const avSave = document.getElementById('avSave');
+  document.getElementById('avPick').onclick = () => document.getElementById('avFile').click();
+  document.getElementById('avFile').onchange = (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const rd = new FileReader();
+    const img = new Image();
+    rd.onload = () => { img.src = rd.result; };
+    rd.onerror = () => toast('图片读取失败', 'err');
+    img.onerror = () => toast('图片读取失败', 'err');
+    img.onload = () => {
+      try {
+        const s = 256, cv = document.createElement('canvas');
+        cv.width = s; cv.height = s;
+        const cx = cv.getContext('2d');
+        const sc = Math.max(s / img.width, s / img.height);
+        const w = img.width * sc, h = img.height * sc;
+        cx.drawImage(img, (s - w) / 2, (s - h) / 2, w, h);
+        avData = cv.toDataURL('image/jpeg', 0.85);
+        avPrev.innerHTML = `<img class="avatar avatar-img big" src="${avData}" alt="">`;
+        avSave.disabled = false;
+      } catch { toast('图片读取失败', 'err'); }
+    };
+    rd.readAsDataURL(f);
+    e.target.value = '';
+  };
+  avSave.onclick = async () => {
+    avSave.disabled = true;
+    try {
+      await api('/api/avatar', { method: 'POST', body: { data: avData } });
+      toast('头像已更新');
+      const d = await api('/api/me');
+      state.me = d.user; renderSidebar(); viewSettings();
+    } catch (e) { toast(e.message, 'err'); avSave.disabled = false; }
+  };
+  const avReset = document.getElementById('avReset');
+  if (avReset) avReset.onclick = async () => {
+    avReset.disabled = true;
+    try {
+      await api('/api/avatar', { method: 'DELETE' });
+      toast('已恢复默认头像');
+      const d = await api('/api/me');
+      state.me = d.user; renderSidebar(); viewSettings();
+    } catch (e) { toast(e.message, 'err'); avReset.disabled = false; }
   };
   const bSend = document.getElementById('bSend');
   if (bSend) {

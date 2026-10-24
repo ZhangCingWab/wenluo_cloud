@@ -259,6 +259,9 @@ async function ensureSeedData(env) {
     // users 加 email 列
     try { await dbRun(env, `ALTER TABLE users ADD COLUMN email TEXT`); } catch {}
     try { await dbRun(env, `ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0`); } catch {}
+    // users 加头像列（avatar 存 dataURL，avatar_at 为缓存版本号）
+    try { await dbRun(env, `ALTER TABLE users ADD COLUMN avatar TEXT`); } catch {}
+    try { await dbRun(env, `ALTER TABLE users ADD COLUMN avatar_at INTEGER DEFAULT 0`); } catch {}
     // email_codes 表（邮箱验证码登录）
     await dbRun(env, `CREATE TABLE IF NOT EXISTS email_codes (email TEXT PRIMARY KEY, code TEXT, expires_at INTEGER, attempts INTEGER DEFAULT 0, created_at INTEGER)`);
     // reset_tokens 表
@@ -628,6 +631,7 @@ const pub = (u) => {
     nickname: u.nickname,
     role: u.role,
     bio: u.bio || '',
+    avatarUrl: u.avatar ? '/api/avatar/' + u.id + '?t=' + (u.avatarAt || 0) : '',
     createdAt: u.createdAt ?? u.created_at
   };
 };
@@ -1391,6 +1395,37 @@ export async function onRequest(context) {
       u.salt = salt; u.hash = hash;
       await dbRun(env, 'UPDATE users SET salt=?, hash=? WHERE id=?', [salt, hash, u.id]);
       return json({ ok: true });
+    }
+
+    // ---- 头像上传/删除（dataURL 存 D1 users.avatar）----
+    if (match(path, 'avatar') && method === 'POST') {
+      const u = await auth(request, env);
+      if (!u) return bad('请先登录', 401);
+      const body = await request.json().catch(() => ({}));
+      const data = String(body.data || '');
+      if (!/^data:image\/(jpeg|png|webp|gif);base64,/.test(data) || data.length > 150000) return bad('图片格式不支持或过大');
+      try { await env.DB.prepare('UPDATE users SET avatar=?, avatar_at=? WHERE id=?').bind(data, Date.now(), u.id).run(); } catch (e) { return bad(e.message); }
+      return json({ ok: true });
+    }
+    if (match(path, 'avatar') && method === 'DELETE') {
+      const u = await auth(request, env);
+      if (!u) return bad('请先登录', 401);
+      try { await env.DB.prepare('UPDATE users SET avatar=NULL, avatar_at=? WHERE id=?').bind(Date.now(), u.id).run(); } catch (e) { return bad(e.message); }
+      return json({ ok: true });
+    }
+
+    // ---- 头像下发（公开，按 dataURL 里的 mime 返回二进制）----
+    m = match(path, 'avatar/:userId');
+    if (m && method === 'GET') {
+      let row = null;
+      try { row = await env.DB.prepare('SELECT avatar FROM users WHERE id=?').bind(m.userId).first(); } catch {}
+      const data = row && row.avatar;
+      const mm = data ? data.match(/^data:(image\/[a-z0-9.+-]+);base64,([\s\S]+)$/) : null;
+      if (!mm) return bad('no avatar', 404);
+      const bin = atob(mm[2]);
+      const buf = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+      return new Response(buf, { headers: { 'Content-Type': mm[1], 'Cache-Control': 'public, max-age=86400', 'Access-Control-Allow-Origin': '*', 'X-Content-Type-Options': 'nosniff' } });
     }
 
     // ---- 用户详情（score 用实时 SQL）----

@@ -1175,3 +1175,4 @@ html.dark .skeleton { background: #1a2240; }
 html.dark .skeleton::after { background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .07), transparent); }
 @keyframes skShimmer { to { transform: translateX(100%); } }
 @media (prefers-reduced-motion: reduce) { .skeleton::after { animation: none; } }
+.avatar-img { object-fit: cover; }
