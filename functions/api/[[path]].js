@@ -91,7 +91,8 @@ function bytesToHex(b) {
 /* ---------------- D1 Token 管理 ---------------- */
 async function createToken(env, userId) {
   const token = 'tk_' + uid('') + crypto.getRandomValues(new Uint8Array(8)).reduce((a, b) => a + b.toString(16).padStart(2, '0'), '');
-  const expiresAt = Math.floor(Date.now() / 1000) + 7 * 86400;
+  // 有效期 365 天；配合 auth() 里的滑动续期（剩余不足 30 天自动续一年），常用用户基本无需重新登录
+  const expiresAt = Math.floor(Date.now() / 1000) + 365 * 86400;
   if (env.DB) {
     try { await env.DB.prepare('INSERT INTO tokens (token, user_id, expires_at) VALUES (?,?,?)').bind(token, userId, expiresAt).run(); } catch {}
   }
@@ -1027,6 +1028,16 @@ async function auth(request, env) {
   const token = header.replace(/^Bearer\s+/i, '');
   const userId = await resolveToken(env, token);
   if (!userId) return null;
+  // 滑动续期：token 剩余有效期不足 30 天时，一条 SQL 续到 now+365 天（活跃用户长期免登录）
+  if (env.DB) {
+    try {
+      const nowSec = Math.floor(Date.now() / 1000);
+      const r = await env.DB.prepare('UPDATE tokens SET expires_at = ? WHERE token = ? AND expires_at < ?')
+        .bind(nowSec + 365 * 86400, token, nowSec + 30 * 86400).run();
+      const c = _tokenCache.get(token);
+      if (c && r && r.meta && r.meta.changes > 0) c.expiresAt = (nowSec + 365 * 86400) * 1000;
+    } catch {}
+  }
   // 直接 env.DB.prepare 查，不吞异常（dbFirst 的 catch {} 会把真实错误藏起来）
   let row;
   try { row = (await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first()); } catch { return null; }
