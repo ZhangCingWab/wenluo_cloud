@@ -1479,30 +1479,28 @@ export async function onRequest(context) {
           posts: approvedPosts.length,
           contests: allContests.length
         };
-        const latestArticles = await Promise.all(
-          approvedArts.sort((a, b) => b.createdAt - a.createdAt).slice(0, 6).map(async row => {
-            const author = await userById(env, row.authorId);
-            return {
-              id: row.id, authorId: row.authorId, title: row.title, content: row.content,
-              category: row.category, status: row.status, views: row.views || 0,
-              likeCount: (row.likes ? safeJSON(row.likes).length : 0),
-              tags: row.tags ? safeJSON(row.tags) : [],
-              createdAt: row.createdAt, reviewedAt: row.reviewedAt,
-              author: author ? pub(author) : { nickname: '未知用户' }
-            };
-          })
-        );
-        const latestPosts = await Promise.all(
-          approvedPosts.sort((a, b) => b.createdAt - a.createdAt).slice(0, 6).map(async row => {
-            const author = await userById(env, row.authorId);
-            return {
-              id: row.id, authorId: row.authorId, title: row.title, content: row.content,
-              category: row.category, status: row.status, createdAt: row.createdAt,
-              commentCount: (row.comments ? safeJSON(row.comments).length : 0),
-              author: author ? pub(author) : { nickname: '未知用户' }
-            };
-          })
-        );
+        const umap = {};
+        users.forEach(u => { umap[u.id] = u; });
+        const latestArticles = approvedArts.sort((a, b) => b.createdAt - a.createdAt).slice(0, 6).map(row => {
+          const author = umap[row.authorId] || null;
+          return {
+            id: row.id, authorId: row.authorId, title: row.title, content: row.content,
+            category: row.category, status: row.status, views: row.views || 0,
+            likeCount: (row.likes ? safeJSON(row.likes).length : 0),
+            tags: row.tags ? safeJSON(row.tags) : [],
+            createdAt: row.createdAt, reviewedAt: row.reviewedAt,
+            author: author ? pub(author) : { nickname: '未知用户' }
+          };
+        });
+        const latestPosts = approvedPosts.sort((a, b) => b.createdAt - a.createdAt).slice(0, 6).map(row => {
+          const author = umap[row.authorId] || null;
+          return {
+            id: row.id, authorId: row.authorId, title: row.title, content: row.content,
+            category: row.category, status: row.status, createdAt: row.createdAt,
+            commentCount: (row.comments ? safeJSON(row.comments).length : 0),
+            author: author ? pub(author) : { nickname: '未知用户' }
+          };
+        });
         const activeContests = allContests
           .filter(c => (c.startTime || 0) <= now && now <= (c.endTime || 0))
           .map(c => ({

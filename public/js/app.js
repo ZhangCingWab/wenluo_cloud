@@ -373,6 +373,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-24 12:00', author: 'ZhangCing', items: ['⚡ 加载提速：首页/公告等公开数据本地秒开+后台静默更新，首页骨架屏'] },
   { date: '2026-10-22 12:00', author: 'ZhangCing', items: ['📧 注册页新增「邮箱注册」：邮箱+验证码+用户名密码一步注册，原内测注册保留'] },
   { date: '2026-10-21 12:00', author: 'ZhangCing', items: ['🔑 邮箱验证码改为找回密码：设置页绑定邮箱后，忘记密码可用邮箱+验证码重置', '🧪 注册页改为「内测注册」：用户名+密码直接注册，无需邮箱'] },
   { date: '2026-10-18 00:30', author: 'ZhangCing', items: ['📧 邮箱验证码改用 QQ 邮箱直发，无需注册第三方服务'] },
@@ -572,6 +573,26 @@ function showAnnModal(list) {
 }
 async function viewHome() {
   hideAiFab();
+  const skItem = () => `<div class="item"><div class="skeleton sk-ava"></div><div style="flex:1"><div class="skeleton sk-ln" style="width:72%"></div><div class="skeleton sk-ln" style="width:46%;height:11px"></div></div></div>`;
+  $app.innerHTML = `
+  <div class="container">
+    <div class="hero">
+      <div class="skeleton" style="width:min(320px,62%);height:30px;margin:0 auto 10px"></div>
+      <div class="skeleton" style="width:min(430px,74%);height:15px;margin:0 auto 20px"></div>
+      <div class="hero-btns">${'<div class="skeleton sk-btn"></div>'.repeat(4)}</div>
+    </div>
+    <div class="home-grid">
+      <div class="hg-col">
+        <div class="card"><h2>📢 公告</h2><div class="skeleton sk-ln"></div><div class="skeleton sk-ln" style="width:82%"></div><div class="skeleton sk-ln" style="width:64%"></div></div>
+        <div class="card"><h2>📖 最新文章</h2>${skItem() + skItem() + skItem()}</div>
+      </div>
+      <div class="hg-col">
+        <div class="card"><h2>💬 最新帖子</h2>${skItem() + skItem() + skItem()}</div>
+        <div class="card"><h2>🏁 进行中的比赛</h2>${skItem()}</div>
+      </div>
+    </div>
+    <div class="stats">${'<div class="stat"><div class="skeleton sk-num"></div><div class="skeleton sk-ln" style="width:52px;margin:6px auto 0"></div></div>'.repeat(4)}</div>
+  </div>`;
   const [d, cd, ad] = await Promise.all([
     api('/api/home').catch(() => ({ stats: {}, latestArticles: [], latestPosts: [], activeContests: [] })),
     state.me ? api('/api/checkins/today').catch(() => ({ daily: null, streak: 0, myCheckin: null })) : { daily: null, streak: 0, myCheckin: null },

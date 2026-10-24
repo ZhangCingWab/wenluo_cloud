@@ -1159,3 +1159,19 @@ html.dark #userMenu { background: #161d33; }
   #sidebar:hover .logo-text, #sidebar:hover .nav a span.txt,
   #sidebar:hover .nav-label, #sidebar:hover .user-card .uinfo { opacity: 1; }
 }
+
+/* ============ 首页骨架屏（数据返回前占位，shimmer 仅 transform 无重排） ============ */
+.skeleton { background: #e3e8ef; border-radius: 8px; position: relative; overflow: hidden; }
+.skeleton::after {
+  content: ''; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .6), transparent);
+  animation: skShimmer 1.3s ease-in-out infinite;
+}
+.skeleton.sk-ava { width: 28px; height: 28px; border-radius: 50%; flex: none; }
+.skeleton.sk-ln { height: 13px; margin-bottom: 8px; }
+.skeleton.sk-btn { width: 122px; height: 40px; border-radius: 10px; }
+.skeleton.sk-num { width: 46px; height: 26px; margin: 0 auto; }
+html.dark .skeleton { background: #1a2240; }
+html.dark .skeleton::after { background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .07), transparent); }
+@keyframes skShimmer { to { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) { .skeleton::after { animation: none; } }
