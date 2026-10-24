@@ -10,6 +10,11 @@
     localStorage.setItem('theme', isDark ? 'dark' : 'light');
   };
 })();
+// 主题色（data-accent 换肤）
+(function initAccent() {
+  const a = localStorage.getItem('accent');
+  if (a && a !== 'blue') document.documentElement.dataset.accent = a;
+})();
 // 统一 routeCleanup（清理进度条 scroll 监听等）
 window.addEventListener('hashchange', () => {
   setTimeout(() => document.dispatchEvent(new Event('routeCleanup')), 0);
@@ -421,6 +426,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-24 23:30', author: 'ZhangCing', items: ['🎨 全站视觉升级：毛玻璃质感、渐变按钮、光斑 Hero、精致阴影层次', '🌈 新增主题色自定义：7 款配色即时切换，与深色模式自由组合'] },
   { date: '2026-10-24 22:00', author: 'ZhangCing', items: ['📖 阅读页排版全面美化：正文居中、行距加大、标题/引用/代码块样式', '📄 长文按段分页：每页 8 段，只渲染当前页内容，长文加载更快'] },
   { date: '2026-10-24 20:00', author: 'ZhangCing', items: ['🖼 支持上传图片头像：设置页选择图片自动裁剪压缩，全站头像位生效，可恢复默认'] },
   { date: '2026-10-24 18:00', author: 'ZhangCing', items: ['🐛 修复关闭浏览器后重开网站显示旧版页面的问题', '🔑 登录有效期延长至一年，常用自动续期，基本告别重新登录'] },
@@ -2211,9 +2217,17 @@ async function viewMine() {
 async function viewSettings() {
   if (needLogin()) return;
   const me = state.me;
+  const ACCENTS = [['blue', '#3498db', '经典蓝'], ['purple', '#9b59b6', '优雅紫'], ['teal', '#1abc9c', '青碧'], ['green', '#2ecc71', '清新绿'], ['orange', '#e67e22', '活力橙'], ['rose', '#e84393', '玫瑰粉'], ['indigo', '#6366f1', '靛蓝']];
+  const curAcc = document.documentElement.dataset.accent || 'blue';
+  const accDots = ACCENTS.map(([k, c, n]) => `<button class="acc-dot${curAcc === k ? ' on' : ''}" data-acc="${k}" style="background:${c}" title="${n}">${curAcc === k ? '✓' : ''}</button>`).join('');
   $app.innerHTML = `
   <div class="container" style="max-width:620px">
     <div class="page-title"><h1>偏好设置</h1></div>
+    <div class="card">
+      <h2>🎨 界面</h2>
+      <div class="set-row"><span class="set-lab">主题色</span><div class="acc-row" id="accRow">${accDots}</div></div>
+      <div class="set-row"><span class="set-lab">深色模式</span><button class="dark-switch${document.documentElement.classList.contains('dark') ? ' on' : ''}" id="dkSwitch" aria-label="切换深色模式"></button></div>
+    </div>
     <div class="card">
       <h2>基本资料</h2>
       <div class="form-item"><label>昵称</label><input id="sNick" maxlength="24" value="${esc(me.nickname)}"></div>
@@ -2248,6 +2262,21 @@ async function viewSettings() {
       <button class="btn primary" id="bBind" style="width:100%">绑定</button>`}
     </div>
   </div>`;
+  document.getElementById('accRow').onclick = (e) => {
+    const b = e.target.closest('.acc-dot');
+    if (!b || b.classList.contains('on')) return;
+    const v = b.dataset.acc;
+    if (v === 'blue') { delete document.documentElement.dataset.accent; localStorage.removeItem('accent'); }
+    else { document.documentElement.dataset.accent = v; localStorage.setItem('accent', v); }
+    document.querySelectorAll('#accRow .acc-dot').forEach(d => { const on = d === b; d.classList.toggle('on', on); d.textContent = on ? '✓' : ''; });
+    toast('主题已切换');
+  };
+  document.getElementById('dkSwitch').onclick = (e) => {
+    const nd = !document.documentElement.classList.contains('dark');
+    window.applyTheme(nd);
+    e.currentTarget.classList.toggle('on', nd);
+    toast(nd ? '已开启深色模式' : '已切换为浅色模式');
+  };
   document.getElementById('sSave').onclick = async () => {
     try {
       const d = await api('/api/me/profile', { method: 'PUT', body: { nickname: sNick.value, bio: sBio.value } });
