@@ -293,39 +293,61 @@ const needLogin = () => {
   return false;
 };
 
-/* ---------- 侧边栏 ---------- */
+/* ---------- 线性描边图标（洛谷风 SVG） ---------- */
+const ICONS = {
+  home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.7V21h14V9.7"/><path d="M9.5 21v-6.5h5V21"/>',
+  daily: '<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><path d="m9 13.5 2 2 4-4.5"/>',
+  forum: '<path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.3 8.5 8.5 0 0 1-3.9-.9L3 21l2.1-4.2a8.38 8.38 0 0 1-1.1-4C4 8.5 7.6 5 12 5s9 3.2 9 6.5z"/>',
+  discuss: '<circle cx="12" cy="12" r="9"/><path d="M9.2 9.2a2.8 2.8 0 0 1 5.5.7c0 1.9-2.7 2.3-2.7 3.7"/><path d="M12 17h.01"/>',
+  articles: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
+  problems: '<path d="M22 9 12 4 2 9l10 5 10-5z"/><path d="M6 11.5V16c0 1.6 2.7 3 6 3s6-1.4 6-3v-4.5"/><path d="M22 9v5"/>',
+  templates: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/>',
+  rank: '<path d="M18 20V10M12 20V4M6 20v-6"/>',
+  contests: '<path d="M6 3h12v6a6 6 0 0 1-12 0z"/><path d="M6 5H3.5A1.5 1.5 0 0 0 2 6.5C2 8.5 3.5 10 6 10"/><path d="M18 5h2.5A1.5 1.5 0 0 1 22 6.5C22 8.5 20.5 10 18 10"/><path d="M12 15v3"/><path d="M8 21h8"/>',
+  submit: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>',
+  downloads: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
+  mine: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h6"/>',
+  messages: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
+  checkA: '<circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.5 2.5 5-5"/>',
+  checkP: '<path d="M11 6h9M11 12h9M11 18h9"/><path d="m4 6 1.2 1.2L7.5 5"/><path d="m4 12 1.2 1.2L7.5 11"/><path d="m4 18 1.2 1.2L7.5 17"/>',
+  folder: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
+  key: '<circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 8.8-8.8"/><path d="m16 7 3 3"/><path d="m19 4 2 2"/>',
+  flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/>'
+};
+const ic = (n) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICONS[n] + '</svg>';
+
 function renderSidebar() {
   const me = state.me;
   const cur = location.hash.replace(/^#/, '') || '/home';
   const link = (h, icon, label, extra) =>
-    `<a href="#${h}" class="${cur === h || cur.startsWith(h + '/') ? 'active' : ''}"><span class="icon">${icon}</span><span class="txt">${label}</span>${extra || ''}</a>`;
+    `<a href="#${h}" class="${cur === h || cur.startsWith(h + '/') ? 'active' : ''}"><span class="icon">${ic(icon)}</span><span class="txt">${label}</span>${extra || ''}</a>`;
   let html = `
   <div class="logo">
     <div class="logo-mark"><img src="/img/logo.svg" alt="文汇"></div>
     <div class="logo-text"><span class="logo-name">文汇</span><span class="logo-sub">WENHUI</span></div>
   </div>
   <nav class="nav">
-    ${link('/home', '🏠', '主页')}
-    ${link('/daily', '🔥', '每日打卡')}
-    ${link('/forum', '💬', '论坛广场')}
-    ${link('/discuss', '🙋', '讨论区')}
-    ${link('/articles', '📖', '文章库')}
-    ${link('/problems', '📚', '题库')}
-    ${link('/templates', '📝', '写作模板')}
-    ${link('/rank', '🏆', '排行榜')}
-    ${link('/contests', '🏁', '比赛广场')}
-    ${link('/submit', '📤', '文件投稿')}
-    ${link('/downloads', '⬇️', '下载站')}
-    ${link('/mine', '📝', '我的文章')}
-    ${me ? link('/messages', '✉️', '私信', '<span class="msg-badge" id="msgBadge" style="display:none">0</span>') : ''}
+    ${link('/home', 'home', '主页')}
+    ${link('/daily', 'daily', '每日打卡')}
+    ${link('/forum', 'forum', '论坛广场')}
+    ${link('/discuss', 'discuss', '讨论区')}
+    ${link('/articles', 'articles', '文章库')}
+    ${link('/problems', 'problems', '题库')}
+    ${link('/templates', 'templates', '写作模板')}
+    ${link('/rank', 'rank', '排行榜')}
+    ${link('/contests', 'contests', '比赛广场')}
+    ${link('/submit', 'submit', '文件投稿')}
+    ${link('/downloads', 'downloads', '下载站')}
+    ${link('/mine', 'mine', '我的文章')}
+    ${me ? link('/messages', 'messages', '私信', '<span class="msg-badge" id="msgBadge" style="display:none">0</span>') : ''}
     ${me && me.role === 'admin' ? `
       <div class="nav-label">后台管理</div>
-      ${link('/admin/articles', '✅', '审核文章')}
-      ${link('/admin/posts', '📋', '审核帖子')}
-      ${link('/admin/problems', '📚', '审核题目')}
-      ${link('/admin/files', '📁', '审核投稿')}
-      ${link('/admin/invite', '🔑', '邀请码管理')}
-      ${link('/admin/contest', '🏁', '创建比赛')}` : ''}
+      ${link('/admin/articles', 'checkA', '审核文章')}
+      ${link('/admin/posts', 'checkP', '审核帖子')}
+      ${link('/admin/problems', 'problems', '审核题目')}
+      ${link('/admin/files', 'folder', '审核投稿')}
+      ${link('/admin/invite', 'key', '邀请码管理')}
+      ${link('/admin/contest', 'flag', '创建比赛')}` : ''}
   </nav>`;
   $sidebar.innerHTML = html;
   renderUserChip();
@@ -456,6 +478,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-25 13:30', author: 'ZhangCing', items: ['🎨 侧边栏图标改为洛谷风线性描边 SVG 图标，跟随主题色与深色模式'] },
   { date: '2026-10-25 12:00', author: 'ZhangCing', items: ['🏠 个人主页全新改版（洛谷风）：横幅头图 + 标签页 + 关键数据栏', '🔥 新增活跃热力图：近半年发文/发帖/打卡/练习按日统计，一眼看到坚持痕迹', '⚡ 新增积分构成卡：文章/帖子/获赞/评论/练习/打卡分别计分，与排行榜同源'] },
   { date: '2026-10-25 01:30', author: 'ZhangCing', items: ['📄 分页改按字数切页：每页约 1200 字，短句段落自动合并，长文档页数大幅减少'] },
   { date: '2026-10-25 00:30', author: 'ZhangCing', items: ['📄 文件投稿转文章也支持分段分页：长文档（Word 转正文）不再一次性渲染，翻页阅读更流畅'] },

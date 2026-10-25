@@ -1395,6 +1395,9 @@ html.dark .heat-grid i.h0, html.dark .heat-legend .h0 { background: #232b3a; }
   .lp-tabs .lt { padding: 11px 9px; font-size: 13px; }
   .lp-banner .avatar { width: 56px; height: 56px; font-size: 24px; }
 }
+/* ============ 侧边栏线性图标（SVG） ============ */
+.nav a .icon svg { width: 17px; height: 17px; display: block; }
+
 @media (prefers-reduced-motion: reduce) {
   .lp-bokeh i { animation: none; }
   .lp-tabs .lt.active::after { animation: none; }
