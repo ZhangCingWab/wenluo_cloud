@@ -83,8 +83,22 @@ function esc(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-/* 轻量 Markdown 渲染 */
+/* 轻量 Markdown 渲染（优先 marked + DOMPurify，退化到内置） */
 function md(src) {
+  if (!src) return '';
+  try {
+    const MK = window.marked && (window.marked.parse ? window.marked : window.marked.marked);
+    if (MK && typeof MK.parse === 'function' && window.DOMPurify) {
+      return DOMPurify.sanitize(MK.parse(String(src), { breaks: true, gfm: true }));
+    }
+  } catch (e) {}
+  return mdLegacy(src);
+}
+if (window.DOMPurify) DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (node.tagName === 'A') { node.setAttribute('target', '_blank'); node.setAttribute('rel', 'noopener'); }
+  if (node.tagName === 'IMG') node.setAttribute('loading', 'lazy');
+});
+function mdLegacy(src) {
   if (!src) return '';
   let s = esc(src);
   const blocks = [];
@@ -481,6 +495,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-25 21:00', author: 'ZhangCing', items: ['📝 Markdown 渲染换专业引擎（marked + DOMPurify）：空格/缩进/表格/任务列表/引用块全支持，全站与软件预览同步升级'] },
   { date: '2026-10-25 20:30', author: 'ZhangCing', items: ['🛠 软件 v1.1.2 修复启动崩溃：全部按钮无反应、编辑器空白、文字不可见已解决，并经端到端实测'] },
   { date: '2026-10-25 19:00', author: 'ZhangCing', items: ['⬆ 软件 v1.1.1 新增应用内「检查更新」：一键检查 → 进度条下载 → 静默安装 → 自动重启', '🛠 修复 v1.1.0 打开后全部按钮无反应的问题'] },
   { date: '2026-10-25 18:00', author: 'ZhangCing', items: ['🖥 软件大版本 v1.1.0：从网站套壳重做为 IDE 式写作编辑器（数据与网站互通）', '📁 全新「文章空间」：选择本地文件夹，多标签打开 .md 文章，行号+语法高亮+实时预览', '🚀 一键发布：登录文汇账号后，当前文档可直接发布为文章或帖子'] },
@@ -630,17 +645,17 @@ async function viewDownload() {
       <img class="dl-logo" src="/img/logo.svg" alt="文汇">
       <h1>下载文汇</h1>
       <div class="dl-sub">桌面版 · 安卓版 · 网页版，随时随地记录与创作</div>
-      <div class="dl-badges"><span>当前版本 v1.1.2</span><span>2026-10-25 更新</span><span>免费使用</span></div>
+      <div class="dl-badges"><span>当前版本 v1.1.3</span><span>2026-10-25 更新</span><span>免费使用</span></div>
     </div>
     <div class="dl-grid">
       <div class="card dl-card">
         <div class="dl-ic">${ic('win')}</div>
         <div class="dl-name">Windows 安装版</div>
-        <div class="dl-desc">IDE 式写作编辑器 v1.1.2：文章空间 + 多标签编辑 + 一键发布到网站 · 约 106MB</div>
-        <a class="btn primary dl-btn" href="https://gh-proxy.com/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.2/WenHui-1.1.2-setup.exe" download="WenHui-1.1.0-setup.exe">📥 高速下载</a>
+        <div class="dl-desc">IDE 式写作编辑器 v1.1.3：文章空间 + 多标签编辑 + 一键发布到网站 · 约 106MB</div>
+        <a class="btn primary dl-btn" href="https://gh-proxy.com/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.3/WenHui-1.1.3-setup.exe" download="WenHui-1.1.0-setup.exe">📥 高速下载</a>
         <div class="dl-alt">
-          <a href="https://ghfast.top/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.2/WenHui-1.1.2-setup.exe" download>备用 1</a>
-          <a href="https://ghproxy.net/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.2/WenHui-1.1.2-setup.exe" download>备用 2</a>
+          <a href="https://ghfast.top/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.3/WenHui-1.1.3-setup.exe" download>备用 1</a>
+          <a href="https://ghproxy.net/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.3/WenHui-1.1.3-setup.exe" download>备用 2</a>
           <a href="/api/download/exe" download>本站直下</a>
         </div>
       </div>
