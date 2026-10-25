@@ -3212,8 +3212,8 @@ export async function onRequest(context) {
       const myReviewCount = db.reviews.filter(x => x.authorId === me.id).length;
       if (myReviewCount >= 3) awardBadge(me.id, '热心点评员', '你已点评 3 篇以上文章');
       try { await env.DB.prepare(`INSERT INTO reviews (id,article_id,author_id,rating,content,created_at) VALUES (?,?,?,?,?,?)`)
-        .bind(uid('rv'), r.targetId, r.authorId, r.rating, r.content, Date.now()).run(); } catch (e) { return bad(e.message); }
-      try { await env.DB.prepare(`UPDATE users SET score=?, badges=? WHERE id=?`).bind(me.score, JSON.stringify(me.badges), me.id).run(); } catch (e) {}
+        .bind(r.id, r.articleId, r.authorId, r.rating, r.content, r.createdAt).run(); } catch (e) { return bad(e.message); }
+      try { await env.DB.prepare(`UPDATE users SET score=?, badges=? WHERE id=?`).bind(me.score || 0, JSON.stringify(me.badges || []), me.id).run(); } catch (e) {}
       invalidateCache();
       return json({ ok: true, review: { ...r, author: withAuthorSyncSimple(me.id, db) } });
     }
@@ -3294,7 +3294,7 @@ export async function onRequest(context) {
       delete me._tmpStreak;
       try { await env.DB.prepare(`INSERT INTO checkins (id,author_id,problem_id,content,word_count,points,streak,created_at) VALUES (?,?,?,?,?,?,?,?)`)
         .bind(c.id, c.authorId, c.problemId, c.content, c.wordCount, c.points, c.streak, c.createdAt).run(); } catch (e) { return bad(e.message); }
-      try { await env.DB.prepare(`UPDATE users SET score=?, badges=? WHERE id=?`).bind(me.score, JSON.stringify(me.badges), me.id).run(); } catch (e) {}
+      try { await env.DB.prepare(`UPDATE users SET score=?, badges=? WHERE id=?`).bind(me.score || 0, JSON.stringify(me.badges || []), me.id).run(); } catch (e) {}
       invalidateCache();
       return json({ ok: true, checkin: c, streak, points });
     }
