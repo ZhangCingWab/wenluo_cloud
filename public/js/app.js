@@ -456,6 +456,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-25 12:00', author: 'ZhangCing', items: ['🏠 个人主页全新改版（洛谷风）：横幅头图 + 标签页 + 关键数据栏', '🔥 新增活跃热力图：近半年发文/发帖/打卡/练习按日统计，一眼看到坚持痕迹', '⚡ 新增积分构成卡：文章/帖子/获赞/评论/练习/打卡分别计分，与排行榜同源'] },
   { date: '2026-10-25 01:30', author: 'ZhangCing', items: ['📄 分页改按字数切页：每页约 1200 字，短句段落自动合并，长文档页数大幅减少'] },
   { date: '2026-10-25 00:30', author: 'ZhangCing', items: ['📄 文件投稿转文章也支持分段分页：长文档（Word 转正文）不再一次性渲染，翻页阅读更流畅'] },
   { date: '2026-10-24 23:30', author: 'ZhangCing', items: ['🎨 全站视觉升级：毛玻璃质感、渐变按钮、光斑 Hero、精致阴影层次', '🌈 新增主题色自定义：7 款配色即时切换，与深色模式自由组合'] },
@@ -3169,21 +3170,16 @@ async function viewDaily() {
 async function viewProfile(id) {
   hideAiFab();
   showAiFab();
-  const d = await api('/api/users/' + id);
+  const [d, rk] = await Promise.all([
+    api('/api/users/' + id),
+    api('/api/rank').catch(() => null)
+  ]);
   const u = d.user;
   const isMe = state.me && state.me.id === u.id;
-  const tab = viewProfile._t || 'a';
+  const tab = viewProfile._t || 'home';
+  const rankPos = rk && rk.rank ? rk.rank.findIndex(r => r.user.id === id) + 1 : 0;
 
-  // 勋章 emoji 映射
-  const badgeEmoji = {
-    '热心点评员': '⭐',
-    '勤耕不辍': '🌱',
-    '一周达人': '🔥',
-    '月度冠军': '🏆',
-    '首篇文章': '📖',
-    '首个帖子': '💬',
-    '比赛勇士': '🎯'
-  };
+  // 勋章定义
   const badges = u.badges || [];
   const allBadges = [
     { name: '热心点评员', reason: '点评 3 篇以上文章', icon: '⭐' },
@@ -3193,8 +3189,55 @@ async function viewProfile(id) {
   ];
   const earned = new Set(badges.map(b => b.name));
 
+  // 活跃热力图（近 28 周，列对齐周一）
+  const actMap = {};
+  (d.activity || []).forEach(a => { actMap[a.d] = a.n; });
+  const lvOf = n => (n <= 0 ? 0 : n === 1 ? 1 : n <= 3 ? 2 : n <= 6 ? 3 : 4);
+  const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  const heatStart = new Date(t0);
+  heatStart.setDate(heatStart.getDate() - 27 * 7 - ((t0.getDay() + 6) % 7));
+  let cells = '', months = '', lastM = -1;
+  for (let w = 0; w < 28; w++) {
+    for (let dd = 0; dd < 7; dd++) {
+      const day = new Date(heatStart);
+      day.setDate(heatStart.getDate() + w * 7 + dd);
+      if (day > t0) { cells += '<i></i>'; continue; }
+      const k = day.getFullYear() + '-' + String(day.getMonth() + 1).padStart(2, '0') + '-' + String(day.getDate()).padStart(2, '0');
+      const n = actMap[k] || 0;
+      cells += `<i class="h${lvOf(n)}" title="${k} · ${n} 次动态"></i>`;
+    }
+    const m = new Date(heatStart);
+    m.setDate(heatStart.getDate() + w * 7);
+    if (m.getMonth() !== lastM) { lastM = m.getMonth(); months += `<span style="left:${w * 14}px">${m.getMonth() + 1}月</span>`; }
+  }
+
   let list = '';
-  if (tab === 'a') {
+  if (tab === 'home') {
+    const feed = [
+      ...d.articles.map(a => ({ t: a.createdAt, kind: '文章', icon: '📖', url: '#/article/' + a.id, title: a.title })),
+      ...d.posts.map(p => ({ t: p.createdAt, kind: '帖子', icon: '💬', url: '#/post/' + p.id, title: p.title }))
+    ].sort((a, b) => b.t - a.t).slice(0, 10);
+    list = `
+    <div class="card">
+      <div class="lp-card-h">🔥 活跃热力图<span class="lp-hint">近半年 · 发文/发帖/打卡/练习</span></div>
+      <div class="lp-heat">
+        <div class="heat-week"><span style="grid-row:1">一</span><span style="grid-row:3">三</span><span style="grid-row:5">五</span><span style="grid-row:7">日</span></div>
+        <div class="heat-right">
+          <div class="heat-months">${months}</div>
+          <div class="heat-grid">${cells}</div>
+        </div>
+      </div>
+      <div class="heat-legend">少<i class="h0"></i><i class="h1"></i><i class="h2"></i><i class="h3"></i><i class="h4"></i>多</div>
+    </div>
+    <div class="card">
+      <div class="lp-card-h">📰 近期动态</div>
+      ${feed.length ? feed.map(f => `
+        <div class="item"><div style="flex:1">
+          <div class="title">${f.icon} <a href="${f.url}">${esc(f.title)}</a></div>
+          <div class="meta"><span>${f.kind}</span><span>${fmtTime(f.t)}</span></div>
+        </div></div>`).join('') : '<div class="empty">还没有公开动态</div>'}
+    </div>`;
+  } else if (tab === 'a') {
     list = d.articles && d.articles.length ? d.articles.map(a => `
       <div class="item"><div style="flex:1">
         <div class="title"><a href="#/article/${a.id}">${esc(a.title)}</a></div>
@@ -3241,55 +3284,74 @@ async function viewProfile(id) {
       </div></div>`).join('') : '<div class="empty">还没有粉丝</div>';
   }
 
+  const sc = d.stats;
+  const comp = [
+    ['📖 文章 ×10', sc.articles * 10],
+    ['💬 帖子 ×5', sc.posts * 5],
+    ['❤️ 获赞 ×3', sc.likes * 3],
+    ['💭 评论 ×2', (sc.comments || 0) * 2],
+    ['✍️ 练习 ×2', (sc.practices || 0) * 2],
+    ['📋 打卡 ×2', (sc.checkins || 0) * 2]
+  ];
   $app.innerHTML = `
-  <div class="container" style="max-width:860px">
-    <div class="card">
-      <div class="portfolio-head">
-        ${avatarHtml(u, 'big')}
-        <div style="flex:1">
-          <h1 style="font-size:20px">${esc(u.nickname)} ${u.role === 'admin' ? '<span class="role-badge">管理员</span>' : ''}</h1>
-          <div class="meta" style="color:var(--text2);font-size:13px;margin-top:4px">@${esc(u.username)} · 加入于 ${fmtTime(u.createdAt)}</div>
-          <div style="margin-top:8px;font-size:13.5px;color:#556">${esc(u.bio || '这个人很懒，什么都没写')}</div>
-          ${!isMe && state.me ? `
-          <div style="margin-top:10px;display:flex;gap:8px">
-            <button class="btn ${d.isFollowing ? 'ghost' : 'primary'}" id="followBtn">${d.isFollowing ? '✅ 已关注' : '➕ 关注'}</button>
-            <button class="btn ghost" id="dmBtn">✉️ 发私信</button>
-          </div>` : ''}
+  <div class="container lp-page">
+    <div class="lp-banner">
+      <div class="lp-bokeh"><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="lp-in">
+        <div class="lp-id">
+          ${avatarHtml(u, 'lp-ava')}
+          <div class="lp-idt">
+            <h1>${esc(u.nickname)} ${u.role === 'admin' ? '<span class="role-badge">管理员</span>' : ''}</h1>
+            <div class="lp-bio">${esc(u.bio || '这个人很懒，什么都没有留下')}</div>
+          </div>
+        </div>
+        <div class="lp-acts">
+          ${isMe
+            ? '<a class="btn ghost" href="#/settings">⚙️ 个人设置</a>'
+            : (state.me ? `
+          <button class="btn ${d.isFollowing ? 'ghost' : 'primary'}" id="followBtn">${d.isFollowing ? '✅ 已关注' : '➕ 关注'}</button>
+          <button class="btn ghost" id="dmBtn">✉️ 发私信</button>` : '')}
         </div>
       </div>
-      <div class="profile-stats">
-        <div class="ps"><b>${d.stats.articles}</b><span class="hint">文章</span></div>
-        <div class="ps"><b>${d.stats.posts}</b><span class="hint">帖子</span></div>
-        <div class="ps"><b>${d.stats.likes}</b><span class="hint">获赞</span></div>
-        <div class="ps"><b>${d.stats.score || 0}</b><span class="hint">积分</span></div>
-        <div class="ps"><b>${d.stats.followingCount}</b><span class="hint">关注</span></div>
-        <div class="ps"><b>${d.stats.followerCount}</b><span class="hint">粉丝</span></div>
-      </div>
-      ${badges.length ? `
-      <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--border)">
-        <div class="hint" style="margin-bottom:6px">🎖️ 勋章墙（${badges.length}）</div>
-        <div class="badge-list">
-          ${badges.map(b => `<div class="badge-item">
-            <div class="bi-icon">${badgeEmoji[b.name] || '🏅'}</div>
-            <div class="bi-name">${esc(b.name)}</div>
-          </div>`).join('')}
-        </div>
-      </div>` : ''}
     </div>
-
-    <div class="card">
-      <div class="portfolio-tabs">
-        <span class="pt ${tab === 'a' ? 'active' : ''}" data-t="a">📖 文章 ${d.stats.articles}</span>
-        <span class="pt ${tab === 'p' ? 'active' : ''}" data-t="p">💬 帖子 ${d.stats.posts}</span>
-        <span class="pt ${tab === 'b' ? 'active' : ''}" data-t="b">🎖️ 勋章</span>
-        <span class="pt ${tab === 'c' ? 'active' : ''}" data-t="c">🏁 比赛 ${(d.contests || []).length}</span>
-        <span class="pt ${tab === 'f' ? 'active' : ''}" data-t="f">➕ 关注 ${d.stats.followingCount}</span>
-        <span class="pt ${tab === 'w' ? 'active' : ''}" data-t="w">👥 粉丝 ${d.stats.followerCount}</span>
+    <div class="lp-tabs-wrap">
+      <div class="lp-tabs">
+        <span class="lt ${tab === 'home' ? 'active' : ''}" data-t="home">主页</span>
+        <span class="lt ${tab === 'a' ? 'active' : ''}" data-t="a">文章</span>
+        <span class="lt ${tab === 'p' ? 'active' : ''}" data-t="p">帖子</span>
+        <span class="lt ${tab === 'c' ? 'active' : ''}" data-t="c">比赛</span>
+        <span class="lt ${tab === 'b' ? 'active' : ''}" data-t="b">勋章</span>
+        <span class="lt ${tab === 'f' ? 'active' : ''}" data-t="f">关注</span>
+        <span class="lt ${tab === 'w' ? 'active' : ''}" data-t="w">粉丝</span>
       </div>
-      ${list}
+      <div class="lp-statsum">
+        <span class="ls"><b>${sc.followingCount}</b>关注</span>
+        <span class="ls"><b>${sc.followerCount}</b>粉丝</span>
+        <span class="ls"><b>${sc.articles}</b>文章</span>
+        <span class="ls"><b>${sc.likes}</b>获赞</span>
+        <span class="ls"><b>${sc.score || 0}</b>积分</span>
+        <span class="ls"><b>${rankPos ? '#' + rankPos : '—'}</b>排名</span>
+      </div>
+    </div>
+    <div class="lp-body">
+      <div class="lp-main">${list}</div>
+      <div class="lp-side">
+        <div class="card">
+          <div class="lp-card-h">👤 用户信息</div>
+          <div class="lp-kv"><span>用户编号</span><b>${esc(u.id)}</b></div>
+          <div class="lp-kv"><span>用户类型</span><b>${u.role === 'admin' ? '管理员' : '普通用户'}</b></div>
+          <div class="lp-kv"><span>用户名</span><b>@${esc(u.username)}</b></div>
+          <div class="lp-kv"><span>注册时间</span><b>${fmtTime(u.createdAt).slice(0, 10)}</b></div>
+        </div>
+        <div class="card">
+          <div class="lp-card-h">⚡ 积分构成<span class="lp-hint">与排行榜同源</span></div>
+          ${comp.map(([l, v]) => `<div class="lp-kv"><span>${l}</span><b>${v}</b></div>`).join('')}
+          <div class="lp-kv lp-total"><span>总分</span><b>${sc.score || 0}</b></div>
+        </div>
+      </div>
     </div>
   </div>`;
-  document.querySelectorAll('.portfolio-tabs .pt').forEach(t => t.onclick = () => { viewProfile._t = t.dataset.t; route(); });
+  document.querySelectorAll('.lp-tabs .lt').forEach(t => t.onclick = () => { viewProfile._t = t.dataset.t; route(); });
   const fb = document.getElementById('followBtn');
   if (fb) fb.onclick = async () => {
     if (needLogin()) return;

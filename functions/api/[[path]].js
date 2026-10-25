@@ -1450,6 +1450,31 @@ export async function onRequest(context) {
         category: row.category, status: row.status, createdAt: row.created_at,
         comments: JSON.parse(row.comments || '[]')
       }));
+      // 活跃热力图数据：文章/帖子/打卡/练习按日聚合计数
+      let chRows = [], pcRows = [];
+      try {
+        const chkCols = await getTableCols(env, 'checkins');
+        const cc = chkCols.includes('user_id') ? 'user_id' : 'userId';
+        chRows = (await env.DB.prepare(`SELECT * FROM checkins WHERE ${cc}=?`).bind(u.id).all()).results || [];
+      } catch (e) {}
+      try {
+        const praCols = await getTableCols(env, 'practices');
+        const pa = praCols.includes('author_id') ? 'author_id' : 'authorId';
+        pcRows = (await env.DB.prepare(`SELECT * FROM practices WHERE ${pa}=?`).bind(u.id).all()).results || [];
+      } catch (e) {}
+      const act = {};
+      const bumpAct = (ts) => {
+        if (!ts) return;
+        const d2 = new Date(ts);
+        if (isNaN(d2.getTime())) return;
+        const k = d2.getFullYear() + '-' + String(d2.getMonth() + 1).padStart(2, '0') + '-' + String(d2.getDate()).padStart(2, '0');
+        act[k] = (act[k] || 0) + 1;
+      };
+      (ar.results || []).forEach(r => bumpAct(r.created_at));
+      (pr.results || []).forEach(r => bumpAct(r.created_at));
+      chRows.forEach(r => bumpAct(r.created_at ?? r.createdAt));
+      pcRows.forEach(r => bumpAct(r.created_at ?? r.createdAt));
+      const activity = Object.entries(act).map(([d3, n]) => ({ d: d3, n }));
       // 参加过的比赛
       const contests = db.contests.filter(c =>
         (c.participants || []).includes(u.id) ||
@@ -1465,8 +1490,9 @@ export async function onRequest(context) {
       userOut.badges = u.badges || [];
       return json({
         user: userOut,
-        stats: { articles: realtime.articles, posts: realtime.posts, likes: realtime.likes, followerCount: followers.length, followingCount: following.length, score: realtime.score, practices: realtime.practices, checkins: realtime.checkins },
+        stats: { articles: realtime.articles, posts: realtime.posts, likes: realtime.likes, comments: realtime.comments, followerCount: followers.length, followingCount: following.length, score: realtime.score, practices: realtime.practices, checkins: realtime.checkins },
         isFollowing,
+        activity,
         articles: articles.map(a => articleOut(a, db)),
         posts: posts.map(p => postOut(p, db)),
         contests, following, followers
