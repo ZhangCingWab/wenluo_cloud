@@ -1398,6 +1398,33 @@ html.dark .heat-grid i.h0, html.dark .heat-legend .h0 { background: #232b3a; }
 /* ============ 侧边栏线性图标（SVG） ============ */
 .nav a .icon svg { width: 17px; height: 17px; display: block; }
 
+/* ============ 下载站 ============ */
+.dl-hero { text-align: center; padding: 30px 20px; }
+.dl-hero .dl-logo { width: 60px; height: 60px; border-radius: 14px; box-shadow: var(--shadow); }
+.dl-hero h1 { font-size: 24px; margin-top: 12px; }
+.dl-hero .dl-sub { color: var(--text2); font-size: 13.5px; margin-top: 6px; }
+.dl-badges { display: flex; gap: 8px; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
+.dl-badges span { background: var(--blue-light); color: var(--blue-dark); font-size: 12px; font-weight: 600; padding: 4px 11px; border-radius: 999px; }
+.dl-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.dl-card { text-align: center; display: flex; flex-direction: column; align-items: center; transition: transform .22s cubic-bezier(.4, 0, .2, 1), box-shadow .22s cubic-bezier(.4, 0, .2, 1); }
+.dl-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-hover); }
+.dl-ic { width: 58px; height: 58px; border-radius: 16px; background: var(--blue-light); color: var(--blue); display: flex; align-items: center; justify-content: center; flex: none; }
+.dl-ic svg { width: 30px; height: 30px; }
+.dl-name { font-weight: 700; font-size: 16px; margin-top: 12px; }
+.dl-desc { color: var(--text2); font-size: 12.5px; line-height: 1.65; margin-top: 5px; min-height: 42px; }
+.dl-btn { width: 100%; justify-content: center; margin-top: 12px; text-decoration: none; }
+.dl-alt { display: flex; gap: 8px; width: 100%; margin-top: 8px; }
+.dl-alt a { flex: 1; font-size: 12.5px; text-align: center; padding: 7px 4px; border: 1px solid var(--border); border-radius: 8px; color: var(--text2); transition: all .18s; }
+.dl-alt a:hover { color: var(--blue); border-color: var(--blue); background: var(--blue-light); }
+.dl-tips { padding: 14px 20px; }
+.dl-tips .dl-t { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0; font-size: 13px; color: var(--text2); line-height: 1.6; }
+.dl-tips .dl-t b { color: var(--text); flex: none; }
+@media (max-width: 768px) {
+  .dl-grid { grid-template-columns: 1fr; }
+  .dl-desc { min-height: 0; }
+  .dl-hero { padding: 22px 16px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .lp-bokeh i { animation: none; }
   .lp-tabs .lt.active::after { animation: none; }

@@ -312,7 +312,10 @@ const ICONS = {
   checkP: '<path d="M11 6h9M11 12h9M11 18h9"/><path d="m4 6 1.2 1.2L7.5 5"/><path d="m4 12 1.2 1.2L7.5 11"/><path d="m4 18 1.2 1.2L7.5 17"/>',
   folder: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
   key: '<circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 8.8-8.8"/><path d="m16 7 3 3"/><path d="m19 4 2 2"/>',
-  flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/>'
+  flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/>',
+  win: '<rect x="4" y="4" width="7" height="7" rx="1.2"/><rect x="13" y="4" width="7" height="7" rx="1.2"/><rect x="4" y="13" width="7" height="7" rx="1.2"/><rect x="13" y="13" width="7" height="7" rx="1.2"/>',
+  android: '<path d="M5 11a7 7 0 0 1 14 0v.5H5z"/><path d="m7 4.8 1.2 1.6M17 4.8l-1.2 1.6"/><path d="M9.5 8.6h.01M14.5 8.6h.01"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15.3 15.3 0 0 1 4 9 15.3 15.3 0 0 1-4 9 15.3 15.3 0 0 1-4-9 15.3 15.3 0 0 1 4-9z"/>'
 };
 const ic = (n) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICONS[n] + '</svg>';
 
@@ -478,6 +481,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-25 14:30', author: 'ZhangCing', items: ['🧭 下载站排版重做：居中 Hero + 三平台卡片一行三列 + 安装说明，图标统一线性风格'] },
   { date: '2026-10-25 13:30', author: 'ZhangCing', items: ['🎨 侧边栏图标改为洛谷风线性描边 SVG 图标，跟随主题色与深色模式'] },
   { date: '2026-10-25 12:00', author: 'ZhangCing', items: ['🏠 个人主页全新改版（洛谷风）：横幅头图 + 标签页 + 关键数据栏', '🔥 新增活跃热力图：近半年发文/发帖/打卡/练习按日统计，一眼看到坚持痕迹', '⚡ 新增积分构成卡：文章/帖子/获赞/评论/练习/打卡分别计分，与排行榜同源'] },
   { date: '2026-10-25 01:30', author: 'ZhangCing', items: ['📄 分页改按字数切页：每页约 1200 字，短句段落自动合并，长文档页数大幅减少'] },
@@ -617,44 +621,45 @@ async function viewAnnouncement(arg) {
 /* ---------- 下载站 ---------- */
 async function viewDownload() {
   $app.innerHTML = `
-  <div class="container" style="max-width:860px">
-    <div class="page-title"><div><h1>⬇️ 下载文汇</h1><div class="sub">桌面版 · 安卓版 · 免安装版</div></div></div>
-    <div class="card">
-      <div style="display:flex;align-items:center;gap:14px">
-        <div style="font-size:36px;line-height:1">🪟</div>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:700;font-size:16px">文汇 · Windows 安装版</div>
-          <div style="color:var(--text2);font-size:13px;margin-top:3px">支持选目录安装，自动创建桌面快捷方式 · 约 106MB（国内高速下载）</div>
+  <div class="container dl-page">
+    <div class="card dl-hero">
+      <img class="dl-logo" src="/img/logo.svg" alt="文汇">
+      <h1>下载文汇</h1>
+      <div class="dl-sub">桌面版 · 安卓版 · 网页版，随时随地记录与创作</div>
+      <div class="dl-badges"><span>当前版本 v1.0.0</span><span>2026-10-17 更新</span><span>免费使用</span></div>
+    </div>
+    <div class="dl-grid">
+      <div class="card dl-card">
+        <div class="dl-ic">${ic('win')}</div>
+        <div class="dl-name">Windows 安装版</div>
+        <div class="dl-desc">支持选目录安装，自动创建桌面快捷方式 · 约 106MB · 国内高速下载</div>
+        <a class="btn primary dl-btn" href="https://gh-proxy.com/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.0.0/wenhui-setup-1.0.0.exe" download="wenhui-setup-1.0.0.exe">📥 高速下载</a>
+        <div class="dl-alt">
+          <a href="https://ghfast.top/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.0.0/wenhui-setup-1.0.0.exe" download>备用 1</a>
+          <a href="https://ghproxy.net/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.0.0/wenhui-setup-1.0.0.exe" download>备用 2</a>
+          <a href="/api/download/exe" download>本站直下</a>
         </div>
       </div>
-      <a class="btn primary" href="https://gh-proxy.com/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.0.0/wenhui-setup-1.0.0.exe" download="wenhui-setup-1.0.0.exe" style="width:100%;justify-content:center;text-decoration:none;margin-top:14px">📥 高速下载（国内加速线路）</a>
-      <div style="display:flex;gap:8px;margin-top:8px">
-        <a class="btn ghost" href="https://ghfast.top/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.0.0/wenhui-setup-1.0.0.exe" download style="flex:1;justify-content:center;text-decoration:none;font-size:13px">备用1</a>
-        <a class="btn ghost" href="https://ghproxy.net/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.0.0/wenhui-setup-1.0.0.exe" download style="flex:1;justify-content:center;text-decoration:none;font-size:13px">备用2</a>
-        <a class="btn ghost" href="/api/download/exe" download style="flex:1;justify-content:center;text-decoration:none;font-size:13px">本站直下</a>
+      <div class="card dl-card">
+        <div class="dl-ic">${ic('android')}</div>
+        <div class="dl-name">Android 版</div>
+        <div class="dl-desc">下载 APK 安装包 · 约 16.5KB · 安装时需允许未知来源应用</div>
+        <a class="btn primary dl-btn" href="/app/wenhui.apk" download="wenhui.apk">📥 下载 APK</a>
+        <div class="dl-alt"><a href="#/home">或直接用网页版 →</a></div>
+      </div>
+      <div class="card dl-card">
+        <div class="dl-ic">${ic('globe')}</div>
+        <div class="dl-name">网页版</div>
+        <div class="dl-desc">无需下载，手机浏览器添加到主屏幕即可像 App 一样使用</div>
+        <a class="btn primary dl-btn" href="#/home">立即使用</a>
+        <div class="dl-alt"><a href="#/downloads">所有平台数据实时同步</a></div>
       </div>
     </div>
-    <div class="card">
-      <div style="display:flex;align-items:center;gap:14px">
-        <div style="font-size:36px;line-height:1">📱</div>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:700;font-size:16px">文汇 · Android 版</div>
-          <div style="color:var(--text2);font-size:13px;margin-top:3px">下载 APK 安装包 · 约 16.5KB · 安装时需允许未知来源</div>
-        </div>
-      </div>
-      <a class="btn primary" href="/app/wenhui.apk" download="wenhui.apk" style="width:100%;justify-content:center;text-decoration:none;margin-top:14px">📥 下载安卓 APK</a>
+    <div class="card dl-tips">
+      <div class="dl-t"><b>Windows</b><span>双击安装包，选择安装目录即可完成安装，桌面自动生成快捷方式</span></div>
+      <div class="dl-t"><b>Android</b><span>安装时系统会提示「未知来源」，在设置中允许本应用即可</span></div>
+      <div class="dl-t"><b>网页版</b><span>手机浏览器菜单 → 「添加到主屏幕」，即可全屏像原生 App 使用</span></div>
     </div>
-    <div class="card">
-      <div style="display:flex;align-items:center;gap:14px">
-        <div style="font-size:36px;line-height:1">🌐</div>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:700;font-size:16px">文汇 · 网页版</div>
-          <div style="color:var(--text2);font-size:13px;margin-top:3px">手机浏览器添加到主屏幕即可像 App 使用，无需下载</div>
-        </div>
-      </div>
-      <a class="btn primary" href="#/home" style="width:100%;justify-content:center;text-decoration:none;margin-top:14px">立即使用</a>
-    </div>
-    <div class="card" style="text-align:center;color:var(--text2);font-size:12.5px;padding:10px 16px">版本 v1.0.0 · 更新日期 2026-10-17</div>
   </div>`;
 }
 /* 新用户必读弹窗：进主页时检查 localStorage，有未读公告就弹一次 */
