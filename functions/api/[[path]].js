@@ -2034,17 +2034,28 @@ export async function onRequest(context) {
 
     // GET /api/download/exe Cloudflare 流式代理 GitHub 安装包（用户直连本站，服务端走国际线路拉取）
     if (match(path, 'download/exe') && (method === 'GET' || method === 'HEAD')) {
-      const GH = 'https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.0/WenHui-1.1.0-setup.exe';
+      const GH = 'https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.1/WenHui-1.1.1-setup.exe';
       if (method === 'HEAD') return Response.redirect(GH, 302);
       const h = {};
       const rg = request.headers.get('range');
       if (rg) h['Range'] = rg;
       const up = await fetch(GH, { redirect: 'follow', headers: h });
       if (!up.ok) return Response.redirect(GH, 302);
-      const rh = { 'Content-Type': 'application/octet-stream', 'Content-Disposition': 'attachment; filename="WenHui-1.1.0-setup.exe"', 'Cache-Control': 'no-cache' };
+      const rh = { 'Content-Type': 'application/octet-stream', 'Content-Disposition': 'attachment; filename="WenHui-1.1.1-setup.exe"', 'Cache-Control': 'no-cache' };
       const cl = up.headers.get('content-length'); if (cl) rh['Content-Length'] = cl;
       const cr = up.headers.get('content-range'); if (cr) rh['Content-Range'] = cr;
       return new Response(up.body, { status: up.status, headers: rh });
+    }
+
+    // ---- 桌面软件版本检查（应用内更新用） ----
+    m = match(path, 'app-version');
+    if (m && method === 'GET') {
+      return json({
+        version: '1.1.1',
+        date: '2026-10-25',
+        url: 'https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.1/WenHui-1.1.1-setup.exe',
+        notes: ['⬆ 新增应用内一键更新：检查 → 进度条下载（国内镜像）→ 静默安装 → 自动重启', '🛠 修复打开后全部按钮无反应的问题']
+      });
     }
 
     // ==================== 讨论区 ====================

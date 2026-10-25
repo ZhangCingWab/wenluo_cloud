@@ -1,4 +1,4 @@
-/* ============ 文汇 · 前端 SPA ============ */
+﻿/* ============ 文汇 · 前端 SPA ============ */
 // 深色模式（初始化 + toggle）
 (function initTheme() {
   const saved = localStorage.getItem('theme');
@@ -481,6 +481,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-25 19:00', author: 'ZhangCing', items: ['⬆ 软件 v1.1.1 新增应用内「检查更新」：一键检查 → 进度条下载 → 静默安装 → 自动重启', '🛠 修复 v1.1.0 打开后全部按钮无反应的问题'] },
   { date: '2026-10-25 18:00', author: 'ZhangCing', items: ['🖥 软件大版本 v1.1.0：从网站套壳重做为 IDE 式写作编辑器（数据与网站互通）', '📁 全新「文章空间」：选择本地文件夹，多标签打开 .md 文章，行号+语法高亮+实时预览', '🚀 一键发布：登录文汇账号后，当前文档可直接发布为文章或帖子'] },
   { date: '2026-10-25 15:40', author: 'ZhangCing', items: ['💬 讨论区大更新：求助支持类型分类/状态筛选/关键词搜索', '👥 群聊支持自建群：起名+简介+图标，建群者当群主，入群仍需审核', '🧭 讨论区排版优化：搜索栏+筛选药丸条+类型徽标'] },
   { date: '2026-10-25 14:30', author: 'ZhangCing', items: ['🧭 下载站排版重做：居中 Hero + 三平台卡片一行三列 + 安装说明，图标统一线性风格'] },
@@ -628,17 +629,17 @@ async function viewDownload() {
       <img class="dl-logo" src="/img/logo.svg" alt="文汇">
       <h1>下载文汇</h1>
       <div class="dl-sub">桌面版 · 安卓版 · 网页版，随时随地记录与创作</div>
-      <div class="dl-badges"><span>当前版本 v1.1.0</span><span>2026-10-25 更新</span><span>免费使用</span></div>
+      <div class="dl-badges"><span>当前版本 v1.1.1</span><span>2026-10-25 更新</span><span>免费使用</span></div>
     </div>
     <div class="dl-grid">
       <div class="card dl-card">
         <div class="dl-ic">${ic('win')}</div>
         <div class="dl-name">Windows 安装版</div>
-        <div class="dl-desc">IDE 式写作编辑器 v1.1.0：文章空间 + 多标签编辑 + 一键发布到网站 · 约 106MB</div>
-        <a class="btn primary dl-btn" href="https://gh-proxy.com/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.0/WenHui-1.1.0-setup.exe" download="WenHui-1.1.0-setup.exe">📥 高速下载</a>
+        <div class="dl-desc">IDE 式写作编辑器 v1.1.1：文章空间 + 多标签编辑 + 一键发布到网站 · 约 106MB</div>
+        <a class="btn primary dl-btn" href="https://gh-proxy.com/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.1/WenHui-1.1.1-setup.exe" download="WenHui-1.1.0-setup.exe">📥 高速下载</a>
         <div class="dl-alt">
-          <a href="https://ghfast.top/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.0/WenHui-1.1.0-setup.exe" download>备用 1</a>
-          <a href="https://ghproxy.net/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.0/WenHui-1.1.0-setup.exe" download>备用 2</a>
+          <a href="https://ghfast.top/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.1/WenHui-1.1.1-setup.exe" download>备用 1</a>
+          <a href="https://ghproxy.net/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.1/WenHui-1.1.1-setup.exe" download>备用 2</a>
           <a href="/api/download/exe" download>本站直下</a>
         </div>
       </div>
