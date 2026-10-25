@@ -303,6 +303,7 @@ async function ensureSeedData(env) {
       id TEXT PRIMARY KEY, author_id TEXT NOT NULL, title TEXT NOT NULL,
       content TEXT, status TEXT DEFAULT 'open', created_at INTEGER
     )`);
+    try { await dbRun(env, `ALTER TABLE help_posts ADD COLUMN category TEXT DEFAULT '其他'`); } catch {}
     // 讨论区：求助回复
     await dbRun(env, `CREATE TABLE IF NOT EXISTS help_replies (
       id TEXT PRIMARY KEY, post_id TEXT NOT NULL, author_id TEXT NOT NULL,
@@ -2055,13 +2056,20 @@ export async function onRequest(context) {
       return o;
     }
 
-    // GET /api/discuss/help 列表（?status=open|solved）
+    // GET /api/discuss/help 列表（?status=open|solved&cat=分类&q=搜索词）
     if (match(path, 'discuss/help') && method === 'GET') {
-      const st = new URL(request.url).searchParams.get('status');
+      const sp = new URL(request.url).searchParams;
+      const st = sp.get('status');
+      const cat = (sp.get('cat') || '').trim();
+      const q = (sp.get('q') || '').trim().slice(0, 50);
       let sql = `SELECT h.*, u.nickname AS a_nick, u.username AS a_name, u.role AS a_role
         FROM help_posts h LEFT JOIN users u ON h.author_id = u.id`;
       const binds = [];
-      if (st === 'open' || st === 'solved') { sql += ` WHERE h.status = ?`; binds.push(st); }
+      const wh = [];
+      if (st === 'open' || st === 'solved') { wh.push('h.status = ?'); binds.push(st); }
+      if (cat) { wh.push('h.category = ?'); binds.push(cat); }
+      if (q) { wh.push('(h.title LIKE ? OR h.content LIKE ?)'); binds.push('%' + q + '%', '%' + q + '%'); }
+      if (wh.length) sql += ' WHERE ' + wh.join(' AND ');
       sql += ` ORDER BY CASE h.status WHEN 'solved' THEN 1 ELSE 0 END, h.created_at DESC LIMIT 100`;
       let rows = [];
       try { rows = (await env.DB.prepare(sql).bind(...binds).all()).results || []; } catch (e) { return bad('加载失败: ' + e.message); }
@@ -2081,14 +2089,15 @@ export async function onRequest(context) {
       const body = await request.json();
       const title = clean(body.title, 80);
       const content = clean(body.content, 5000);
+      const category = clean(body.category, 20) || '其他';
       if (!title) return bad('标题不能为空');
       if (!content) return bad('内容不能为空');
       const p = { id: uid('h'), status: 'open', createdAt: Date.now() };
       try {
-        await env.DB.prepare(`INSERT INTO help_posts (id, author_id, title, content, status, created_at) VALUES (?,?,?,?,?,?)`)
-          .bind(p.id, me.id, title, content, p.status, p.createdAt).run();
+        await env.DB.prepare(`INSERT INTO help_posts (id, author_id, title, content, status, category, created_at) VALUES (?,?,?,?,?,?,?)`)
+          .bind(p.id, me.id, title, content, p.status, category, p.createdAt).run();
       } catch (e) { return bad('发布失败: ' + e.message); }
-      return json({ post: { id: p.id, authorId: me.id, title, content, status: p.status, createdAt: p.createdAt, author: pub(me), replyCount: 0 } });
+      return json({ post: { id: p.id, authorId: me.id, title, content, status: p.status, category, createdAt: p.createdAt, author: pub(me), replyCount: 0 } });
     }
 
     // GET /api/discuss/help/:id 详情（含回复）
@@ -2214,6 +2223,32 @@ export async function onRequest(context) {
           return o;
         })
       });
+    }
+
+    // POST /api/discuss/groups 用户自建群（创建者为群主，自动成为成员）
+    if (match(path, 'discuss/groups') && method === 'POST') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const body = await request.json();
+      const name = clean(body.name, 30);
+      const description = clean(body.description, 100);
+      const emoji = clean(body.emoji, 8) || '💬';
+      if (!name) return bad('群名称不能为空');
+      const gid = uid('g');
+      const now = Date.now();
+      try {
+        await env.DB.prepare(`INSERT INTO chat_groups (id, name, description, emoji, owner_id, created_at) VALUES (?,?,?,?,?,?)`)
+          .bind(gid, name, description, emoji, me.id, now).run();
+      } catch (e) {
+        if ((e.message || '').includes('UNIQUE')) return bad('已有同名群聊，换个名字吧');
+        return bad('创建失败: ' + e.message);
+      }
+      try {
+        await env.DB.prepare(`INSERT INTO chat_members (group_id, user_id, status, joined_at) VALUES (?,?, 'approved', ?)`)
+          .bind(gid, me.id, now).run();
+      } catch {}
+      invalidateCache();
+      return json({ ok: true, group: { id: gid, name, description, emoji, ownerId: me.id, createdAt: now, memberCount: 1, myStatus: 'approved' } });
     }
 
     // POST /api/discuss/groups/:id/join 申请加群

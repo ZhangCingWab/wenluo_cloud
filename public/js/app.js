@@ -481,6 +481,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-25 15:40', author: 'ZhangCing', items: ['💬 讨论区大更新：求助支持类型分类/状态筛选/关键词搜索', '👥 群聊支持自建群：起名+简介+图标，建群者当群主，入群仍需审核', '🧭 讨论区排版优化：搜索栏+筛选药丸条+类型徽标'] },
   { date: '2026-10-25 14:30', author: 'ZhangCing', items: ['🧭 下载站排版重做：居中 Hero + 三平台卡片一行三列 + 安装说明，图标统一线性风格'] },
   { date: '2026-10-25 13:30', author: 'ZhangCing', items: ['🎨 侧边栏图标改为洛谷风线性描边 SVG 图标，跟随主题色与深色模式'] },
   { date: '2026-10-25 12:00', author: 'ZhangCing', items: ['🏠 个人主页全新改版（洛谷风）：横幅头图 + 标签页 + 关键数据栏', '🔥 新增活跃热力图：近半年发文/发帖/打卡/练习按日统计，一眼看到坚持痕迹', '⚡ 新增积分构成卡：文章/帖子/获赞/评论/练习/打卡分别计分，与排行榜同源'] },
@@ -931,15 +932,22 @@ async function viewDiscuss(arg) {
   return viewHelpList(body);
 }
 
+const HELP_CATS = ['学习求助', '写作交流', '网站使用', '软件问题', '其他'];
+
 async function viewHelpList(body) {
   body.innerHTML = '<div class="card"><div class="loading-block">加载中…</div></div>';
   const st = viewHelpList._st || '';
-  const d = await api('/api/discuss/help' + (st ? '?status=' + st : ''));
+  const cat = viewHelpList._cat || '';
+  const q = (viewHelpList._q || '').trim();
+  const d = await api('/api/discuss/help?_=' + Date.now()
+    + (st ? '&status=' + st : '') + (cat ? '&cat=' + encodeURIComponent(cat) : '') + (q ? '&q=' + encodeURIComponent(q) : ''));
+  const catBadge = (c) => `<span class="cat-badge">${esc(c)}</span>`;
   const helpItem = (p) => `
     <div class="item">
       ${avatarHtml(p.author, 'xs')}
       <div style="flex:1">
         <div class="title"><a href="#/discuss/help/${p.id}">${esc(p.title)}</a>
+          ${catBadge(p.category || '其他')}
           <span class="badge ${p.status === 'solved' ? 'solved' : 'open'}">${p.status === 'solved' ? '已解决' : '待解决'}</span></div>
         <div class="meta"><span>${esc(p.author.nickname)}</span><span>${fmtTime(p.createdAt)}</span><span>💬 <span class="num">${p.replyCount || 0}</span></span></div>
       </div>
@@ -949,7 +957,7 @@ async function viewHelpList(body) {
     const pg = viewHelpList._page || 1;
     document.getElementById('helpList').innerHTML =
       d.posts.slice((pg - 1) * PAGE_SIZE, pg * PAGE_SIZE).map(helpItem).join('') ||
-      '<div class="empty">还没有求助，点「发求助」提问吧！</div>';
+      (q ? '<div class="empty">没有找到相关求助，换个关键词试试</div>' : '<div class="empty">还没有求助，点「发求助」提问吧！</div>');
     document.getElementById('helpPager').innerHTML = pagerHtml(pg, helpTotal, 'pgHelp');
   };
   window.pgHelp = (p) => {
@@ -957,17 +965,30 @@ async function viewHelpList(body) {
     renderHelpPage();
     document.querySelector('.tabs').scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
+  const chip = (label, on, attr) => `<span class="hchip${on ? ' active' : ''}" ${attr}>${label}</span>`;
   body.innerHTML = `
   <div class="card">
-    <div class="tabs" style="align-items:center">
-      <span style="display:flex;gap:6px;flex-wrap:wrap">
-        <span class="t ${st === '' ? 'active' : ''}" data-s="">全部</span>
-        <span class="t ${st === 'open' ? 'active' : ''}" data-s="open">待解决</span>
-        <span class="t ${st === 'solved' ? 'active' : ''}" data-s="solved">已解决</span>
-      </span>
+    <div class="hl-toolbar">
+      <div class="hl-search">
+        <input id="hSearch" maxlength="50" placeholder="搜索求助标题或内容…" value="${esc(q)}">
+        <button class="btn ghost" id="hSearchBtn" aria-label="搜索">🔍</button>
+      </div>
       <button class="btn primary" id="newHelpBtn">＋ 发求助</button>
     </div>
+    <div class="hl-chips">
+      ${chip('全部', !cat, 'data-cat=""')}
+      ${HELP_CATS.map(c => chip(c, cat === c, `data-cat="${c}"`)).join('')}
+    </div>
+    <div class="hl-chips">
+      ${chip('不限状态', st === '', 'data-s=""')}
+      ${chip('待解决', st === 'open', 'data-s="open"')}
+      ${chip('已解决', st === 'solved', 'data-s="solved"')}
+      ${q ? `<span class="hclear" id="hClear">✕ 清除搜索「${esc(q)}」</span>` : ''}
+    </div>
     <div id="newHelpForm" style="display:none;margin-bottom:14px;padding:14px;background:var(--blue-light);border-radius:var(--radius-sm)">
+      <div class="form-item"><label>问题类型</label><div class="hl-chips" style="margin:0" id="hCatChips">
+        ${HELP_CATS.map((c, i) => chip(c, i === 0, 'data-cat="' + c + '"')).join('')}
+      </div></div>
       <div class="form-item"><label>标题</label><input id="hTitle" maxlength="80" placeholder="一句话描述你的问题"></div>
       <div class="form-item"><label>详细描述</label><textarea id="hContent" style="min-height:130px" placeholder="把问题背景、遇到的现象写清楚，方便大家帮你"></textarea></div>
       <button class="btn primary" id="hSubmit">发布求助</button>
@@ -975,7 +996,20 @@ async function viewHelpList(body) {
     <div id="helpList"></div>
     <div id="helpPager"></div>
   </div>`;
-  body.querySelectorAll('.tabs .t').forEach(t => t.onclick = () => { viewHelpList._st = t.dataset.s; viewHelpList._page = 1; viewDiscuss('help'); });
+  const doSearch = () => { viewHelpList._q = document.getElementById('hSearch').value; viewHelpList._page = 1; viewDiscuss('help'); };
+  document.getElementById('hSearchBtn').onclick = doSearch;
+  document.getElementById('hSearch').onkeydown = (e) => { if (e.key === 'Enter') doSearch(); };
+  const clearBtn = document.getElementById('hClear');
+  if (clearBtn) clearBtn.onclick = () => { viewHelpList._q = ''; viewDiscuss('help'); };
+  body.querySelectorAll('.hl-chips [data-cat]').forEach(t => t.onclick = () => {
+    if (t.id === 'hCatChips' || t.closest('#hCatChips')) {
+      t.parentElement.querySelectorAll('.hchip').forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      return;
+    }
+    viewHelpList._cat = t.dataset.cat; viewHelpList._page = 1; viewDiscuss('help');
+  });
+  body.querySelectorAll('.hl-chips [data-s]').forEach(t => t.onclick = () => { viewHelpList._st = t.dataset.s; viewHelpList._page = 1; viewDiscuss('help'); });
   document.getElementById('newHelpBtn').onclick = () => {
     if (needLogin()) return;
     const f = document.getElementById('newHelpForm');
@@ -983,9 +1017,11 @@ async function viewHelpList(body) {
   };
   document.getElementById('hSubmit').onclick = async (e) => {
     e.target.disabled = true;
+    const hCat = document.querySelector('#hCatChips .hchip.active');
     try {
-      await api('/api/discuss/help', { method: 'POST', body: { title: hTitle.value, content: hContent.value } });
+      await api('/api/discuss/help', { method: 'POST', body: { title: hTitle.value, content: hContent.value, category: hCat ? hCat.dataset.cat : '其他' } });
       toast('发布成功');
+      viewHelpList._st = ''; viewHelpList._cat = ''; viewHelpList._q = '';
       viewDiscuss('help');
     } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
   };
@@ -1017,6 +1053,7 @@ async function viewHelpDetail(body, id) {
   <div class="card">
     <div class="hp-head">
       <h2 style="margin:0">${esc(p.title)}</h2>
+      <span class="cat-badge">${esc(p.category || '其他')}</span>
       <span class="badge ${solved ? 'solved' : 'open'}">${solved ? '✔ 已解决' : '待解决'}</span>
     </div>
     <div class="meta" style="margin:8px 0 12px"><span>${esc(p.author.nickname)}</span><span>${fmtTime(p.createdAt)}</span>
@@ -1087,9 +1124,57 @@ async function viewDiscussChat(body, gId) {
   </a>`;
   body.innerHTML = `
   <div class="chat-layout">
-    <aside class="chat-side">${gs.map(sideItem).join('') || '<div class="empty" style="padding:14px 6px">还没有群聊</div>'}</aside>
+    <aside class="chat-side">
+      <div class="chat-side-head">
+        <b>群聊（${gs.length}）</b>
+        <button class="btn primary sm-btn" id="gCreateBtn">＋ 建群</button>
+      </div>
+      ${gs.map(sideItem).join('') || '<div class="empty" style="padding:14px 6px">还没有群聊，来建第一个群吧</div>'}
+    </aside>
     <section class="chat-main" id="chatMain"></section>
   </div>`;
+  const createBtn = document.getElementById('gCreateBtn');
+  if (createBtn) createBtn.onclick = () => {
+    if (needLogin()) return;
+    const EMOJIS = ['💬', '📝', '🔥', '📚', '🎨', '🎮', '🎉', '☕'];
+    const ov = document.createElement('div');
+    ov.className = 'modal-mask';
+    ov.innerHTML = `
+    <div class="modal-card gcreate">
+      <h2 style="margin-bottom:14px">创建新群聊</h2>
+      <div class="form-item"><label>群名称</label><input id="gcName" maxlength="30" placeholder="给群起个名字，如：初三写作互助群"></div>
+      <div class="form-item"><label>群简介</label><textarea id="gcDesc" maxlength="100" style="min-height:64px" placeholder="一句话介绍这个群（选填）"></textarea></div>
+      <div class="form-item"><label>群图标</label><div class="hl-chips" style="margin:0" id="gcEmoji">
+        ${EMOJIS.map((e, i) => `<span class="hchip gc-e${i === 0 ? ' active' : ''}" data-e="${e}">${e}</span>`).join('')}
+      </div></div>
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <button class="btn ghost" id="gcCancel" style="flex:1;justify-content:center">取消</button>
+        <button class="btn primary" id="gcOk" style="flex:1;justify-content:center">创建群聊</button>
+      </div>
+      <div style="font-size:11.5px;color:var(--text2);margin-top:10px;text-align:center">你是群主，其他成员申请加入后需你审核</div>
+    </div>`;
+    document.body.appendChild(ov);
+    ov.querySelectorAll('#gcEmoji .hchip').forEach(c => c.onclick = () => {
+      ov.querySelectorAll('#gcEmoji .hchip').forEach(x => x.classList.remove('active'));
+      c.classList.add('active');
+    });
+    const close = () => { ov.classList.add('closing'); setTimeout(() => ov.remove(), 220); };
+    ov.querySelector('#gcCancel').onclick = close;
+    ov.onclick = (e) => { if (e.target === ov) close(); };
+    ov.querySelector('#gcOk').onclick = async () => {
+      const btn = ov.querySelector('#gcOk');
+      const name = ov.querySelector('#gcName').value.trim();
+      if (!name) { toast('先给群起个名字', 'err'); return; }
+      btn.disabled = true;
+      const eEl = ov.querySelector('#gcEmoji .hchip.active');
+      try {
+        const r = await api('/api/discuss/groups', { method: 'POST', body: { name, description: ov.querySelector('#gcDesc').value, emoji: (eEl && eEl.dataset.e) || '💬' } });
+        close();
+        toast('群创建成功！');
+        viewDiscuss('chat/' + r.group.id);
+      } catch (e) { toast(e.message, 'err'); btn.disabled = false; }
+    };
+  };
   const main = document.getElementById('chatMain');
   if (!g) { main.innerHTML = '<div class="chat-empty">👈 选择一个群开始聊天</div>'; return; }
   if (!me || (g.myStatus !== 'approved' && !isOwner)) {

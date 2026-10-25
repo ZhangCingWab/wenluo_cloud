@@ -1425,6 +1425,29 @@ html.dark .heat-grid i.h0, html.dark .heat-legend .h0 { background: #232b3a; }
   .dl-hero { padding: 22px 16px; }
 }
 
+/* ============ 讨论区：求助筛选条 + 建群 ============ */
+.hl-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+.hl-search { flex: 1; display: flex; gap: 6px; min-width: 0; }
+.hl-search input { flex: 1; min-width: 0; }
+.hl-search .btn { padding: 0 14px; }
+.hl-chips { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 10px; align-items: center; }
+.hchip { font-size: 12.5px; font-weight: 600; color: var(--text2); background: var(--bg2, #f2f4f8); border: 1px solid transparent; border-radius: 999px; padding: 5px 13px; cursor: pointer; transition: all .18s; user-select: none; }
+.hchip:hover { color: var(--blue); border-color: var(--blue); }
+.hchip.active { color: #fff; background: var(--blue); border-color: var(--blue); }
+.hchip.gc-e { font-size: 17px; padding: 4px 10px; }
+.hclear { font-size: 12px; color: var(--red, #e74c3c); cursor: pointer; margin-left: 4px; }
+.hclear:hover { text-decoration: underline; }
+.cat-badge { display: inline-block; font-size: 11px; font-weight: 600; color: var(--purple, #8e44ad); background: rgba(142, 68, 173, .1); border-radius: 999px; padding: 2px 9px; vertical-align: 1px; }
+html.dark .cat-badge { color: #c39bd3; background: rgba(195, 155, 211, .14); }
+.chat-side-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px 8px; border-bottom: 1px solid var(--border); }
+.chat-side-head b { font-size: 13px; color: var(--text2); }
+.sm-btn { padding: 5px 12px; font-size: 12.5px; }
+.modal-card.gcreate { width: min(92vw, 420px); }
+@media (max-width: 768px) {
+  .hl-toolbar { flex-wrap: wrap; }
+  .hl-search { width: 100%; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .lp-bokeh i { animation: none; }
   .lp-tabs .lt.active::after { animation: none; }
