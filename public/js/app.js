@@ -115,8 +115,19 @@ function md(src) {
   return s;
 }
 
-/* 正文分段分页渲染：按空行切段逐段 md()，每页只渲染当前页段落 */
-const PROSE_PAGE_SIZE = 8;
+/* 正文分段分页渲染：按空行切段逐段 md()，按累计字数切页，每页约 1200 字 */
+const PROSE_PAGE_CHARS = 1200;
+const splitPages = (lens) => {
+  const pages = [];
+  let st = 0, sum = 0;
+  for (let i = 0; i < lens.length; i++) {
+    if (i > st && sum + lens[i] > PROSE_PAGE_CHARS) { pages.push([st, i]); st = i; sum = 0; }
+    sum += lens[i];
+    if (sum >= PROSE_PAGE_CHARS) { pages.push([st, i + 1]); st = i + 1; sum = 0; }
+  }
+  if (st < lens.length) pages.push([st, lens.length]);
+  return pages;
+};
 const pgFold = (pg, total) => {
   if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
   const set = new Set([1, total, pg - 1, pg, pg + 1]);
@@ -154,9 +165,11 @@ function paginateBody(box, raw) {
     else parts.push(s);
   }
   const paras = parts.map(md);
-  const total = Math.max(1, Math.ceil(paras.length / PROSE_PAGE_SIZE));
+  const pages = splitPages(paras.map(p => p.length));
+  const total = Math.max(1, pages.length);
   const render = (pg) => {
-    box.innerHTML = paras.slice((pg - 1) * PROSE_PAGE_SIZE, pg * PROSE_PAGE_SIZE).join('');
+    const [a, b] = pages[pg - 1] || [0, paras.length];
+    box.innerHTML = paras.slice(a, b).join('');
     if (total > 1) box.appendChild(pgBar(pg, total, p => { render(p); box.closest('.card')?.scrollIntoView({ behavior: 'smooth' }); }));
   };
   render(1);
@@ -166,11 +179,13 @@ function paginateHtml(box, html) {
   tmp.innerHTML = String(html || '');
   const styles = Array.from(tmp.children).filter(n => n.tagName === 'STYLE');
   const nodes = Array.from(tmp.children).filter(n => n.tagName !== 'STYLE' && n.tagName !== 'SCRIPT');
-  const total = nodes.length <= 10 ? 1 : Math.ceil(nodes.length / PROSE_PAGE_SIZE);
+  const pages = splitPages(nodes.map(n => (n.textContent || '').length));
+  const total = Math.max(1, pages.length);
   const render = (pg) => {
     box.innerHTML = '';
     styles.forEach(s => box.appendChild(s));
-    (total <= 1 ? nodes : nodes.slice((pg - 1) * PROSE_PAGE_SIZE, pg * PROSE_PAGE_SIZE)).forEach(n => box.appendChild(n));
+    const [a, b] = pages[pg - 1] || [0, nodes.length];
+    nodes.slice(a, b).forEach(n => box.appendChild(n));
     if (total > 1) box.appendChild(pgBar(pg, total, p => { render(p); box.scrollIntoView({ behavior: 'smooth' }); }));
   };
   render(1);
@@ -441,6 +456,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-25 01:30', author: 'ZhangCing', items: ['📄 分页改按字数切页：每页约 1200 字，短句段落自动合并，长文档页数大幅减少'] },
   { date: '2026-10-25 00:30', author: 'ZhangCing', items: ['📄 文件投稿转文章也支持分段分页：长文档（Word 转正文）不再一次性渲染，翻页阅读更流畅'] },
   { date: '2026-10-24 23:30', author: 'ZhangCing', items: ['🎨 全站视觉升级：毛玻璃质感、渐变按钮、光斑 Hero、精致阴影层次', '🌈 新增主题色自定义：7 款配色即时切换，与深色模式自由组合'] },
   { date: '2026-10-24 22:00', author: 'ZhangCing', items: ['📖 阅读页排版全面美化：正文居中、行距加大、标题/引用/代码块样式', '📄 长文按段分页：每页 8 段，只渲染当前页内容，长文加载更快'] },
