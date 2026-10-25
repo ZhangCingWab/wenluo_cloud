@@ -481,6 +481,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-25 18:00', author: 'ZhangCing', items: ['🖥 软件大版本 v1.1.0：从网站套壳重做为 IDE 式写作编辑器（数据与网站互通）', '📁 全新「文章空间」：选择本地文件夹，多标签打开 .md 文章，行号+语法高亮+实时预览', '🚀 一键发布：登录文汇账号后，当前文档可直接发布为文章或帖子'] },
   { date: '2026-10-25 15:40', author: 'ZhangCing', items: ['💬 讨论区大更新：求助支持类型分类/状态筛选/关键词搜索', '👥 群聊支持自建群：起名+简介+图标，建群者当群主，入群仍需审核', '🧭 讨论区排版优化：搜索栏+筛选药丸条+类型徽标'] },
   { date: '2026-10-25 14:30', author: 'ZhangCing', items: ['🧭 下载站排版重做：居中 Hero + 三平台卡片一行三列 + 安装说明，图标统一线性风格'] },
   { date: '2026-10-25 13:30', author: 'ZhangCing', items: ['🎨 侧边栏图标改为洛谷风线性描边 SVG 图标，跟随主题色与深色模式'] },
@@ -627,17 +628,17 @@ async function viewDownload() {
       <img class="dl-logo" src="/img/logo.svg" alt="文汇">
       <h1>下载文汇</h1>
       <div class="dl-sub">桌面版 · 安卓版 · 网页版，随时随地记录与创作</div>
-      <div class="dl-badges"><span>当前版本 v1.0.0</span><span>2026-10-17 更新</span><span>免费使用</span></div>
+      <div class="dl-badges"><span>当前版本 v1.1.0</span><span>2026-10-25 更新</span><span>免费使用</span></div>
     </div>
     <div class="dl-grid">
       <div class="card dl-card">
         <div class="dl-ic">${ic('win')}</div>
         <div class="dl-name">Windows 安装版</div>
-        <div class="dl-desc">支持选目录安装，自动创建桌面快捷方式 · 约 106MB · 国内高速下载</div>
-        <a class="btn primary dl-btn" href="https://gh-proxy.com/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.0.0/wenhui-setup-1.0.0.exe" download="wenhui-setup-1.0.0.exe">📥 高速下载</a>
+        <div class="dl-desc">IDE 式写作编辑器 v1.1.0：文章空间 + 多标签编辑 + 一键发布到网站 · 约 106MB</div>
+        <a class="btn primary dl-btn" href="https://gh-proxy.com/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.0/WenHui-1.1.0-setup.exe" download="WenHui-1.1.0-setup.exe">📥 高速下载</a>
         <div class="dl-alt">
-          <a href="https://ghfast.top/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.0.0/wenhui-setup-1.0.0.exe" download>备用 1</a>
-          <a href="https://ghproxy.net/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.0.0/wenhui-setup-1.0.0.exe" download>备用 2</a>
+          <a href="https://ghfast.top/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.0/WenHui-1.1.0-setup.exe" download>备用 1</a>
+          <a href="https://ghproxy.net/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.0/WenHui-1.1.0-setup.exe" download>备用 2</a>
           <a href="/api/download/exe" download>本站直下</a>
         </div>
       </div>
@@ -657,7 +658,7 @@ async function viewDownload() {
       </div>
     </div>
     <div class="card dl-tips">
-      <div class="dl-t"><b>Windows</b><span>双击安装包，选择安装目录即可完成安装，桌面自动生成快捷方式</span></div>
+      <div class="dl-t"><b>Windows</b><span>双击安装包完成安装。新版是 IDE 式编辑器：左侧「文章空间」选文件夹打开 .md 文件，Ctrl+L 登录后可一键发布文章/帖子到网站</span></div>
       <div class="dl-t"><b>Android</b><span>安装时系统会提示「未知来源」，在设置中允许本应用即可</span></div>
       <div class="dl-t"><b>网页版</b><span>手机浏览器菜单 → 「添加到主屏幕」，即可全屏像原生 App 使用</span></div>
     </div>

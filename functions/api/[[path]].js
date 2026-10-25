@@ -2034,14 +2034,14 @@ export async function onRequest(context) {
 
     // GET /api/download/exe Cloudflare 流式代理 GitHub 安装包（用户直连本站，服务端走国际线路拉取）
     if (match(path, 'download/exe') && (method === 'GET' || method === 'HEAD')) {
-      const GH = 'https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.0.0/wenhui-setup-1.0.0.exe';
+      const GH = 'https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.0/WenHui-1.1.0-setup.exe';
       if (method === 'HEAD') return Response.redirect(GH, 302);
       const h = {};
       const rg = request.headers.get('range');
       if (rg) h['Range'] = rg;
       const up = await fetch(GH, { redirect: 'follow', headers: h });
       if (!up.ok) return Response.redirect(GH, 302);
-      const rh = { 'Content-Type': 'application/octet-stream', 'Content-Disposition': 'attachment; filename="wenhui-setup-1.0.0.exe"', 'Cache-Control': 'no-cache' };
+      const rh = { 'Content-Type': 'application/octet-stream', 'Content-Disposition': 'attachment; filename="WenHui-1.1.0-setup.exe"', 'Cache-Control': 'no-cache' };
       const cl = up.headers.get('content-length'); if (cl) rh['Content-Length'] = cl;
       const cr = up.headers.get('content-range'); if (cr) rh['Content-Range'] = cr;
       return new Response(up.body, { status: up.status, headers: rh });
