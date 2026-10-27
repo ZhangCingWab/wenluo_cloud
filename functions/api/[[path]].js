@@ -2034,14 +2034,14 @@ export async function onRequest(context) {
 
     // GET /api/download/exe Cloudflare 流式代理 GitHub 安装包（用户直连本站，服务端走国际线路拉取）
     if (match(path, 'download/exe') && (method === 'GET' || method === 'HEAD')) {
-      const GH = 'https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.3/WenHui-1.1.3-setup.exe';
+      const GH = 'https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.4/WenHui-1.1.4-setup.exe';
       if (method === 'HEAD') return Response.redirect(GH, 302);
       const h = {};
       const rg = request.headers.get('range');
       if (rg) h['Range'] = rg;
       const up = await fetch(GH, { redirect: 'follow', headers: h });
       if (!up.ok) return Response.redirect(GH, 302);
-      const rh = { 'Content-Type': 'application/octet-stream', 'Content-Disposition': 'attachment; filename="WenHui-1.1.3-setup.exe"', 'Cache-Control': 'no-cache' };
+      const rh = { 'Content-Type': 'application/octet-stream', 'Content-Disposition': 'attachment; filename="WenHui-1.1.4-setup.exe"', 'Cache-Control': 'no-cache' };
       const cl = up.headers.get('content-length'); if (cl) rh['Content-Length'] = cl;
       const cr = up.headers.get('content-range'); if (cr) rh['Content-Range'] = cr;
       return new Response(up.body, { status: up.status, headers: rh });
@@ -2051,10 +2051,10 @@ export async function onRequest(context) {
     m = match(path, 'app-version');
     if (m && method === 'GET') {
       return json({
-        version: '1.1.3',
-        date: '2026-10-25',
-        url: 'https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.3/WenHui-1.1.3-setup.exe',
-        notes: ['📝 预览换专业 Markdown 引擎：空格/表格/任务列表/引用块全支持', '与网站渲染完全一致']
+        version: '1.1.4',
+        date: '2026-10-27',
+        url: 'https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.4/WenHui-1.1.4-setup.exe',
+        notes: ['⌨️ 预览保留空格：段首缩进、行内多空格原样显示', '修复 Markdown 段落续行缩进丢失问题']
       });
     }
 

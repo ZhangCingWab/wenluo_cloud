@@ -1,4 +1,4 @@
-﻿/* ============ 文汇 · 前端 SPA ============ */
+/* ============ 文汇 · 前端 SPA ============ */
 // 深色模式（初始化 + toggle）
 (function initTheme() {
   const saved = localStorage.getItem('theme');
@@ -84,15 +84,25 @@ function esc(s) {
 }
 
 /* 轻量 Markdown 渲染（优先 marked + DOMPurify，退化到内置） */
+function hardSpaces(src) {
+  let fence = false;
+  return String(src).replace(/\r\n?/g, '\n').split('\n').map(ln => {
+    if (/^\s{0,3}(```|~~~)/.test(ln)) fence = !fence;
+    if (fence) return ln;
+    if (/^\s{0,3}(#{1,6}\s|>|[-*+]\s|\d+[.)]\s|\||[-*_=]{3,}\s*$)/.test(ln)) return ln;
+    return ln.replace(/^[ \t]+/, m => m.replace(/\t/g, '    ').replace(/ /g, '\u00A0'))
+      .replace(/[ \t]{2,}/g, m => m.replace(/\t/g, '    ').replace(/ /g, '\u00A0'));
+  }).join('\n');
+}
 function md(src) {
   if (!src) return '';
   try {
     const MK = window.marked && (window.marked.parse ? window.marked : window.marked.marked);
     if (MK && typeof MK.parse === 'function' && window.DOMPurify) {
-      return DOMPurify.sanitize(MK.parse(String(src), { breaks: true, gfm: true }));
+      return DOMPurify.sanitize(MK.parse(hardSpaces(String(src)), { breaks: true, gfm: true }));
     }
   } catch (e) {}
-  return mdLegacy(src);
+  return mdLegacy(hardSpaces(src));
 }
 if (window.DOMPurify) DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   if (node.tagName === 'A') { node.setAttribute('target', '_blank'); node.setAttribute('rel', 'noopener'); }
@@ -495,6 +505,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-27 13:40', author: 'ZhangCing', items: ['⌨️ 空格全保留：段首缩进、行内多空格在预览和发布后都原样显示，缩进行不再被 Markdown 规则吞掉', '⬆ 软件 v1.1.4 同步此修复，旧版点「检查更新」即可升级'] },
   { date: '2026-10-25 21:00', author: 'ZhangCing', items: ['📝 Markdown 渲染换专业引擎（marked + DOMPurify）：空格/缩进/表格/任务列表/引用块全支持，全站与软件预览同步升级'] },
   { date: '2026-10-25 20:30', author: 'ZhangCing', items: ['🛠 软件 v1.1.2 修复启动崩溃：全部按钮无反应、编辑器空白、文字不可见已解决，并经端到端实测'] },
   { date: '2026-10-25 19:00', author: 'ZhangCing', items: ['⬆ 软件 v1.1.1 新增应用内「检查更新」：一键检查 → 进度条下载 → 静默安装 → 自动重启', '🛠 修复 v1.1.0 打开后全部按钮无反应的问题'] },
@@ -645,17 +656,17 @@ async function viewDownload() {
       <img class="dl-logo" src="/img/logo.svg" alt="文汇">
       <h1>下载文汇</h1>
       <div class="dl-sub">桌面版 · 安卓版 · 网页版，随时随地记录与创作</div>
-      <div class="dl-badges"><span>当前版本 v1.1.3</span><span>2026-10-25 更新</span><span>免费使用</span></div>
+      <div class="dl-badges"><span>当前版本 v1.1.4</span><span>2026-10-27 更新</span><span>免费使用</span></div>
     </div>
     <div class="dl-grid">
       <div class="card dl-card">
         <div class="dl-ic">${ic('win')}</div>
         <div class="dl-name">Windows 安装版</div>
-        <div class="dl-desc">IDE 式写作编辑器 v1.1.3：文章空间 + 多标签编辑 + 一键发布到网站 · 约 106MB</div>
-        <a class="btn primary dl-btn" href="https://gh-proxy.com/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.3/WenHui-1.1.3-setup.exe" download="WenHui-1.1.0-setup.exe">📥 高速下载</a>
+        <div class="dl-desc">IDE 式写作编辑器 v1.1.4：文章空间 + 多标签编辑 + 一键发布到网站 · 约 106MB</div>
+        <a class="btn primary dl-btn" href="https://gh-proxy.com/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.4/WenHui-1.1.4-setup.exe" download="WenHui-1.1.4-setup.exe">📥 高速下载</a>
         <div class="dl-alt">
-          <a href="https://ghfast.top/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.3/WenHui-1.1.3-setup.exe" download>备用 1</a>
-          <a href="https://ghproxy.net/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.3/WenHui-1.1.3-setup.exe" download>备用 2</a>
+          <a href="https://ghfast.top/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.4/WenHui-1.1.4-setup.exe" download>备用 1</a>
+          <a href="https://ghproxy.net/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.4/WenHui-1.1.4-setup.exe" download>备用 2</a>
           <a href="/api/download/exe" download>本站直下</a>
         </div>
       </div>
