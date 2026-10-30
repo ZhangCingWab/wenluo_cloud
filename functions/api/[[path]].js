@@ -2051,10 +2051,10 @@ export async function onRequest(context) {
     m = match(path, 'app-version');
     if (m && method === 'GET') {
       return json({
-        version: '1.1.7',
+        version: '1.1.8',
         date: '2026-10-31',
-        url: 'https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.7/WenHui-1.1.7-setup.exe',
-        notes: ['软件原生「做题」「比赛」按钮：点选题库题目或比赛题目，把当前编辑器文档一键提交为练习/参赛作品', '比赛支持报名/退出、查看题目与字数限制，登录后即可在软件里参赛', '移除内嵌网页方案，做题与参赛全部为软件原生界面']
+        url: 'https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.8/WenHui-1.1.8-setup.exe',
+        notes: ['做题与比赛支持查看完整题面：点选题目后在弹窗内以 Markdown 排版展示完整题目内容', '题面下方展示难度星级、参与人数、练习数与字数限制，看完题面再一键提交当前文档', '题面区域支持独立滚动，深色模式自动适配']
       });
     }
 
