@@ -539,6 +539,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-31 04:05', author: 'ZhangCing', items: ['软件 v1.1.7：原生「做题」「比赛」按钮——点选题目/比赛题目，把编辑器里的文章一键提交为练习或参赛作品，不再内嵌网页', '比赛支持软件内报名/退出、查看题目与字数限制，登录账号即可直接参赛'] },
   { date: '2026-10-31 03:10', author: 'ZhangCing', items: ['软件 v1.1.6 大更新：新增「文汇社区」，做题、打比赛、讨论区、群聊在软件里直接用，登录状态自动同步', '软件新增设置面板：6 色主题、深浅色界面、编辑器字号行距、预览宽度、自动保存，界面动效全面升级'] },
   { date: '2026-10-30 18:40', author: 'ZhangCing', items: ['全站+软件图标统一为洛谷风线性描边 SVG：页面标题、按钮、标签页、AI 助手、通知中心、管理后台等全部换新，跟随主题色与深色模式', '软件 v1.1.5：工具栏图标与网站侧边栏完全同款'] },
   { date: '2026-10-27 13:40', author: 'ZhangCing', items: ['⌨️ 空格全保留：段首缩进、行内多空格在预览和发布后都原样显示，缩进行不再被 Markdown 规则吞掉', '⬆ 软件 v1.1.4 同步此修复，旧版点「检查更新」即可升级'] },
@@ -698,11 +699,11 @@ async function viewDownload() {
       <div class="card dl-card">
         <div class="dl-ic">${ic('win')}</div>
         <div class="dl-name">Windows 安装版</div>
-        <div class="dl-desc">IDE 式写作编辑器 v1.1.6：内置文汇社区（做题/比赛/讨论区）+ 设置面板 + 一键发布到网站 · 约 106MB</div>
-        <a class="btn primary dl-btn" href="https://gh-proxy.com/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.6/WenHui-1.1.6-setup.exe" download="WenHui-1.1.6-setup.exe">${ic('downloads')} 高速下载</a>
+        <div class="dl-desc">IDE 式写作编辑器 v1.1.7：原生做题/比赛提交 + 设置面板 + 一键发布到网站 · 约 106MB</div>
+        <a class="btn primary dl-btn" href="https://gh-proxy.com/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.7/WenHui-1.1.7-setup.exe" download="WenHui-1.1.7-setup.exe">${ic('downloads')} 高速下载</a>
         <div class="dl-alt">
-          <a href="https://ghfast.top/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.6/WenHui-1.1.6-setup.exe" download>备用 1</a>
-          <a href="https://ghproxy.net/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.6/WenHui-1.1.6-setup.exe" download>备用 2</a>
+          <a href="https://ghfast.top/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.7/WenHui-1.1.7-setup.exe" download>备用 1</a>
+          <a href="https://ghproxy.net/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.7/WenHui-1.1.7-setup.exe" download>备用 2</a>
           <a href="/api/download/exe" download>本站直下</a>
         </div>
       </div>

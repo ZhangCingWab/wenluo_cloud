@@ -2034,14 +2034,14 @@ export async function onRequest(context) {
 
     // GET /api/download/exe Cloudflare 流式代理 GitHub 安装包（用户直连本站，服务端走国际线路拉取）
     if (match(path, 'download/exe') && (method === 'GET' || method === 'HEAD')) {
-      const GH = 'https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.6/WenHui-1.1.6-setup.exe';
+      const GH = 'https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.7/WenHui-1.1.7-setup.exe';
       if (method === 'HEAD') return Response.redirect(GH, 302);
       const h = {};
       const rg = request.headers.get('range');
       if (rg) h['Range'] = rg;
       const up = await fetch(GH, { redirect: 'follow', headers: h });
       if (!up.ok) return Response.redirect(GH, 302);
-      const rh = { 'Content-Type': 'application/octet-stream', 'Content-Disposition': 'attachment; filename="WenHui-1.1.6-setup.exe"', 'Cache-Control': 'no-cache' };
+      const rh = { 'Content-Type': 'application/octet-stream', 'Content-Disposition': 'attachment; filename="WenHui-1.1.7-setup.exe"', 'Cache-Control': 'no-cache' };
       const cl = up.headers.get('content-length'); if (cl) rh['Content-Length'] = cl;
       const cr = up.headers.get('content-range'); if (cr) rh['Content-Range'] = cr;
       return new Response(up.body, { status: up.status, headers: rh });
@@ -2051,10 +2051,10 @@ export async function onRequest(context) {
     m = match(path, 'app-version');
     if (m && method === 'GET') {
       return json({
-        version: '1.1.6',
-        date: '2026-10-30',
-        url: 'https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.6/WenHui-1.1.6-setup.exe',
-        notes: ['新增「文汇社区」：软件内直接做题、打比赛、逛讨论区/群聊，登录状态自动同步', '新增设置面板：6 色主题、深浅色界面、编辑器字号行距、预览宽度、自动保存', '界面全面打磨：更流畅的动效、深色模式适配、统一圆角与滚动条']
+        version: '1.1.7',
+        date: '2026-10-31',
+        url: 'https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.7/WenHui-1.1.7-setup.exe',
+        notes: ['软件原生「做题」「比赛」按钮：点选题库题目或比赛题目，把当前编辑器文档一键提交为练习/参赛作品', '比赛支持报名/退出、查看题目与字数限制，登录后即可在软件里参赛', '移除内嵌网页方案，做题与参赛全部为软件原生界面']
       });
     }
 
