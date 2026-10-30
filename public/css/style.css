@@ -1452,3 +1452,13 @@ html.dark .cat-badge { color: #c39bd3; background: rgba(195, 155, 211, .14); }
   .lp-bokeh i { animation: none; }
   .lp-tabs .lt.active::after { animation: none; }
 }
+
+/* ---------- 通用线性图标（洛谷风 SVG） ---------- */
+svg.ic { width: 1em; height: 1em; flex: none; vertical-align: -.13em; }
+.ai-fab svg.ic { width: 24px; height: 24px; }
+.ai-logo svg.ic { width: 16px; height: 16px; }
+.notif-ico { align-self: center; width: 28px; text-align: center; }
+.notif-ico svg.ic { width: 18px; height: 18px; vertical-align: middle; }
+.big-ico { color: var(--text2); line-height: 1; }
+.big-ico svg.ic { width: 32px; height: 32px; }
+.big-ico.sm svg.ic { width: 20px; height: 20px; }

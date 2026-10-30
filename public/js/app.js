@@ -240,19 +240,19 @@ function openAiPanel(defaultTask = 'outline', defaultInput = '') {
   _aiPanel.className = 'ai-panel open';
   _aiPanel.innerHTML = `
   <div class="ai-head">
-    <h3>🤖 AI 写作助手</h3>
-    <span class="ai-close" id="aiClose">✕</span>
+    <h3>${ic('robot')} AI 写作助手</h3>
+    <span class="ai-close" id="aiClose">${ic('x')}</span>
   </div>
   <div class="ai-body">
     <div class="ai-task-bar">
-      <button class="ai-task-btn active" data-t="outline">📋 大纲</button>
-      <button class="ai-task-btn" data-t="rewrite">✨ 润色</button>
-      <button class="ai-task-btn" data-t="continue">📖 续写</button>
-      <button class="ai-task-btn" data-t="review">📝 批改</button>
+      <button class="ai-task-btn active" data-t="outline">${ic('clipboard')} 大纲</button>
+      <button class="ai-task-btn" data-t="rewrite">${ic('palette')} 润色</button>
+      <button class="ai-task-btn" data-t="continue">${ic('book')} 续写</button>
+      <button class="ai-task-btn" data-t="review">${ic('edit')} 批改</button>
     </div>
     <div class="form-item"><label>主题 / 你的问题</label><textarea id="aiInput" class="ai-input" placeholder="${defaultTask === 'rewrite' || defaultTask === 'continue' || defaultTask === 'review' ? '把你的文字贴在这里…' : '写这篇文章是关于什么的？'}">${esc(defaultInput)}</textarea></div>
     <div class="form-item"><label>风格 / 要求（可选）</label><input id="aiStyle" placeholder="例如：议论文、轻松幽默、简洁有力"></div>
-    <button class="ai-send" id="aiSend">🚀 让 AI 帮我</button>
+    <button class="ai-send" id="aiSend">${ic('send')} 让 AI 帮我</button>
     <div id="aiResult"></div>
   </div>`;
   document.body.appendChild(_aiPanel);
@@ -275,8 +275,8 @@ function openAiPanel(defaultTask = 'outline', defaultInput = '') {
       const d = await api('/api/ai/assist', { method: 'POST', body: { task, topic: input, content: input, style, extra: '' } });
       result.innerHTML = `<div class="ai-result">${d.result.replace(/</g, '&lt;').replace(/\n/g, '<br>').replace(/&gt;/g, '>')}</div>
         <div style="margin-top:8px;display:flex;gap:8px">
-          <button class="btn ghost sm" id="aiCopy">📋 复制</button>
-          <button class="btn ghost sm" id="aiAppend">➕ 加到编辑器</button>
+          <button class="btn ghost sm" id="aiCopy">${ic('clipboard')} 复制</button>
+          <button class="btn ghost sm" id="aiAppend">${ic('plus')} 加到编辑器</button>
           <span class="hint" style="flex:1;text-align:right">${d.source === 'ai' ? 'AI 生成' : '本地模板'}</span>
         </div>`;
       document.getElementById('aiCopy').onclick = async () => {
@@ -289,14 +289,14 @@ function openAiPanel(defaultTask = 'outline', defaultInput = '') {
         else toast('当前没有找到编辑器', 'err');
       };
     } catch (e) { result.innerHTML = '<div class="ai-result" style="color:var(--red)">出错了：' + esc(e.message) + '</div>'; }
-    sendBtn.disabled = false; sendBtn.textContent = '🚀 让 AI 帮我';
+    sendBtn.disabled = false; sendBtn.innerHTML = ic('send')+' 让 AI 帮我';
   };
 }
 function closeAiPanel() { if (_aiPanel) { _aiPanel.remove(); _aiPanel = null; } }
 function showAiFab() {
   if (document.getElementById('aiFab')) return;
   const fab = document.createElement('button');
-  fab.className = 'ai-fab'; fab.id = 'aiFab'; fab.innerHTML = '🤖'; fab.title = 'AI 写作助手';
+  fab.className = 'ai-fab'; fab.id = 'aiFab'; fab.innerHTML = ic('robot'); fab.title = 'AI 写作助手';
   fab.onclick = () => openAiPanel();
   document.body.appendChild(fab);
 }
@@ -339,9 +339,43 @@ const ICONS = {
   flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/>',
   win: '<rect x="4" y="4" width="7" height="7" rx="1.2"/><rect x="13" y="4" width="7" height="7" rx="1.2"/><rect x="4" y="13" width="7" height="7" rx="1.2"/><rect x="13" y="13" width="7" height="7" rx="1.2"/>',
   android: '<path d="M5 11a7 7 0 0 1 14 0v.5H5z"/><path d="m7 4.8 1.2 1.6M17 4.8l-1.2 1.6"/><path d="M9.5 8.6h.01M14.5 8.6h.01"/>',
-  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15.3 15.3 0 0 1 4 9 15.3 15.3 0 0 1-4 9 15.3 15.3 0 0 1-4-9 15.3 15.3 0 0 1 4-9z"/>'
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15.3 15.3 0 0 1 4 9 15.3 15.3 0 0 1-4 9 15.3 15.3 0 0 1-4-9 15.3 15.3 0 0 1 4-9z"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  edit: '<path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/>',
+  user: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+  heart: '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
+  star: '<path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/>',
+  bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+  logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
+  sun: '<circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M4.6 19.4l1.8-1.8M17.6 6.4l1.8-1.8"/>',
+  moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
+  sparkle: '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4M22 5h-4"/>',
+  bolt: '<path d="M13 2 4 14h6l-1 8 9-12h-6z"/>',
+  flame: '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>',
+  clipboard: '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6M9 16h4"/>',
+  book: '<path d="M2 4h6a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h7z"/>',
+  file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>',
+  check: '<path d="m4.5 12.5 5 5 10-11"/>',
+  x: '<path d="m6 6 12 12M18 6 6 18"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  send: '<path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  megaphone: '<path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>',
+  dice: '<rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 8h.01M16 8h.01M12 12h.01M8 16h.01M16 16h.01"/>',
+  shield: '<path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10z"/>',
+  image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>',
+  mail: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/>',
+  flask: '<path d="M10 2v6L4.5 18a2 2 0 0 0 1.8 3h11.4a2 2 0 0 0 1.8-3L14 8V2"/><path d="M8.5 2h7"/><path d="M7 15h10"/>',
+  palette: '<circle cx="13.5" cy="6.5" r=".8"/><circle cx="17.5" cy="10.5" r=".8"/><circle cx="8.5" cy="7.5" r=".8"/><circle cx="6.5" cy="12.5" r=".8"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.6-.7 1.6-1.7 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1a1.6 1.6 0 0 1 1.6-1.6h2c3 0 5.6-2.5 5.6-5.6C22 6 17.5 2 12 2z"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.2 9.2a2.8 2.8 0 0 1 5.5.7c0 1.9-2.7 2.3-2.7 3.7"/><path d="M12 17h.01"/>',
+  reply: '<path d="m9 15-5-5 5-5"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/>',
+  robot: '<rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 8V4M8 4h8"/><path d="M9 13h.01M15 13h.01"/><path d="M9.5 17h5"/>',
+  warn: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/>'
 };
-const ic = (n) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICONS[n] + '</svg>';
+const ic = (n) => '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICONS[n] + '</svg>';
 
 function renderSidebar() {
   const me = state.me;
@@ -403,15 +437,15 @@ function toggleUserMenu() {
   div.id = 'userMenu';
   div.innerHTML = `
     <div class="p-head">${esc(me.nickname)} <span style="font-weight:400;font-size:12px">@${esc(me.username)}</span></div>
-    <a href="#/user/${me.id}">👤 个人主页</a>
-    <a href="#/messages">✉️ 私信</a>
-    <a href="#/notifications">🔔 通知中心<span class="msg-badge" id="notifBadge" style="display:none">0</span></a>
-    <a href="#/mine">📝 我的文章</a>
-    <a href="#/settings">⚙️ 偏好设置</a>
+    <a href="#/user/${me.id}">${ic('user')} 个人主页</a>
+    <a href="#/messages">${ic('messages')} 私信</a>
+    <a href="#/notifications">${ic('bell')} 通知中心<span class="msg-badge" id="notifBadge" style="display:none">0</span></a>
+    <a href="#/mine">${ic('edit')} 我的文章</a>
+    <a href="#/settings">${ic('settings')} 偏好设置</a>
     <div class="divider"></div>
-    <div class="p-item" id="themeToggle"><span id="themeIcon">${localStorage.getItem('theme') === 'dark' ? '☀️' : '🌙'}</span><span id="themeLabel">切换深色模式</span></div>
+    <div class="p-item" id="themeToggle"><span id="themeIcon">${localStorage.getItem('theme') === 'dark' ? ic('sun') : ic('moon')}</span><span id="themeLabel">切换深色模式</span></div>
     <div class="divider"></div>
-    <div class="p-item logout" id="logoutBtn">🚪 登出账号</div>`;
+    <div class="p-item logout" id="logoutBtn">${ic('logout')} 登出账号</div>`;
   chip.appendChild(div);
   /* 深色开关：直接绑在菜单项上 + stopPropagation。
      之前挂在 document 上，但菜单是头像(有 stopPropagation)的子元素，点击根本到不了 document → 开关失效 */
@@ -419,7 +453,7 @@ function toggleUserMenu() {
     e.stopPropagation();
     const now = !document.documentElement.classList.contains('dark');
     applyTheme(now);
-    const icon = div.querySelector('#themeIcon'); if (icon) icon.textContent = now ? '☀️' : '🌙';
+    const icon = div.querySelector('#themeIcon'); if (icon) icon.innerHTML = now ? ic('sun') : ic('moon');
     const label = div.querySelector('#themeLabel'); if (label) label.textContent = now ? '深色模式：已开启' : '深色模式：已关闭';
   };
   div.querySelector('#logoutBtn').onclick = async () => {
@@ -482,7 +516,7 @@ async function route() {
     const fn = routes[name] || viewHome;
     await fn(arg);
   } catch (e) {
-    $app.innerHTML = `<div class="card"><div class="empty">😕 ${esc(e.message)}</div></div>`;
+    $app.innerHTML = `<div class="card"><div class="empty">${ic('help')} ${esc(e.message)}</div></div>`;
   }
   /* 页面入场动画：内容渲染完后加 page-anim 类，播完自动移除（避免点赞等局部刷新时重播） */
   $app.classList.remove('page-anim');
@@ -505,6 +539,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-10-30 18:40', author: 'ZhangCing', items: ['全站+软件图标统一为洛谷风线性描边 SVG：页面标题、按钮、标签页、AI 助手、通知中心、管理后台等全部换新，跟随主题色与深色模式', '软件 v1.1.5：工具栏图标与网站侧边栏完全同款'] },
   { date: '2026-10-27 13:40', author: 'ZhangCing', items: ['⌨️ 空格全保留：段首缩进、行内多空格在预览和发布后都原样显示，缩进行不再被 Markdown 规则吞掉', '⬆ 软件 v1.1.4 同步此修复，旧版点「检查更新」即可升级'] },
   { date: '2026-10-25 21:00', author: 'ZhangCing', items: ['📝 Markdown 渲染换专业引擎（marked + DOMPurify）：空格/缩进/表格/任务列表/引用块全支持，全站与软件预览同步升级'] },
   { date: '2026-10-25 20:30', author: 'ZhangCing', items: ['🛠 软件 v1.1.2 修复启动崩溃：全部按钮无反应、编辑器空白、文字不可见已解决，并经端到端实测'] },
@@ -569,7 +604,7 @@ const CHANGELOG = [
   { date: '2026-09-29', author: 'ZhangCing', items: ['审核系统全链路直接 SQL 持久化，审核状态不再丢失', '积分统一实时计算，个人主页与排行榜一致', 'Markdown 全站渲染适配', '比赛列表/详情/状态修复'] },
 ];
 /* ---------- 通知中心 ---------- */
-const NOTIF_ICON = { like: '❤️', comment: '💬', reply: '↩️', adopt: '✅', contest_start: '🏁', problem_review: '📚', practice: '✍️' };
+const NOTIF_ICON = { like: ic('heart'), comment: ic('forum'), reply: ic('reply'), adopt: ic('checkA'), contest_start: ic('contests'), problem_review: ic('problems'), practice: ic('edit') };
 function notifUrl(n) {
   return { article: `#/article/${n.targetId}`, post: `#/post/${n.targetId}`, help: `#/discuss/help/${n.targetId}`, contest: `#/contest/${n.targetId}`, problem: `#/problem/${n.targetId}` }[n.targetType] || '';
 }
@@ -579,9 +614,9 @@ async function viewNotifications() {
   const notifTotal = Math.max(1, Math.ceil(d.notifications.length / PAGE_SIZE));
   const notifItem = (n) => `
     <div class="item notif-item ${n.read ? '' : 'unread'}" data-nid="${n.id}" data-href="${notifUrl(n)}">
-      <div style="align-self:center;font-size:20px;width:28px;text-align:center">${NOTIF_ICON[n.type] || '🔔'}</div>
+      <div class="notif-ico">${NOTIF_ICON[n.type] || ic('bell')}</div>
       <div style="flex:1;min-width:0">
-        <div class="title"><span class="notif-from">${n.from ? esc(n.from.nickname) : '📢 系统'}</span>
+        <div class="title"><span class="notif-from">${n.from ? esc(n.from.nickname) : ic('megaphone')+' 系统'}</span>
           <span style="font-weight:400;color:var(--text2)">${esc(n.content)}</span></div>
         <div class="meta"><span>${fmtTime(n.createdAt)}</span></div>
       </div>
@@ -591,7 +626,7 @@ async function viewNotifications() {
     const pg = viewNotifications._page || 1;
     document.getElementById('notifList').innerHTML =
       d.notifications.slice((pg - 1) * PAGE_SIZE, pg * PAGE_SIZE).map(notifItem).join('') ||
-      '<div class="empty">🔔 还没有收到通知<br><span style="font-size:12px">有人点赞、评论你的文章，或你参加的比赛开始时，会在这里提醒你</span></div>';
+      '<div class="empty">'+ic('bell')+' 还没有收到通知<br><span style="font-size:12px">有人点赞、评论你的文章，或你参加的比赛开始时，会在这里提醒你</span></div>';
     document.getElementById('notifPager').innerHTML = pagerHtml(pg, notifTotal, 'pgNotif');
     document.querySelectorAll('.notif-item').forEach(el => el.onclick = async () => {
       try { await api(`/api/notifications/${el.dataset.nid}/read`, { method: 'POST' }); } catch (e) {}
@@ -607,8 +642,8 @@ async function viewNotifications() {
   $app.innerHTML = `
   <div class="container" style="max-width:860px">
     <div class="page-title">
-      <div><h1>🔔 通知中心</h1><div class="sub">点赞、评论、回复、比赛提醒都在这里</div></div>
-      <button class="btn ghost sm" id="readAllBtn">✓ 全部已读</button>
+      <div><h1>${ic('bell')} 通知中心</h1><div class="sub">点赞、评论、回复、比赛提醒都在这里</div></div>
+      <button class="btn ghost sm" id="readAllBtn">${ic('check')} 全部已读</button>
     </div>
     <div class="card">
       <div id="notifList"></div>
@@ -629,7 +664,7 @@ async function viewAnnouncements() {
   const d = await api('/api/announcements');
   $app.innerHTML = `
   <div class="container" style="max-width:860px">
-    <div class="page-title"><div><h1>📢 公告</h1><div class="sub">站点通知与使用指南</div></div></div>
+    <div class="page-title"><div><h1>${ic('megaphone')} 公告</h1><div class="sub">站点通知与使用指南</div></div></div>
     ${d.announcements.map(a => `
     <div class="card ann-card">
       <div class="ann-head"><h2>${esc(a.title)}</h2><span class="meta">${fmtTime(a.createdAt)}</span></div>
@@ -643,7 +678,7 @@ async function viewAnnouncement(arg) {
   const a = await api('/api/announcements/' + encodeURIComponent(id));
   $app.innerHTML = `
   <div class="container" style="max-width:860px">
-    <div class="page-title"><div><h1>📢 ${esc(a.title)}</h1><div class="sub">发布于 ${fmtTime(a.createdAt)}</div></div></div>
+    <div class="page-title"><div><h1>${ic('megaphone')} ${esc(a.title)}</h1><div class="sub">发布于 ${fmtTime(a.createdAt)}</div></div></div>
     <div class="card"><div class="ann-body">${md(a.content || '')}</div></div>
     <div style="margin-top:12px"><a href="#/announcements">← 查看全部公告</a></div>
   </div>`;
@@ -663,10 +698,10 @@ async function viewDownload() {
         <div class="dl-ic">${ic('win')}</div>
         <div class="dl-name">Windows 安装版</div>
         <div class="dl-desc">IDE 式写作编辑器 v1.1.4：文章空间 + 多标签编辑 + 一键发布到网站 · 约 106MB</div>
-        <a class="btn primary dl-btn" href="https://gh-proxy.com/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.4/WenHui-1.1.4-setup.exe" download="WenHui-1.1.4-setup.exe">📥 高速下载</a>
+        <a class="btn primary dl-btn" href="https://gh-proxy.com/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.5/WenHui-1.1.5-setup.exe" download="WenHui-1.1.5-setup.exe">${ic('downloads')} 高速下载</a>
         <div class="dl-alt">
-          <a href="https://ghfast.top/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.4/WenHui-1.1.4-setup.exe" download>备用 1</a>
-          <a href="https://ghproxy.net/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.4/WenHui-1.1.4-setup.exe" download>备用 2</a>
+          <a href="https://ghfast.top/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.5/WenHui-1.1.5-setup.exe" download>备用 1</a>
+          <a href="https://ghproxy.net/https://github.com/ZhangCingWab/wenluo_cloud/releases/download/v1.1.5/WenHui-1.1.5-setup.exe" download>备用 2</a>
           <a href="/api/download/exe" download>本站直下</a>
         </div>
       </div>
@@ -674,7 +709,7 @@ async function viewDownload() {
         <div class="dl-ic">${ic('android')}</div>
         <div class="dl-name">Android 版</div>
         <div class="dl-desc">下载 APK 安装包 · 约 16.5KB · 安装时需允许未知来源应用</div>
-        <a class="btn primary dl-btn" href="/app/wenhui.apk" download="wenhui.apk">📥 下载 APK</a>
+        <a class="btn primary dl-btn" href="/app/wenhui.apk" download="wenhui.apk">${ic('downloads')} 下载 APK</a>
         <div class="dl-alt"><a href="#/home">或直接用网页版 →</a></div>
       </div>
       <div class="card dl-card">
@@ -731,12 +766,12 @@ async function viewHome() {
     </div>
     <div class="home-grid">
       <div class="hg-col">
-        <div class="card"><h2>📢 公告</h2><div class="skeleton sk-ln"></div><div class="skeleton sk-ln" style="width:82%"></div><div class="skeleton sk-ln" style="width:64%"></div></div>
-        <div class="card"><h2>📖 最新文章</h2>${skItem() + skItem() + skItem()}</div>
+        <div class="card"><h2>${ic('megaphone')} 公告</h2><div class="skeleton sk-ln"></div><div class="skeleton sk-ln" style="width:82%"></div><div class="skeleton sk-ln" style="width:64%"></div></div>
+        <div class="card"><h2>${ic('book')} 最新文章</h2>${skItem() + skItem() + skItem()}</div>
       </div>
       <div class="hg-col">
-        <div class="card"><h2>💬 最新帖子</h2>${skItem() + skItem() + skItem()}</div>
-        <div class="card"><h2>🏁 进行中的比赛</h2>${skItem()}</div>
+        <div class="card"><h2>${ic('forum')} 最新帖子</h2>${skItem() + skItem() + skItem()}</div>
+        <div class="card"><h2>${ic('contests')} 进行中的比赛</h2>${skItem()}</div>
       </div>
     </div>
     <div class="stats">${'<div class="stat"><div class="skeleton sk-num"></div><div class="skeleton sk-ln" style="width:52px;margin:6px auto 0"></div></div>'.repeat(4)}</div>
@@ -753,20 +788,20 @@ async function viewHome() {
       <div style="flex:1">
         <div class="title"><a href="#/${type}/${x.id}">${esc(x.title)}</a></div>
         <div class="meta"><span>${esc(x.author.nickname)}</span><span>${fmtTime(x.createdAt)}</span>
-        ${type === 'article' ? `<span>👁 <span class="num">${x.views || 0}</span></span><span>❤️ <span class="num">${x.likeCount || 0}</span></span>` : `<span>💬 <span class="num">${x.commentCount || 0}</span></span>`}
+        ${type === 'article' ? `<span>${ic('eye')} <span class="num">${x.views || 0}</span></span><span>${ic('heart')} <span class="num">${x.likeCount || 0}</span></span>` : `<span>${ic('forum')} <span class="num">${x.commentCount || 0}</span></span>`}
         </div>
       </div>
     </div>`).join('') || '<div class="empty">暂无内容</div>';
 
   const annCard = (ad.announcements || []).length ? `
     <div class="card ann-list">
-      <h2>📢 公告</h2>
+      <h2>${ic('megaphone')} 公告</h2>
       ${ad.announcements.map(a => `<div class="ann-link"><a href="#/announcement/${encodeURIComponent(a.id)}">${esc(a.title)}</a></div>`).join('')}
     </div>` : '';
 
   const checkinCard = cd && cd.daily ? `
     <div class="checkin-card" style="cursor:pointer" onclick="location.hash='#/daily'">
-      <h2>🔥 今日打卡 · 第 ${cd.streak || 1} 天</h2>
+      <h2>${ic('flame')} 今日打卡 · 第 ${cd.streak || 1} 天</h2>
       <div class="cc-sub">每天一题，坚持写作</div>
       <div class="cc-row">
         <div class="streak-badge">
@@ -774,20 +809,20 @@ async function viewHome() {
           <div class="l">连续天数</div>
         </div>
         <div class="cc-problem">
-          <b>📋 ${esc(cd.daily.title)}</b><br>
-          <span style="opacity:.85;font-size:12px">${cd.myCheckin ? '✅ 今天已打卡，点我看详情' : '👉 点我开始今天的练习！'}</span>
+          <b>${ic('clipboard')} ${esc(cd.daily.title)}</b><br>
+          <span style="opacity:.85;font-size:12px">${cd.myCheckin ? ic('check')+' 今天已打卡，点我看详情' : ic('flame')+' 点我开始今天的练习！'}</span>
         </div>
       </div>
     </div>` : '';
 
   const changelogCard = `
     <div class="card">
-      <h2 class="cl-head"><span>📝 更新日志</span><a class="cl-all" href="#/changelog">查看全部 »</a></h2>
+      <h2 class="cl-head"><span>${ic('edit')} 更新日志</span><a class="cl-all" href="#/changelog">查看全部 »</a></h2>
       ${CHANGELOG.slice(0, 3).map(e => `
       <div class="item">
         <div style="flex:1">
           <div class="title" style="font-size:13.5px">${e.items.map(esc).join('；')}</div>
-          <div class="meta"><span>👤 ${esc(e.author)}</span><span>🕒 ${esc(e.date)}</span></div>
+          <div class="meta"><span>${ic('user')} ${esc(e.author)}</span><span>${ic('clock')} ${esc(e.date)}</span></div>
         </div>
       </div>`).join('')}
     </div>`;
@@ -798,23 +833,23 @@ async function viewHome() {
       <h1>文汇 · 文章竞赛社区</h1>
       <p>写作、交流、比赛 —— 一个简洁流畅的创作家园</p>
       <div class="hero-btns">
-        <button class="btn-hero solid" id="hWrite">✍️ 立即开始创作</button>
-        <button class="btn-hero solid" id="hPost">💬 发帖 · 论坛</button>
-        <button class="btn-hero ghost" id="hFile">📤 文件投稿</button>
-        <button class="btn-hero ghost" id="hDown">⬇️ 下载 App</button>
+        <button class="btn-hero solid" id="hWrite">${ic('edit')} 立即开始创作</button>
+        <button class="btn-hero solid" id="hPost">${ic('forum')} 发帖 · 论坛</button>
+        <button class="btn-hero ghost" id="hFile">${ic('submit')} 文件投稿</button>
+        <button class="btn-hero ghost" id="hDown">${ic('downloads')} 下载 App</button>
       </div>
     </div>
     <div class="home-grid">
       <div class="hg-col">
         ${annCard}
-        <div class="card"><h2>📖 最新文章</h2>${itemList(d.latestArticles || [], 'article')}</div>
+        <div class="card"><h2>${ic('book')} 最新文章</h2>${itemList(d.latestArticles || [], 'article')}</div>
       </div>
       <div class="hg-col">
         ${checkinCard}
-        <div class="card"><h2>💬 最新帖子</h2>${itemList(d.latestPosts || [], 'post')}</div>
+        <div class="card"><h2>${ic('forum')} 最新帖子</h2>${itemList(d.latestPosts || [], 'post')}</div>
         ${d.activeContests && d.activeContests.length ? `
         <div class="card">
-          <h2>🏁 进行中的比赛</h2>
+          <h2>${ic('contests')} 进行中的比赛</h2>
           ${d.activeContests.map(c => contestRow(c)).join('')}
         </div>` : ''}
       </div>
@@ -837,7 +872,7 @@ const contestRow = (c) => `
     <div style="flex:1">
       <div class="c-title">${esc(c.title)}</div>
       <div class="c-meta"><span class="badge ${c.status}">${contestBadge(c.status)}</span>
-        <span>⏰ ${fmtRange(c.startTime, c.endTime)}</span><span>👥 ${c.participantCount} 人已报名</span><span>📋 ${c.problemCount || 0} 道题</span></div>
+        <span>${ic('clock')} ${fmtRange(c.startTime, c.endTime)}</span><span>${ic('users')} ${c.participantCount} 人已报名</span><span>${ic('clipboard')} ${c.problemCount || 0} 道题</span></div>
     </div>
     <span style="color:var(--text2)">›</span>
   </div>`;
@@ -851,13 +886,13 @@ function viewChangelog() {
     viewChangelog._page = pg;
     $app.innerHTML = `
     <div class="container">
-      <div class="page-title"><div><h1>📜 更新日志</h1><div class="sub">文汇的每一次更新，都记录在这里</div></div></div>
+      <div class="page-title"><div><h1>${ic('edit')} 更新日志</h1><div class="sub">文汇的每一次更新，都记录在这里</div></div></div>
       <div class="card">
         ${CHANGELOG.slice((pg - 1) * size, pg * size).map(e => `
         <div class="item">
           <div style="flex:1">
             <div class="title" style="font-size:13.5px">${e.items.map(esc).join('；')}</div>
-            <div class="meta"><span>👤 ${esc(e.author)}</span><span>🕒 ${esc(e.date)}</span></div>
+            <div class="meta"><span>${ic('user')} ${esc(e.author)}</span><span>${ic('clock')} ${esc(e.date)}</span></div>
           </div>
         </div>`).join('')}
       </div>
@@ -876,7 +911,7 @@ function viewChangelog() {
 function searchBoxHtml(id, q, placeholder) {
   return `<div class="search-box">
     <input id="${id}" value="${esc(q)}" placeholder="${esc(placeholder)}" maxlength="60">
-    <button class="btn primary" data-searchbtn="${id}">🔍 搜索</button>
+    <button class="btn primary" data-searchbtn="${id}">${ic('search')} 搜索</button>
   </div>`;
 }
 function bindSearch(id, apply) {
@@ -923,7 +958,7 @@ async function viewForum() {
         <div style="flex:1">
           <div class="title"><a href="#/post/${p.id}">${esc(p.title)}</a> <span class="type-badge">${esc(p.category || '其他')}</span></div>
           <div class="meta"><span>${esc(p.author.nickname)}</span><span>${fmtTime(p.createdAt)}</span>
-          <span>💬 <span class="num">${p.commentCount}</span></span></div>
+          <span>${ic('forum')} <span class="num">${p.commentCount}</span></span></div>
         </div>
       </div>`;
   const renderPostPage = () => {
@@ -952,7 +987,7 @@ async function viewDiscuss(arg) {
     <div class="page-title">
       <div><h1>讨论区</h1><div class="sub">遇到问题来求助，或者到群聊和大家畅所欲言</div></div>
     </div>
-    <div class="dtabs">${tab('help', '🙋', '求助问答')}${tab('chat', '💬', '群聊')}</div>
+    <div class="dtabs">${tab('help', ic('discuss'), '求助问答')}${tab('chat', ic('forum'), '群聊')}</div>
     <div id="discussBody"></div>
   </div>`;
   const body = document.getElementById('discussBody');
@@ -978,7 +1013,7 @@ async function viewHelpList(body) {
         <div class="title"><a href="#/discuss/help/${p.id}">${esc(p.title)}</a>
           ${catBadge(p.category || '其他')}
           <span class="badge ${p.status === 'solved' ? 'solved' : 'open'}">${p.status === 'solved' ? '已解决' : '待解决'}</span></div>
-        <div class="meta"><span>${esc(p.author.nickname)}</span><span>${fmtTime(p.createdAt)}</span><span>💬 <span class="num">${p.replyCount || 0}</span></span></div>
+        <div class="meta"><span>${esc(p.author.nickname)}</span><span>${fmtTime(p.createdAt)}</span><span>${ic('forum')} <span class="num">${p.replyCount || 0}</span></span></div>
       </div>
     </div>`;
   const helpTotal = Math.max(1, Math.ceil(d.posts.length / PAGE_SIZE));
@@ -1000,7 +1035,7 @@ async function viewHelpList(body) {
     <div class="hl-toolbar">
       <div class="hl-search">
         <input id="hSearch" maxlength="50" placeholder="搜索求助标题或内容…" value="${esc(q)}">
-        <button class="btn ghost" id="hSearchBtn" aria-label="搜索">🔍</button>
+        <button class="btn ghost" id="hSearchBtn" aria-label="搜索">${ic('search')}</button>
       </div>
       <button class="btn primary" id="newHelpBtn">＋ 发求助</button>
     </div>
@@ -1012,7 +1047,7 @@ async function viewHelpList(body) {
       ${chip('不限状态', st === '', 'data-s=""')}
       ${chip('待解决', st === 'open', 'data-s="open"')}
       ${chip('已解决', st === 'solved', 'data-s="solved"')}
-      ${q ? `<span class="hclear" id="hClear">✕ 清除搜索「${esc(q)}」</span>` : ''}
+      ${q ? `<span class="hclear" id="hClear">${ic('x')} 清除搜索「${esc(q)}」</span>` : ''}
     </div>
     <div id="newHelpForm" style="display:none;margin-bottom:14px;padding:14px;background:var(--blue-light);border-radius:var(--radius-sm)">
       <div class="form-item"><label>问题类型</label><div class="hl-chips" style="margin:0" id="hCatChips">
@@ -1061,7 +1096,7 @@ async function viewHelpDetail(body, id) {
   body.innerHTML = '<div class="card"><div class="loading-block">加载中…</div></div>';
   let d;
   try { d = await api('/api/discuss/help/' + id); }
-  catch (e) { body.innerHTML = `<div class="card"><div class="empty">😕 ${esc(e.message)}</div></div>`; return; }
+  catch (e) { body.innerHTML = `<div class="card"><div class="empty">${ic('help')} ${esc(e.message)}</div></div>`; return; }
   const p = d.post;
   const me = state.me;
   const canManage = me && (me.role === 'admin' || me.id === p.authorId);
@@ -1071,7 +1106,7 @@ async function viewHelpDetail(body, id) {
       ${avatarHtml(r.author, 'xs')}
       <div style="flex:1">
         <div class="meta" style="margin:0 0 4px"><b>${esc(r.author.nickname)}</b><span>${fmtTime(r.createdAt)}</span>
-          ${r.isSolution ? '<span class="badge solved">✔ 已采纳</span>' : ''}
+          ${r.isSolution ? '<span class="badge solved">'+ic('check')+' 已采纳</span>' : ''}
           ${canManage && !solved && !r.isSolution ? `<span class="lnk" data-adopt="${r.id}">采纳为答案</span>` : ''}
         </div>
         <div class="hp-text">${esc(r.content)}</div>
@@ -1083,7 +1118,7 @@ async function viewHelpDetail(body, id) {
     <div class="hp-head">
       <h2 style="margin:0">${esc(p.title)}</h2>
       <span class="cat-badge">${esc(p.category || '其他')}</span>
-      <span class="badge ${solved ? 'solved' : 'open'}">${solved ? '✔ 已解决' : '待解决'}</span>
+      <span class="badge ${solved ? 'solved' : 'open'}">${solved ? ic('check')+' 已解决' : '待解决'}</span>
     </div>
     <div class="meta" style="margin:8px 0 12px"><span>${esc(p.author.nickname)}</span><span>${fmtTime(p.createdAt)}</span>
       ${canManage && !solved ? '<span class="lnk" id="markSolved">标记为已解决</span>' : ''}
@@ -1142,13 +1177,13 @@ async function viewDiscussChat(body, gId) {
   const gd = await api('/api/discuss/groups');
   const gs = gd.groups || [];
   const g = gId ? gs.find(x => x.id == gId) : null;
-  if (gId && !g) { body.innerHTML = '<div class="card"><div class="empty">😕 群不存在</div></div>'; return; }
+  if (gId && !g) { body.innerHTML = '<div class="card"><div class="empty">'+ic('help')+' 群不存在</div></div>'; return; }
   const me = state.me;
   const isOwner = me && g && (me.role === 'admin' || g.ownerId == me.id);
   const sideItem = (x) => `
   <a class="chat-gitem${x.id == gId ? ' active' : ''}" href="#/discuss/chat/${x.id}">
     <span class="cg-emoji">${esc(x.emoji) || '💬'}</span>
-    <span class="cg-info"><b>${esc(x.name)}</b><span class="cg-meta">👥 ${x.memberCount} 人</span></span>
+    <span class="cg-info"><b>${esc(x.name)}</b><span class="cg-meta">${ic('users')} ${x.memberCount} 人</span></span>
     ${x.pendingCount ? `<span class="cg-badge">${x.pendingCount}</span>` : ''}
   </a>`;
   body.innerHTML = `
@@ -1205,7 +1240,7 @@ async function viewDiscussChat(body, gId) {
     };
   };
   const main = document.getElementById('chatMain');
-  if (!g) { main.innerHTML = '<div class="chat-empty">👈 选择一个群开始聊天</div>'; return; }
+  if (!g) { main.innerHTML = '<div class="chat-empty">← 选择一个群开始聊天</div>'; return; }
   if (!me || (g.myStatus !== 'approved' && !isOwner)) {
     main.innerHTML = `
     <div class="chat-join">
@@ -1229,7 +1264,7 @@ async function viewDiscussChat(body, gId) {
   }
   main.innerHTML = `
   <div class="card chat-card">
-    <div class="g-head"><span class="g-emoji sm">${esc(g.emoji) || '💬'}</span><b>${esc(g.name)}</b><span class="g-meta">👥 ${g.memberCount} 人</span></div>
+    <div class="g-head"><span class="g-emoji sm">${esc(g.emoji) || '💬'}</span><b>${esc(g.name)}</b><span class="g-meta">${ic('users')} ${g.memberCount} 人</span></div>
     <div class="chat-scroll" id="chatScroll">
       <div id="reqBox"></div>
       <div id="chatMsgs"><div class="empty" style="padding:40px 0">加载中…</div></div>
@@ -1251,7 +1286,7 @@ async function viewDiscussChat(body, gId) {
       if (!r.requests.length) { reqBox.innerHTML = ''; return; }
       reqBox.innerHTML = `
       <div class="req-card">
-        <b>👥 入群申请（${r.requests.length}）</b>
+        <b>${ic('users')} 入群申请（${r.requests.length}）</b>
         ${r.requests.map(q => `
         <div class="req-row">
           ${avatarHtml(q.user, 'xs')}
@@ -1360,7 +1395,7 @@ async function viewPostDetail(id) {
           <span class="type-badge">${esc(p.category || '其他')}</span>
           <span class="who">${avatarHtml(p.author, 'small')} ${esc(p.author.nickname)}</span>
           <span>${fmtTime(p.createdAt)}</span>
-          <span>💬 ${p.commentCount} 条回复</span>
+          <span>${ic('forum')} ${p.commentCount} 条回复</span>
           ${state.me && (state.me.id === p.authorId || state.me.role === 'admin') ? '<button class="btn red sm" id="delPost">删除</button>' : ''}
         </div>
       </div>
@@ -1413,7 +1448,7 @@ async function viewArticles() {
   <div class="container">
     <div class="page-title">
       <div><h1>文章库</h1><div class="sub">共 ${d.articles.length} 篇${cat ? '「' + cat + '」' : ''}文章${q ? `（搜索：“${esc(q)}”）` : ''}</div></div>
-      <button class="btn primary" id="wBtn">✍️ 我要写文章</button>
+      <button class="btn primary" id="wBtn">${ic('edit')} 我要写文章</button>
     </div>
     ${searchBoxHtml('aQ', q, '搜索文章标题 / 内容 / 作者…')}
     <div class="tabs">
@@ -1441,7 +1476,7 @@ async function viewArticles() {
           <div class="title"><a href="#/article/${a.id}">${esc(a.title)}</a> <span class="type-badge">${esc(a.category || '其他')}</span></div>
           <div class="meta"><span>${excerpt(a.content)}</span></div>
           <div class="meta"><span>${esc(a.author.nickname)}</span><span>${fmtTime(a.createdAt)}</span>
-            <span>👁 <span class="num">${a.views || 0}</span></span><span>❤️ <span class="num">${a.likeCount || 0}</span></span></div>
+            <span>${ic('eye')} <span class="num">${a.views || 0}</span></span><span>${ic('heart')} <span class="num">${a.likeCount || 0}</span></span></div>
         </div>
       </div>`;
   const renderArtPage = () => {
@@ -1491,20 +1526,20 @@ async function viewArticleDetail(id) {
           ${tagsHtml}
           <span class="who">${avatarHtml(a.author, 'small')} ${esc(a.author.nickname)}</span>
           <span>${fmtTime(a.createdAt)}</span>
-          <span>👁 ${a.views || 0}</span>
+          <span>${ic('eye')} ${a.views || 0}</span>
           ${a.status !== 'approved' ? `<span class="badge ${a.status}">${statusBadge(a.status)}</span>` : ''}
           ${state.me && (state.me.id === a.authorId || state.me.role === 'admin') ? `<button class="btn red sm" id="delArt">删除</button>` : ''}
         </div>
       </div>
       <div class="doc-content prose" id="artBody"></div>
-      ${(a.id || '').startsWith('a_file_') ? `<div class="doc-content prose" id="fileDocBox" style="margin-top:16px;border-top:1px dashed var(--border);padding-top:16px"><div class="empty">📄 正在加载文档内容…</div></div>` : ''}
+      ${(a.id || '').startsWith('a_file_') ? `<div class="doc-content prose" id="fileDocBox" style="margin-top:16px;border-top:1px dashed var(--border);padding-top:16px"><div class="empty">${ic('file')} 正在加载文档内容…</div></div>` : ''}
       <div style="margin-top:22px;text-align:center">
-        <button class="btn like-btn ${a.liked ? 'liked' : ''}" id="likeBtn">${a.liked ? '❤️ 已赞' : '🤍 点赞'} · ${a.likeCount}</button>
+        <button class="btn like-btn ${a.liked ? 'liked' : ''}" id="likeBtn">${a.liked ? ic('heart')+' 已赞' : ic('heart')+' 点赞'} · ${a.likeCount}</button>
       </div>
     </div>
 
     <div class="card gap-top">
-      <h2>⭐ 文章点评（${rd.count}）<span class="hint" style="font-weight:400">平均 ${rd.avgRating} 星</span></h2>
+      <h2>${ic('star')} 文章点评（${rd.count}）<span class="hint" style="font-weight:400">平均 ${rd.avgRating} 星</span></h2>
       ${state.me ? `
       <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px dashed var(--border)">
         <div class="hint" style="margin-bottom:6px">给这篇文章打个分吧（点评 +10 积分）</div>
@@ -1513,7 +1548,7 @@ async function viewArticleDetail(id) {
           <span class="hint" style="margin-left:10px;font-size:12px" id="starHint">点击星星评分</span>
         </div>
         <textarea id="revContent" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-top:8px;min-height:70px;font-size:13px;resize:vertical" placeholder="说说你的感受…"></textarea>
-        <button class="btn primary sm" id="revSubmit" style="margin-top:6px">📤 提交点评</button>
+        <button class="btn primary sm" id="revSubmit" style="margin-top:6px">${ic('submit')} 提交点评</button>
       </div>` : `<div class="empty" style="margin-bottom:12px"><a href="#/login">登录</a> 后参与点评（点评 +10 积分）</div>`}
       ${rd.reviews.map(r => `
       <div class="review-item-box">
@@ -1530,11 +1565,11 @@ async function viewArticleDetail(id) {
     </div>
 
     <div class="card gap-top">
-      <h2>💬 评论（${cd.total}）</h2>
+      <h2>${ic('forum')} 评论（${cd.total}）</h2>
       ${state.me ? `
       <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px dashed var(--border)">
         <textarea id="cmInput" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;min-height:60px;font-size:13px;resize:vertical" placeholder="说点什么…"></textarea>
-        <button class="btn primary sm" id="cmSubmit" style="margin-top:6px">💬 发表评论</button>
+        <button class="btn primary sm" id="cmSubmit" style="margin-top:6px">${ic('forum')} 发表评论</button>
       </div>` : `<div class="empty" style="margin-bottom:12px"><a href="#/login">登录</a> 后参与评论</div>`}
       <div id="commentBox">${renderComments(cd.comments, 'article', id)}</div>
     </div>
@@ -1549,7 +1584,7 @@ async function viewArticleDetail(id) {
       try {
         const ext = ((a.title || '').match(/\.([a-z0-9]+)$/i) || [])[1] ? a.title.match(/\.([a-z0-9]+)$/i)[1].toLowerCase() : '';
         if (['doc', 'xls', 'xlsx', 'ppt', 'pptx', 'zip', 'rtf', 'csv'].includes(ext)) {
-          fbox.innerHTML = '<div class="empty">该文件类型暂不支持在线预览，请点击上方「⬇ 下载文件」查看原文</div>';
+          fbox.innerHTML = '<div class="empty">该文件类型暂不支持在线预览，请点击上方「下载文件」查看原文</div>';
           return;
         }
         const res = await fetch('/api/files/' + id.replace(/^a_file_/, '') + '/download');
@@ -1565,7 +1600,7 @@ async function viewArticleDetail(id) {
           paginateHtml(fbox, md(await res.text()));
         }
       } catch (e) {
-        fbox.innerHTML = `<div class="empty">文档内容加载失败：${esc(e.message)}<br>可点击上方「⬇ 下载文件」查看原文</div>`;
+        fbox.innerHTML = `<div class="empty">文档内容加载失败：${esc(e.message)}<br>可点击上方「下载文件」查看原文</div>`;
       }
     })();
   }
@@ -1606,7 +1641,7 @@ async function viewArticleDetail(id) {
     try {
       const r = await api(`/api/articles/${id}/like`, { method: 'POST' });
       lb.className = 'btn like-btn' + (r.liked ? ' liked' : '');
-      lb.innerHTML = (r.liked ? '❤️ 已赞' : '🤍 点赞') + ' · ' + r.likeCount;
+      lb.innerHTML = (r.liked ? ic('heart')+' 已赞' : ic('heart')+' 点赞') + ' · ' + r.likeCount;
     } catch (e) { toast(e.message, 'err'); }
   };
   // 评论提交
@@ -1645,10 +1680,10 @@ async function viewArticleDetail(id) {
     if (!pool.length) return;
     const rc = document.getElementById('relatedCard');
     rc.style.display = '';
-    rc.innerHTML = `<h2>📚 相关推荐</h2><div class="rel-grid">${pool.map(x => `
+    rc.innerHTML = `<h2>${ic('book')} 相关推荐</h2><div class="rel-grid">${pool.map(x => `
       <a href="#/article/${x.id}" class="rel-item">
         <div class="rel-title">${esc(x.title)}</div>
-        <div class="rel-meta"><span class="type-badge">${esc(x.category)}</span> · ${esc(x.author.nickname)} · 👁 ${x.views || 0}</div>
+        <div class="rel-meta"><span class="type-badge">${esc(x.category)}</span> · ${esc(x.author.nickname)} · ${ic('eye')} ${x.views || 0}</div>
       </a>`).join('')}</div>`;
   }).catch(() => {});
 }
@@ -1662,7 +1697,7 @@ function renderComments(roots, targetType, targetId) {
     <div class="cm-body">
       <div class="cm-meta">
         <b>${esc(c.author.nickname)}</b> · <span class="hint">${fmtTime(c.createdAt)}</span>
-        <span class="cm-like" data-cid="${c.id}" data-obj="${targetType === 'article' ? 'a' : 'p'}" data-tid="${targetId}">${c.liked ? '❤️' : '🤍'} ${c.likeCount || 0}</span>
+        <span class="cm-like" data-cid="${c.id}" data-obj="${targetType === 'article' ? 'a' : 'p'}" data-tid="${targetId}">${ic('heart')} ${c.likeCount || 0}</span>
         <span class="cm-reply" data-cid="${c.id}" data-target="${targetType}" data-tid="${targetId}" data-replyto="${esc(c.author.nickname)}">回复</span>
         ${(state.me && (state.me.id === c.authorId || state.me.role === 'admin')) ? `<span class="cm-del" data-cid="${c.id}" data-target="${targetType}" data-tid="${targetId}">删除</span>` : ''}
       </div>
@@ -1733,7 +1768,7 @@ async function viewWrite(editId) {
     <div class="page-title">
       <h1>${a ? '编辑文章' : '写文章'}</h1>
       <div style="display:flex;gap:8px">
-        <button class="btn ghost sm" id="tplBtn">📝 选择模板</button>
+        <button class="btn ghost sm" id="tplBtn">${ic('templates')} 选择模板</button>
       </div>
     </div>
 
@@ -1743,7 +1778,7 @@ async function viewWrite(editId) {
       <div id="writeLeft" class="write-pane" style="width:55%;min-width:340px">
         <div id="tplPanel" style="display:none">
           <div class="card">
-            <h2>📝 写作模板（点击应用到编辑器）</h2>
+            <h2>${ic('templates')} 写作模板（点击应用到编辑器）</h2>
             <div class="tpl-grid">
               ${tpls.templates.map(t => `
               <div class="tpl-card" data-tpl="${t.id}">
@@ -1790,18 +1825,18 @@ async function viewWrite(editId) {
       <div id="writeAI" class="write-pane write-ai" style="width:45%;min-width:280px">
         <div class="ai-card">
           <div class="ai-header">
-            <div class="ai-logo">✦</div>
+            <div class="ai-logo">${ic('sparkle')}</div>
             <div>
               <div class="ai-title">AI 写作助手</div>
               <div class="ai-sub">描述你的创意，让 AI 帮你变成文字</div>
             </div>
           </div>
           <div class="ai-task-bar">
-            <button class="ai-task-btn active" data-t="write">✨ 帮你写</button>
-            <button class="ai-task-btn" data-t="outline">📋 列大纲</button>
-            <button class="ai-task-btn" data-t="rewrite">🎨 润色</button>
-            <button class="ai-task-btn" data-t="continue">📖 续写</button>
-            <button class="ai-task-btn" data-t="review">📝 批改</button>
+            <button class="ai-task-btn active" data-t="write">${ic('sparkle')} 帮你写</button>
+            <button class="ai-task-btn" data-t="outline">${ic('clipboard')} 列大纲</button>
+            <button class="ai-task-btn" data-t="rewrite">${ic('palette')} 润色</button>
+            <button class="ai-task-btn" data-t="continue">${ic('book')} 续写</button>
+            <button class="ai-task-btn" data-t="review">${ic('edit')} 批改</button>
           </div>
           <div class="ai-body">
             <div class="ai-field">
@@ -1813,12 +1848,12 @@ async function viewWrite(editId) {
               <input id="aiStyle" placeholder="议论文 / 轻松幽默 / 简洁有力 / 800 字">
             </div>
             <button class="ai-send" id="aiSend">
-              <span class="ai-send-ico">⚡</span>
+              <span class="ai-send-ico">${ic('bolt')}</span>
               <span>让 AI 帮你写</span>
             </button>
             <div id="aiResult" class="ai-result"></div>
             <button class="ai-apply" id="aiApply">
-              <span>📥 把结果插入编辑器</span>
+              <span>${ic('downloads')} 把结果插入编辑器</span>
             </button>
           </div>
         </div>
@@ -1836,10 +1871,10 @@ async function viewWrite(editId) {
     const t = await api('/api/templates/' + c.dataset.tpl);
     document.getElementById('tplDetail').innerHTML = `
       <div class="card">
-        <h2>📄 ${esc(t.template.title)}</h2>
+        <h2>${ic('file')} ${esc(t.template.title)}</h2>
         <div class="hint" style="margin-bottom:10px">${esc(t.template.description)}</div>
         <div class="tpl-preview">${esc(t.template.content)}</div>
-        <button class="btn primary sm" id="applyTpl">✅ 应用到编辑器</button>
+        <button class="btn primary sm" id="applyTpl">${ic('check')} 应用到编辑器</button>
         <button class="btn ghost sm" id="closeTpl" style="margin-left:8px">关闭</button>
       </div>`;
     document.getElementById('tplDetail').style.display = 'block';
@@ -1910,7 +1945,7 @@ async function viewWrite(editId) {
     const btn = document.getElementById('aiSend');
     if (!input) return toast('请写点什么', 'err');
     btn.disabled = true;
-    btn.innerHTML = '<span class="ai-send-ico">✦</span><span>AI 正在思考…</span>';
+    btn.innerHTML = '<span class="ai-send-ico">'+ic('sparkle')+'</span><span>AI 正在思考…</span>';
     aiResult.innerHTML = '<div class="ai-loader">AI 正在想办法</div>';
     aiApply.style.display = 'none';
     try {
@@ -1918,24 +1953,24 @@ async function viewWrite(editId) {
       const r = await api('/api/ai/assist', { method: 'POST', body: { task: _aiTask, input, style, content: currentContent, title: aTitle.value } });
       let html = md(r.result) || '<span class="hint">AI 没返回内容</span>';
       const tags = [];
-      if (r.source === 'ai') tags.push('<span class="ai-tag ai-tag-ai">✨ Workers AI</span>');
-      if (r.source === 'template') tags.push('<span class="ai-tag ai-tag-tpl">📝 模板回复</span>');
-      if (r.cached) tags.push('<span class="ai-tag ai-tag-cache">💾 缓存</span>');
-      if (r.limited) tags.push('<span class="ai-tag ai-tag-limit">⚠️ ' + esc(r.reason || '次数已用完') + '</span>');
+      if (r.source === 'ai') tags.push('<span class="ai-tag ai-tag-ai">'+ic('sparkle')+' Workers AI</span>');
+      if (r.source === 'template') tags.push('<span class="ai-tag ai-tag-tpl">'+ic('edit')+' 模板回复</span>');
+      if (r.cached) tags.push('<span class="ai-tag ai-tag-cache">'+ic('folder')+' 缓存</span>');
+      if (r.limited) tags.push('<span class="ai-tag ai-tag-limit">'+ic('warn')+' ' + esc(r.reason || '次数已用完') + '</span>');
       if (typeof r.remaining === 'number' && r.remaining >= 0 && !r.limited) tags.push(`<span class="ai-tag ai-tag-count">剩余 ${r.remaining} 次/天</span>`);
       if (tags.length) html = '<div class="ai-tags">' + tags.join('') + '</div>' + html;
       aiResult.innerHTML = html;
       aiApply.style.display = r.source !== 'template' || r.limited ? 'block' : 'block';
       aiApply.dataset.result = r.result || '';
-      btn.innerHTML = '<span class="ai-send-ico">⚡</span><span>让 AI 帮你写</span>';
+      btn.innerHTML = '<span class="ai-send-ico">'+ic('bolt')+'</span><span>让 AI 帮你写</span>';
       btn.disabled = false;
     } catch (e) {
       aiResult.innerHTML = '<span style="color:var(--danger)">AI 暂时不可用：' + esc(e.message) + '</span>';
-      btn.innerHTML = '<span class="ai-send-ico">⚡</span><span>让 AI 帮你写</span>';
+      btn.innerHTML = '<span class="ai-send-ico">'+ic('bolt')+'</span><span>让 AI 帮你写</span>';
       btn.disabled = false;
     }
     document.getElementById('aiSend').disabled = false;
-    document.getElementById('aiSend').textContent = '🚀 让 AI 帮我';
+    document.getElementById('aiSend').innerHTML = ic('send')+' 让 AI 帮我';
   };
   document.getElementById('aiApply').onclick = () => {
     const r = document.getElementById('aiApply').dataset.result;
@@ -1986,7 +2021,7 @@ async function viewRank() {
   const rankTotal = Math.max(1, Math.ceil(d.rank.length / RANK_PAGE));
   const rankRow = (r, i) => `
         <tr>
-          <td class="rank-no ${i < 3 ? 'r' + (i + 1) : ''}">${i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</td>
+          <td class="rank-no ${i < 3 ? 'r' + (i + 1) : ''}">${i + 1}</td>
           <td><a class="who" href="#/user/${r.user.id}">${avatarHtml(r.user, 'small')} ${esc(r.user.nickname)}
             ${r.user.role === 'admin' ? '<span class="role-badge">管理员</span>' : ''}</a></td>
           <td class="score">${r.score}</td><td>${r.articles}</td><td>${r.posts}</td><td>${r.likes}</td>
@@ -2025,7 +2060,7 @@ async function viewContests() {
   <div class="container">
     <div class="page-title">
       <div><h1>比赛广场</h1><div class="sub">共 ${d.contests.length} 场比赛</div></div>
-      ${state.me && state.me.role === 'admin' ? '<button class="btn primary" onclick="go(\'#/admin/contest\')">＋ 创建比赛</button>' : (state.me ? '<button class="btn ghost" onclick="window.applyContestInvite()">📝 申请创建比赛</button>' : '')}
+      ${state.me && state.me.role === 'admin' ? '<button class="btn primary" onclick="go(\'#/admin/contest\')">'+ic('plus')+' 创建比赛</button>' : (state.me ? '<button class="btn ghost" onclick="window.applyContestInvite()">'+ic('edit')+' 申请创建比赛</button>' : '')}
     </div>
     ${d.contests.map(c => `
     <div class="card contest" style="cursor:pointer" onclick="location.hash='#/contest/${c.id}'">
@@ -2033,9 +2068,9 @@ async function viewContests() {
         <div class="c-title">${esc(c.title)}</div>
         <div class="c-meta">
           <span class="badge ${c.status}">${contestBadge(c.status)}</span>
-          <span>⏰ ${fmtRange(c.startTime, c.endTime)}</span>
-          <span>👥 ${c.participantCount} 人报名</span>
-          <span>📋 ${c.problemCount || 0} 道题</span>
+          <span>${ic('clock')} ${fmtRange(c.startTime, c.endTime)}</span>
+          <span>${ic('users')} ${c.participantCount} 人报名</span>
+          <span>${ic('clipboard')} ${c.problemCount || 0} 道题</span>
           <span>主办方：${esc(c.creator ? c.creator.nickname : '管理员')}</span>
         </div>
       </div>
@@ -2057,17 +2092,17 @@ async function viewContestDetail(id) {
     <div class="card">
       <div class="doc-head">
         <h1>${esc(c.title)} <span class="badge ${c.status}">${contestBadge(c.status)}</span></h1>
-        <div class="meta"><span>⏰ ${fmtRange(c.startTime, c.endTime)}</span><span>👥 ${c.participantCount} 人已报名</span>
-        <span>📋 ${c.problemCount} 道题</span><span>📥 ${c.submissionCount} 份作品</span>
+        <div class="meta"><span>${ic('clock')} ${fmtRange(c.startTime, c.endTime)}</span><span>${ic('users')} ${c.participantCount} 人已报名</span>
+        <span>${ic('clipboard')} ${c.problemCount} 道题</span><span>${ic('downloads')} ${c.submissionCount} 份作品</span>
         <span>主办方：${esc(c.creator ? c.creator.nickname : '')}</span></div>
       </div>
       <div class="doc-content">${md(c.description)}</div>
       <div style="margin-top:16px;text-align:center">
-        ${c.status !== 'ended' ? `<button class="btn ${c.joined ? 'ghost' : 'green'}" id="joinBtn">${c.joined ? '✅ 已报名（点击取消）' : '🔥 立即报名'}</button>` : ''}
+        ${c.status !== 'ended' ? `<button class="btn ${c.joined ? 'ghost' : 'green'}" id="joinBtn">${c.joined ? ic('check')+' 已报名（点击取消）' : ic('flame')+' 立即报名'}</button>` : ''}
       </div>
     </div>
     <div class="card">
-      <h2>📋 比赛题目（${c.problemCount}）</h2>
+      <h2>${ic('clipboard')} 比赛题目（${c.problemCount}）</h2>
       ${(c.problems || []).map((q, i) => {
         const mine = mySubs.find(s => s.problemId === q.id);
         return `
@@ -2082,12 +2117,12 @@ async function viewContestDetail(id) {
           <div class="hint" style="margin-bottom:8px">我的作品：<b style="color:var(--text)">${esc(mine.title)}</b> · ${mine.wordCount} 字 · ${fmtTime(mine.updatedAt || mine.createdAt)}</div>` : ''}
           ${canSubmit ? `
           <div class="r-actions">
-            <button class="btn primary sm" onclick="go('#/work/contest/${id}/${q.id}')">${mine ? '✏️ 修改我的作品' : '� 提交本题作品'}</button>
+            <button class="btn primary sm" onclick="go('#/work/contest/${id}/${q.id}')">${mine ? ic('edit')+' 修改我的作品' : ic('submit')+' 提交本题作品'}</button>
           </div>` : (c.status === 'ongoing' && !c.joined ? '<div class="hint">报名后即可提交本题作品</div>' : '')}
         </div>`;
       }).join('') || '<div class="empty">该比赛暂无题目</div>'}
-      ${c.status === 'upcoming' ? '<div class="hint" style="margin-top:10px">⏳ 比赛开始后即可提交作品</div>' : ''}
-      ${c.status === 'ended' ? '<div class="hint" style="margin-top:10px">🏁 比赛已结束，作品提交通道已关闭</div>' : ''}
+      ${c.status === 'upcoming' ? '<div class="hint" style="margin-top:10px">'+ic('clock')+' 比赛开始后即可提交作品</div>' : ''}
+      ${c.status === 'ended' ? '<div class="hint" style="margin-top:10px">'+ic('flag')+' 比赛已结束，作品提交通道已关闭</div>' : ''}
     </div>
     <div class="card">
       <h2>报名名单（<span id="joinCount">${c.participantCount}</span>）</h2>
@@ -2135,7 +2170,7 @@ async function viewWorkspace(arg) {
     const d = await api('/api/contests/' + id);
     const c = d.contest;
     problem = (c.problems || []).find(q => q.id === qid);
-    if (!problem) { $app.innerHTML = '<div class="card"><div class="empty">😕 题目不存在</div></div>'; return; }
+    if (!problem) { $app.innerHTML = '<div class="card"><div class="empty">'+ic('help')+' 题目不存在</div></div>'; return; }
     wordLimit = problem.wordLimit || 0;
     backHash = '#/contest/' + id;
     submitLabel = '提交本题作品';
@@ -2145,7 +2180,7 @@ async function viewWorkspace(arg) {
   } else if (mode === 'checkin') {
     const d = await api('/api/checkins/today');
     problem = d.daily;
-    if (!problem) { $app.innerHTML = '<div class="card"><div class="empty">😕 今天暂无题目</div></div>'; return; }
+    if (!problem) { $app.innerHTML = '<div class="card"><div class="empty">'+ic('help')+' 今天暂无题目</div></div>'; return; }
     mine = d.myCheckin || null;
     backHash = '#/daily';
     submitLabel = '提交打卡';
@@ -2166,14 +2201,14 @@ async function viewWorkspace(arg) {
     <div class="ws-bar" id="wsBar" title="拖动调整分屏大小"><div class="ws-grip"></div></div>
     <div class="ws-right">
       <div class="ws-tabs">
-        <button class="ws-tab cur" id="wsTabWrite">✏️ 在线写作</button>
-        <button class="ws-tab" id="wsTabUpload">📄 上传文件</button>
+        <button class="ws-tab cur" id="wsTabWrite">${ic('edit')} 在线写作</button>
+        <button class="ws-tab" id="wsTabUpload">${ic('file')} 上传文件</button>
         <span class="hint" style="margin-left:auto">字数：<b id="wsWc">0</b>${wordLimit ? ' / 上限 ' + wordLimit : ''}</span>
       </div>
       <div id="wsWritePane" style="display:flex;flex-direction:column;flex:1;min-height:0">
         <div class="ws-mode">
           <button class="mini cur" id="wsModeEdit">编辑</button>
-          <button class="mini" id="wsModePrev">👁 预览</button>
+          <button class="mini" id="wsModePrev">${ic('eye')} 预览</button>
         </div>
         ${needTitle ? `<input id="wsTitle" maxlength="80" placeholder="作品标题" value="${mine ? esc(mine.title) : (mode === 'problem' ? esc(state.me.nickname) + '的练习' : '')}">` : ''}
         <textarea id="wsContent" placeholder="${mode === 'checkin' ? '围绕今天的题目写一段打卡内容…' : '支持 Markdown（# 标题、**加粗**、> 引用…）。也可以把写好的内容直接粘贴进来（Ctrl+V）…'}">${mine ? esc(mine.content) : ''}</textarea>
@@ -2181,15 +2216,15 @@ async function viewWorkspace(arg) {
       </div>
       <div id="wsUploadPane" style="display:none;flex:1;min-height:0">
         <div class="upload-drop" id="wsDrop">
-          <div style="font-size:36px">📄</div>
+          <div class="big-ico">${ic('file')}</div>
           <p><b>点击选择或拖入文件</b></p>
           <p class="hint">支持 .txt / .md 纯文本（≤1MB），内容将导入编辑器，可预览后再提交</p>
           <input type="file" id="wsFile" accept=".txt,.md,.markdown,text/plain" style="display:none">
         </div>
       </div>
       <div class="ws-actions">
-        <button class="btn ghost sm" id="wsPaste">📋 粘贴导入</button>
-        <button class="btn green" id="wsSubmit">📤 ${mine ? '保存修改' : '提交'}</button>
+        <button class="btn ghost sm" id="wsPaste">${ic('clipboard')} 粘贴导入</button>
+        <button class="btn green" id="wsSubmit">${ic('submit')} ${mine ? '保存修改' : '提交'}</button>
       </div>
     </div>
   </div>`;
@@ -2281,13 +2316,13 @@ async function viewSubmit() {
     <div class="card">
       <div class="form-item"><label>选择文件</label><input type="file" id="fFile"></div>
       <div class="form-item"><label>投稿说明</label><input id="fNote" maxlength="200" placeholder="简单说明一下这份文件"></div>
-      <button class="btn primary" id="fSubmit">📤 上传投稿</button>
+      <button class="btn primary" id="fSubmit">${ic('submit')} 上传投稿</button>
     </div>
     <div class="card">
       <h2>我的投稿记录</h2>
       ${d.files.map(f => `
       <div class="item">
-        <div style="align-self:center;font-size:22px">📄</div>
+        <div class="big-ico sm">${ic('file')}</div>
         <div style="flex:1">
           <div class="title">${esc(f.originalName)} <span class="badge ${f.status}">${statusBadge(f.status)}</span></div>
           <div class="meta"><span>${esc(f.note || '无说明')}</span><span>${fmtSize(f.size)}</span><span>${fmtTime(f.createdAt)}</span></div>
@@ -2327,7 +2362,7 @@ async function viewMine() {
       <div class="item">
         <div style="flex:1">
           <div class="title"><a href="#/article/${x.id}">${esc(x.title)}</a> <span class="badge ${x.status}">${statusBadge(x.status)}</span></div>
-          <div class="meta"><span>${fmtTime(x.createdAt)}</span><span>👁 ${x.views || 0}</span><span>❤️ ${x.likeCount || 0}</span></div>
+          <div class="meta"><span>${fmtTime(x.createdAt)}</span><span>${ic('eye')} ${x.views || 0}</span><span>${ic('heart')} ${x.likeCount || 0}</span></div>
         </div>
         ${x.status !== 'approved' ? `<button class="btn ghost sm" onclick="go('#/write/${x.id}')">编辑</button>` : ''}
         <button class="btn red sm" data-del-art="${x.id}">删除</button>
@@ -2336,13 +2371,13 @@ async function viewMine() {
       <div class="item">
         <div style="flex:1">
           <div class="title"><a href="#/post/${x.id}">${esc(x.title)}</a> <span class="badge ${x.status}">${statusBadge(x.status)}</span></div>
-          <div class="meta"><span>${fmtTime(x.createdAt)}</span><span>💬 ${x.commentCount}</span></div>
+          <div class="meta"><span>${fmtTime(x.createdAt)}</span><span>${ic('forum')} ${x.commentCount}</span></div>
         </div>
         <button class="btn red sm" data-del-post="${x.id}">删除</button>
       </div>`;
     return `
       <div class="item">
-        <div style="align-self:center;font-size:22px">📄</div>
+        <div class="big-ico sm">${ic('file')}</div>
         <div style="flex:1">
           <div class="title">${esc(x.originalName)} <span class="badge ${x.status}">${statusBadge(x.status)}</span></div>
           <div class="meta"><span>${esc(x.note || '')}</span><span>${fmtSize(x.size)}</span><span>${fmtTime(x.createdAt)}</span></div>
@@ -2364,7 +2399,7 @@ async function viewMine() {
   $app.innerHTML = `
   <div class="container">
     <div class="page-title"><div><h1>我的文章</h1><div class="sub">管理你发布的文章、帖子与投稿</div></div>
-    <button class="btn primary" onclick="go('#/write')">✍️ 写文章</button></div>
+    <button class="btn primary" onclick="go('#/write')">${ic('edit')} 写文章</button></div>
     <div class="tabs">
       <span class="t ${tab === 'a' ? 'active' : ''}" data-t="a">文章（${da.articles.length}）</span>
       <span class="t ${tab === 'p' ? 'active' : ''}" data-t="p">帖子（${dp.posts.length}）</span>
@@ -2400,7 +2435,7 @@ async function viewSettings() {
   <div class="container" style="max-width:620px">
     <div class="page-title"><h1>偏好设置</h1></div>
     <div class="card">
-      <h2>🎨 界面</h2>
+      <h2>${ic('palette')} 界面</h2>
       <div class="set-row"><span class="set-lab">主题色</span><div class="acc-row" id="accRow">${accDots}</div></div>
       <div class="set-row"><span class="set-lab">深色模式</span><button class="dark-switch${document.documentElement.classList.contains('dark') ? ' on' : ''}" id="dkSwitch" aria-label="切换深色模式"></button></div>
     </div>
@@ -2417,7 +2452,7 @@ async function viewSettings() {
       <button class="btn primary" id="sPwd">修改密码</button>
     </div>
     <div class="card">
-      <h2>🖼 头像</h2>
+      <h2>${ic('image')} 头像</h2>
       <div id="avPrev" style="margin-bottom:12px">${avatarHtml(me, 'big')}</div>
       <input type="file" id="avFile" accept="image/*" hidden>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -2428,7 +2463,7 @@ async function viewSettings() {
       <div class="hint" style="margin-top:10px">支持 JPG/PNG/WebP/GIF，自动居中裁剪为方形并压缩到 256×256</div>
     </div>
     <div class="card">
-      <h2>📧 绑定邮箱</h2>
+      <h2>${ic('mail')} 绑定邮箱</h2>
       ${me.email
         ? `<div class="hint">已绑定：<b>${esc(me.email.replace(/^([^@]{1,3})[^@]*(@.*)$/, '$1****$2'))}</b></div>`
         : `<div class="hint" style="margin-bottom:10px">未绑定，绑定后可找回密码</div>
@@ -2588,8 +2623,8 @@ function viewLogin() {
         <button class="btn primary" id="fpBtn" style="width:100%">重置密码</button>
       </div>` : `
       <div class="tabs" style="justify-content:center">
-        <div class="t ${regMode === 'beta' ? 'active' : ''}" data-r="beta">🧪 内测注册</div>
-        <div class="t ${regMode === 'email' ? 'active' : ''}" data-r="email">📧 邮箱注册</div>
+        <div class="t ${regMode === 'beta' ? 'active' : ''}" data-r="beta">${ic('flask')} 内测注册</div>
+        <div class="t ${regMode === 'email' ? 'active' : ''}" data-r="email">${ic('mail')} 邮箱注册</div>
       </div>
       ${regMode === 'email' ? `
       <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:4px">
@@ -2602,7 +2637,7 @@ function viewLogin() {
       <div class="form-item" style="margin-top:12px"><label>验证码</label><input id="rCode" inputmode="numeric" maxlength="6" placeholder="6 位数字验证码"></div>
       <div class="form-item"><label>用户名</label><input id="rUser2" placeholder="3-24 位字母 / 数字 / 下划线"></div>
       <div class="form-item"><label>密码</label><input type="password" id="rPass2" placeholder="至少 8 位，需包含字母和数字"></div>
-      <button class="btn primary" id="rBtn2" style="width:100%">📧 注册</button>` : `
+      <button class="btn primary" id="rBtn2" style="width:100%">${ic('mail')} 注册</button>` : `
       <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:4px">
         <h2 style="margin:0;font-size:18px">内测注册</h2>
         <span class="badge approved">内测</span>
@@ -2703,7 +2738,7 @@ function viewLogin() {
 /* ---------- 后台管理 ---------- */
 async function viewAdmin(sub) {
   if (!state.me || state.me.role !== 'admin') {
-    $app.innerHTML = '<div class="card"><div class="empty">⛔ 仅管理员可访问后台</div></div>';
+    $app.innerHTML = '<div class="card"><div class="empty">'+ic('shield')+' 仅管理员可访问后台</div></div>';
     return;
   }
   const [kind, st] = (sub || '').split('/');
@@ -2734,7 +2769,7 @@ async function contestCreate() {
       <button class="btn ghost sm" onclick="go('#/contests')">← 返回比赛广场</button>
     </div>
     <div class="card">
-      ${!isAdmin ? `<div class="hint" style="margin-bottom:10px">🔑 邀请码：<code>${inviteCode}</code> <button class="btn ghost sm" id="changeInvite" style="margin-left:8px">换一个</button></div>` : ''}
+      ${!isAdmin ? `<div class="hint" style="margin-bottom:10px">${ic('key')} 邀请码：<code>${inviteCode}</code> <button class="btn ghost sm" id="changeInvite" style="margin-left:8px">换一个</button></div>` : ''}
       <div class="form-item"><label>比赛标题</label><input id="ctTitle" maxlength="80" placeholder="例如：第二届「文汇杯」创作赛"></div>
       <div class="form-item"><label>比赛说明（支持 Markdown）</label><textarea id="ctDesc" style="min-height:120px" placeholder="主题、规则、评分标准…"></textarea></div>
       <div class="grid-2">
@@ -2748,7 +2783,7 @@ async function contestCreate() {
       <button class="btn ghost" id="addProblem">＋ 添加题目</button>
     </div>
     <div class="card">
-      <button class="btn primary" id="ctSubmit">🏁 发布比赛</button>
+      <button class="btn primary" id="ctSubmit">${ic('contests')} 发布比赛</button>
     </div>
   </div>`;
   if (document.getElementById('changeInvite')) document.getElementById('changeInvite').onclick = () => {
@@ -2767,7 +2802,7 @@ async function contestCreate() {
     document.getElementById('problemList').innerHTML = problems.map((p, i) => `
       <div class="review-item" style="margin-bottom:14px">
         <div class="r-head"><span class="r-title">第 ${i + 1} 题</span>
-          ${problems.length > 1 ? `<button class="btn red sm" data-rm="${i}">✕ 删除本题</button>` : ''}</div>
+          ${problems.length > 1 ? `<button class="btn red sm" data-rm="${i}">${ic('x')} 删除本题</button>` : ''}</div>
         <div class="form-item"><label>题目标题</label><input maxlength="60" data-f="title" data-i="${i}" value="${esc(p.title)}" placeholder="例如：我的编程故事"></div>
         <div class="form-item"><label>题目内容 / 要求</label><textarea data-f="content" data-i="${i}" style="min-height:90px" placeholder="布置题目：写什么、要求是什么…">${esc(p.content)}</textarea></div>
         <div class="form-item"><label>字数限制</label><input type="number" min="0" step="100" data-f="wordLimit" data-i="${i}" value="${esc(p.wordLimit)}" placeholder="留空或 0 表示不限制，如 2000"></div>
@@ -2813,7 +2848,7 @@ async function adminInviteManager() {
     </div>
     <div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <span style="flex:1;color:var(--text2)">生成后把码发给想创建比赛的人，他用掉后立即失效</span>
-      <button class="btn primary" id="genInvite">🎲 生成一次性邀请码</button>
+      <button class="btn primary" id="genInvite">${ic('dice')} 生成一次性邀请码</button>
     </div>
     <div id="newCodeArea"></div>
     <div class="card">
@@ -2830,8 +2865,8 @@ async function adminInviteManager() {
         <span class="meta">创建者：${esc(c.createdBy)}</span>
         <span class="meta">${fmtTime(c.createdAt)}</span>
         ${c.used
-          ? `<span class="badge rejected">✕ 已使用 · ${esc(c.usedBy)} · ${fmtTime(c.usedAt)}</span>`
-          : `<span class="badge approved">✓ 未使用</span>`}
+          ? `<span class="badge rejected">${ic('x')} 已使用 · ${esc(c.usedBy)} · ${fmtTime(c.usedAt)}</span>`
+          : `<span class="badge approved">${ic('check')} 未使用</span>`}
       </div>`;
     }).join('') || '<div class="empty">还没有生成过邀请码</div>';
   };
@@ -2845,7 +2880,7 @@ async function adminInviteManager() {
           <div style="font-size:12px;color:#8a93a6;margin-bottom:4px">新生成的邀请码（请立刻发给对方，使用后即失效）</div>
           <div style="font-family:monospace;font-size:22px;font-weight:700;letter-spacing:3px;color:#4f7cff;text-align:center;padding:6px 0">${r.code}</div>
           <div style="text-align:center;margin-top:8px">
-            <button class="btn ghost sm" onclick="navigator.clipboard.writeText('${r.code}');toast('已复制')">📋 复制</button>
+            <button class="btn ghost sm" onclick="navigator.clipboard.writeText('${r.code}');toast('已复制')">${ic('clipboard')} 复制</button>
             <button class="btn ghost sm" onclick="document.getElementById('newCodeArea').innerHTML=''">关闭</button>
           </div>
         </div>`;
@@ -2885,22 +2920,22 @@ async function adminReview(kind, st) {
         <div class="r-content">${md(x.content)}</div>
         <div class="r-actions">
           <span class="hint">出题人：${esc(x.proposer.nickname)}（@${esc(x.proposer.username || '')}）· ${fmtTime(x.createdAt)}</span>
-          <button class="btn green sm" data-r="approve" data-id="${x.id}">✔ 通过</button>
-          <button class="btn red sm" data-r="reject" data-id="${x.id}">✘ 拒绝</button>
+          <button class="btn green sm" data-r="approve" data-id="${x.id}">${ic('check')} 通过</button>
+          <button class="btn red sm" data-r="reject" data-id="${x.id}">${ic('x')} 拒绝</button>
         </div>
       </div>`;
     if (kind === 'files') return `
       <div class="review-item">
         <div class="r-head">
-          <span style="font-size:22px">📄</span>
+          <span class="big-ico sm">${ic('file')}</span>
           <span class="r-title">${esc(x.originalName)}</span>
           <span class="badge ${x.status}">${statusBadge(x.status)}</span>
         </div>
         <div class="r-content">投稿说明：${esc(x.note || '（无）')}\n文件大小：${fmtSize(x.size)}\n投稿人：${esc(x.author.nickname)}（@${esc(x.author.username)}）· ${fmtTime(x.createdAt)}</div>
         <div class="r-actions">
-          <button class="btn green sm" data-r="approve" data-id="${x.id}">✔ 通过</button>
-          <button class="btn red sm" data-r="reject" data-id="${x.id}">✘ 拒绝</button>
-          <button class="btn ghost sm" onclick="window.open('/api/files/${x.id}/download')">⬇ 下载查看</button>
+          <button class="btn green sm" data-r="approve" data-id="${x.id}">${ic('check')} 通过</button>
+          <button class="btn red sm" data-r="reject" data-id="${x.id}">${ic('x')} 拒绝</button>
+          <button class="btn ghost sm" onclick="window.open('/api/files/${x.id}/download')">${ic('downloads')} 下载查看</button>
         </div>
       </div>`;
     return `
@@ -2912,8 +2947,8 @@ async function adminReview(kind, st) {
         <div class="r-content">${md(x.content)}</div>
         <div class="r-actions">
           <span class="hint">${kind === 'posts' ? '投稿人' : '作者'}：${esc(x.author.nickname)}（@${esc(x.author.username)}）· ${fmtTime(x.createdAt)}</span>
-          <button class="btn green sm" data-r="approve" data-id="${x.id}">✔ 通过</button>
-          <button class="btn red sm" data-r="reject" data-id="${x.id}">✘ 拒绝</button>
+          <button class="btn green sm" data-r="approve" data-id="${x.id}">${ic('check')} 通过</button>
+          <button class="btn red sm" data-r="reject" data-id="${x.id}">${ic('x')} 拒绝</button>
         </div>
       </div>`;
   };
@@ -3073,7 +3108,7 @@ async function viewProblems() {
       </select>
       <div class="search-box" style="flex:1;margin:0">
         <input id="pQ" value="${esc(q)}" placeholder="搜索题目标题 / 内容 / 标签…" maxlength="60">
-        <button class="btn primary" data-searchbtn="pQ">🔍 搜索</button>
+        <button class="btn primary" data-searchbtn="pQ">${ic('search')} 搜索</button>
       </div>
     </div>
     <div class="tabs">
@@ -3093,7 +3128,7 @@ async function viewProblems() {
         <div class="form-item"><label>题目标题</label><input id="npTitle" maxlength="80" placeholder="例如：用排比写一段风景"></div>
         <div class="form-item"><label>题目内容 / 要求（支持 Markdown）</label><textarea id="npContent" style="min-height:110px" placeholder="具体要求、字数建议、注意事项…"></textarea></div>
         <div class="form-item"><label>标签（用逗号分隔，最多 5 个）</label><input id="npTags" placeholder="排比,写景"></div>
-        <button class="btn green" id="npSave">${isAdmin ? '✔ 收录' : '📤 提交出题'}</button>
+        <button class="btn green" id="npSave">${isAdmin ? ic('check')+' 收录' : ic('submit')+' 提交出题'}</button>
       </div>
     </div>
     <div class="card">
@@ -3112,7 +3147,7 @@ async function viewProblems() {
           <div class="title">${diffBadge(p.difficulty)} <a href="#/problem/${p.id}" onclick="event.stopPropagation()">${esc(p.title)}</a>
             <span class="type-badge">${TYPE[p.type]}</span></div>
           <div class="meta"><span>${excerpt(p.content, 60)}</span></div>
-          <div class="meta"><span>👥 ${p.doerCount} 人练过</span><span>📝 ${p.practiceCount} 篇练习</span>${tagChips(p.tags)}</div>
+          <div class="meta"><span>${ic('users')} ${p.doerCount} 人练过</span><span>${ic('edit')} ${p.practiceCount} 篇练习</span>${tagChips(p.tags)}</div>
         </div>
       </div>`;
   const renderProbPage = () => {
@@ -3162,7 +3197,7 @@ async function viewProblemDetail(id) {
           <span class="type-badge">${TYPE[p.type]}</span>
           ${p.status !== 'approved' ? `<span class="badge ${p.status}">${statusBadge(p.status)}</span>` : ''}
           ${tagChips(p.tags)}
-          <span>👥 ${p.doerCount} 人练过</span><span>📝 ${p.practiceCount} 篇练习</span>
+          <span>${ic('users')} ${p.doerCount} 人练过</span><span>${ic('edit')} ${p.practiceCount} 篇练习</span>
           ${mine ? '<span class="badge approved">我已完成</span>' : ''}
         </div>
       </div>
@@ -3171,10 +3206,10 @@ async function viewProblemDetail(id) {
     ${state.me ? `
     <div class="card" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
       <div style="flex:1;min-width:220px">
-        <h2 style="margin:0 0 4px">✍️ ${mine ? '继续练习' : '开始练习'}</h2>
+        <h2 style="margin:0 0 4px">${ic('edit')} ${mine ? '继续练习' : '开始练习'}</h2>
         <div class="hint">${mine ? `已有作品：${esc(mine.title)} · ${mine.wordCount} 字` : '进入分屏工作台 —— 左边看题，右边写作'}</div>
       </div>
-      <button class="btn green" id="goWorkspace">${mine ? '✏️ 修改我的练习' : '� 开始练习'}</button>
+      <button class="btn green" id="goWorkspace">${mine ? ic('edit')+' 修改我的练习' : ic('edit')+' 开始练习'}</button>
     </div>` : `<div class="card"><div class="empty"><a href="#/login">登录</a> 后开始练习</div></div>`}
     <div class="card">
       <h2>练习作品（${p.practiceCount}）</h2>
@@ -3225,8 +3260,8 @@ async function viewTemplates() {
   $app.innerHTML = `
   <div class="container">
     <div class="page-title">
-      <div><h1>📝 写作模板库</h1><div class="sub">8 套精选模板，帮你快速搭建文章结构</div></div>
-      <button class="btn primary" onclick="go('#/write')">✍️ 去写文章</button>
+      <div><h1>${ic('templates')} 写作模板库</h1><div class="sub">8 套精选模板，帮你快速搭建文章结构</div></div>
+      <button class="btn primary" onclick="go('#/write')">${ic('edit')} 去写文章</button>
     </div>
     <div class="tpl-grid">
       ${d.templates.map(t => `
@@ -3242,10 +3277,10 @@ async function viewTemplates() {
     const t = await api('/api/templates/' + c.dataset.tpl);
     document.getElementById('tplDetail2').innerHTML = `
       <div class="card">
-        <h2>📄 ${esc(t.template.title)}</h2>
+        <h2>${ic('file')} ${esc(t.template.title)}</h2>
         <div class="hint" style="margin-bottom:10px">${esc(t.template.description)}</div>
         <div class="tpl-preview">${esc(t.template.content)}</div>
-        <button class="btn primary" onclick="go('#/write')">✅ 用这个模板去写文章</button>
+        <button class="btn primary" onclick="go('#/write')">${ic('check')} 用这个模板去写文章</button>
         <button class="btn ghost sm" id="closeTpl2" style="margin-left:8px">关闭</button>
       </div>`;
     document.getElementById('closeTpl2').onclick = () => { document.getElementById('tplDetail2').innerHTML = ''; };
@@ -3264,10 +3299,10 @@ async function viewDaily() {
   const DIFF = { 1: ['入门', '#fe4c61'], 2: ['简单', '#f39c11'], 3: ['普通', '#ffc116'], 4: ['较难', '#52c41a'], 5: ['困难', '#3498db'], 6: ['挑战', '#9d3dcf'] };
   $app.innerHTML = `
   <div class="container" style="max-width:820px">
-    <div class="page-title"><div><h1>🔥 每日打卡</h1><div class="sub">每天一题，坚持写作 · 连续 ${mine.streak} 天</div></div></div>
+    <div class="page-title"><div><h1>${ic('flame')} 每日打卡</h1><div class="sub">每天一题，坚持写作 · 连续 ${mine.streak} 天</div></div></div>
 
     <div class="checkin-card">
-      <h2>📋 今日题目</h2>
+      <h2>${ic('clipboard')} 今日题目</h2>
       ${d.daily ? `
       <div class="cc-row" style="flex-direction:column;align-items:flex-start;gap:10px">
         <div style="display:flex;gap:8px;align-items:center">
@@ -3284,19 +3319,19 @@ async function viewDaily() {
 
     <div class="card" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
       <div style="flex:1;min-width:220px">
-        <h2 style="margin:0 0 4px">✍️ ${d.myCheckin ? '今日已打卡' : '开始今日打卡'}</h2>
+        <h2 style="margin:0 0 4px">${ic('edit')} ${d.myCheckin ? '今日已打卡' : '开始今日打卡'}</h2>
         <div class="hint">${d.myCheckin ? `已打卡：+${d.myCheckin.points} 积分，明天再来吧！` : '进入分屏工作台 —— 左边题目，右边写作，支持 Markdown / 粘贴 / 上传文件'}</div>
       </div>
-      ${d.myCheckin ? '<span class="badge approved">✅ 今日已打卡</span>' : ''}
-      <button class="btn primary" id="goCheckin" ${!d.myCheckin ? '' : 'disabled'}>🚀 进入工作台</button>
+      ${d.myCheckin ? '<span class="badge approved">'+ic('check')+' 今日已打卡</span>' : ''}
+      <button class="btn primary" id="goCheckin" ${!d.myCheckin ? '' : 'disabled'}>${ic('send')} 进入工作台</button>
     </div>
 
     <div class="card">
-      <h2>📅 我的打卡记录（共 ${mine.total} 次）</h2>
+      <h2>${ic('daily')} 我的打卡记录（共 ${mine.total} 次）</h2>
       ${mine.checkins.length ? mine.checkins.map(c => `
         <div class="item">
           <div style="flex:1">
-            <div class="title">📋 ${esc(c.problem ? c.problem.title : '题目')}</div>
+            <div class="title">${ic('clipboard')} ${esc(c.problem ? c.problem.title : '题目')}</div>
             <div class="meta"><span>${fmtTime(c.createdAt)}</span><span class="hint">+${c.points} 积分</span></div>
             <div class="meta"><span style="font-size:12.5px;color:var(--text2)">${esc(c.content).slice(0, 80)}${c.content.length > 80 ? '…' : ''}</span></div>
           </div>
@@ -3324,10 +3359,10 @@ async function viewProfile(id) {
   // 勋章定义
   const badges = u.badges || [];
   const allBadges = [
-    { name: '热心点评员', reason: '点评 3 篇以上文章', icon: '⭐' },
-    { name: '勤耕不辍', reason: '连续打卡 3 天', icon: '🌱' },
-    { name: '一周达人', reason: '连续打卡 7 天', icon: '🔥' },
-    { name: '月度冠军', reason: '连续打卡 30 天', icon: '🏆' }
+    { name: '热心点评员', reason: '点评 3 篇以上文章', icon: ic('star') },
+    { name: '勤耕不辍', reason: '连续打卡 3 天', icon: ic('daily') },
+    { name: '一周达人', reason: '连续打卡 7 天', icon: ic('flame') },
+    { name: '月度冠军', reason: '连续打卡 30 天', icon: ic('contests') }
   ];
   const earned = new Set(badges.map(b => b.name));
 
@@ -3356,12 +3391,12 @@ async function viewProfile(id) {
   let list = '';
   if (tab === 'home') {
     const feed = [
-      ...d.articles.map(a => ({ t: a.createdAt, kind: '文章', icon: '📖', url: '#/article/' + a.id, title: a.title })),
-      ...d.posts.map(p => ({ t: p.createdAt, kind: '帖子', icon: '💬', url: '#/post/' + p.id, title: p.title }))
+      ...d.articles.map(a => ({ t: a.createdAt, kind: '文章', icon: ic('book'), url: '#/article/' + a.id, title: a.title })),
+      ...d.posts.map(p => ({ t: p.createdAt, kind: '帖子', icon: ic('forum'), url: '#/post/' + p.id, title: p.title }))
     ].sort((a, b) => b.t - a.t).slice(0, 10);
     list = `
     <div class="card">
-      <div class="lp-card-h">🔥 活跃热力图<span class="lp-hint">近半年 · 发文/发帖/打卡/练习</span></div>
+      <div class="lp-card-h">${ic('flame')} 活跃热力图<span class="lp-hint">近半年 · 发文/发帖/打卡/练习</span></div>
       <div class="lp-heat">
         <div class="heat-week"><span style="grid-row:1">一</span><span style="grid-row:3">三</span><span style="grid-row:5">五</span><span style="grid-row:7">日</span></div>
         <div class="heat-right">
@@ -3372,7 +3407,7 @@ async function viewProfile(id) {
       <div class="heat-legend">少<i class="h0"></i><i class="h1"></i><i class="h2"></i><i class="h3"></i><i class="h4"></i>多</div>
     </div>
     <div class="card">
-      <div class="lp-card-h">📰 近期动态</div>
+      <div class="lp-card-h">${ic('articles')} 近期动态</div>
       ${feed.length ? feed.map(f => `
         <div class="item"><div style="flex:1">
           <div class="title">${f.icon} <a href="${f.url}">${esc(f.title)}</a></div>
@@ -3383,13 +3418,13 @@ async function viewProfile(id) {
     list = d.articles && d.articles.length ? d.articles.map(a => `
       <div class="item"><div style="flex:1">
         <div class="title"><a href="#/article/${a.id}">${esc(a.title)}</a></div>
-        <div class="meta"><span>${fmtTime(a.createdAt)}</span><span>👁 ${a.views || 0}</span><span>❤️ ${a.likeCount || 0}</span></div>
+        <div class="meta"><span>${fmtTime(a.createdAt)}</span><span>${ic('eye')} ${a.views || 0}</span><span>${ic('heart')} ${a.likeCount || 0}</span></div>
       </div></div>`).join('') : '<div class="empty">暂无公开文章</div>';
   } else if (tab === 'p') {
     list = d.posts && d.posts.length ? d.posts.map(p => `
       <div class="item"><div style="flex:1">
         <div class="title"><a href="#/post/${p.id}">${esc(p.title)}</a></div>
-        <div class="meta"><span>${fmtTime(p.createdAt)}</span><span>💬 ${p.commentCount || 0}</span></div>
+        <div class="meta"><span>${fmtTime(p.createdAt)}</span><span>${ic('forum')} ${p.commentCount || 0}</span></div>
       </div></div>`).join('') : '<div class="empty">暂无公开帖子</div>';
   } else if (tab === 'b') {
     list = `
@@ -3428,12 +3463,12 @@ async function viewProfile(id) {
 
   const sc = d.stats;
   const comp = [
-    ['📖 文章 ×10', sc.articles * 10],
-    ['💬 帖子 ×5', sc.posts * 5],
-    ['❤️ 获赞 ×3', sc.likes * 3],
-    ['💭 评论 ×2', (sc.comments || 0) * 2],
-    ['✍️ 练习 ×2', (sc.practices || 0) * 2],
-    ['📋 打卡 ×2', (sc.checkins || 0) * 2]
+    [ic('book')+' 文章 ×10', sc.articles * 10],
+    [ic('forum')+' 帖子 ×5', sc.posts * 5],
+    [ic('heart')+' 获赞 ×3', sc.likes * 3],
+    [ic('forum')+' 评论 ×2', (sc.comments || 0) * 2],
+    [ic('edit')+' 练习 ×2', (sc.practices || 0) * 2],
+    [ic('clipboard')+' 打卡 ×2', (sc.checkins || 0) * 2]
   ];
   $app.innerHTML = `
   <div class="container lp-page">
@@ -3449,10 +3484,10 @@ async function viewProfile(id) {
         </div>
         <div class="lp-acts">
           ${isMe
-            ? '<a class="btn ghost" href="#/settings">⚙️ 个人设置</a>'
+            ? '<a class="btn ghost" href="#/settings">'+ic('settings')+' 个人设置</a>'
             : (state.me ? `
-          <button class="btn ${d.isFollowing ? 'ghost' : 'primary'}" id="followBtn">${d.isFollowing ? '✅ 已关注' : '➕ 关注'}</button>
-          <button class="btn ghost" id="dmBtn">✉️ 发私信</button>` : '')}
+          <button class="btn ${d.isFollowing ? 'ghost' : 'primary'}" id="followBtn">${d.isFollowing ? ic('check')+' 已关注' : ic('plus')+' 关注'}</button>
+          <button class="btn ghost" id="dmBtn">${ic('messages')} 发私信</button>` : '')}
         </div>
       </div>
     </div>
@@ -3479,14 +3514,14 @@ async function viewProfile(id) {
       <div class="lp-main">${list}</div>
       <div class="lp-side">
         <div class="card">
-          <div class="lp-card-h">👤 用户信息</div>
+          <div class="lp-card-h">${ic('user')} 用户信息</div>
           <div class="lp-kv"><span>用户编号</span><b>${esc(u.id)}</b></div>
           <div class="lp-kv"><span>用户类型</span><b>${u.role === 'admin' ? '管理员' : '普通用户'}</b></div>
           <div class="lp-kv"><span>用户名</span><b>@${esc(u.username)}</b></div>
           <div class="lp-kv"><span>注册时间</span><b>${fmtTime(u.createdAt).slice(0, 10)}</b></div>
         </div>
         <div class="card">
-          <div class="lp-card-h">⚡ 积分构成<span class="lp-hint">与排行榜同源</span></div>
+          <div class="lp-card-h">${ic('bolt')} 积分构成<span class="lp-hint">与排行榜同源</span></div>
           ${comp.map(([l, v]) => `<div class="lp-kv"><span>${l}</span><b>${v}</b></div>`).join('')}
           <div class="lp-kv lp-total"><span>总分</span><b>${sc.score || 0}</b></div>
         </div>
