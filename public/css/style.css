@@ -39,7 +39,7 @@ html.dark[data-accent='indigo'] { --blue-light: #23264d; --blue-glow: rgba(99, 1
 html, body { height: 100%; }
 body {
   font-family: "Helvetica Neue", "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
-  background: radial-gradient(1200px 800px at 80% -10%, color-mix(in srgb, var(--blue) 7%, transparent), transparent), var(--bg);
+  background: url('/img/bg-doodle.svg') center top / cover no-repeat fixed, radial-gradient(1200px 800px at 80% -10%, color-mix(in srgb, var(--blue) 7%, transparent), transparent), linear-gradient(155deg, #e0effb 0%, #e9f3ef 48%, #e3f3e6 100%);
   color: var(--text);
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
@@ -953,7 +953,7 @@ table.rank tr:last-child td { border: none; }
 /* 深色模式 */
 html.dark #readBar { background: linear-gradient(90deg,var(--blue),#73d13d); }
 html.dark body, html.dark .app-wrap { background:#0f1320; color:#e4e8f0; }
-html.dark body { background: radial-gradient(1200px 800px at 80% -10%, color-mix(in srgb, var(--blue) 4%, transparent), transparent), #0f1320; }
+html.dark body { background: url('/img/bg-doodle-dark.svg') center top / cover no-repeat fixed, radial-gradient(1200px 800px at 80% -10%, color-mix(in srgb, var(--blue) 4%, transparent), transparent), linear-gradient(155deg, #101524 0%, #101a22 48%, #0e1d1a 100%); }
 html.dark #sidebar { background:#141a2b; border-right-color:#2a3154; }
 html.dark #sidebar .logo-name { color:#e4e8f0; }
 html.dark #sidebar .logo-sub { color:#6a7599; }
