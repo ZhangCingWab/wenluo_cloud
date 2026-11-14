@@ -94,15 +94,19 @@ function hardSpaces(src) {
       .replace(/[ \t]{2,}/g, m => m.replace(/\t/g, '    ').replace(/ /g, '\u00A0'));
   }).join('\n');
 }
+/* Word 式对齐约定语法：行首 ":: 文字" 居中、"::: 文字" 右对齐 */
+function preAlign(s) {
+  return s.replace(/^::: (.+)$/gm, '<div align="right">$1</div>').replace(/^:: (.+)$/gm, '<div align="center">$1</div>');
+}
 function md(src) {
   if (!src) return '';
   try {
     const MK = window.marked && (window.marked.parse ? window.marked : window.marked.marked);
     if (MK && typeof MK.parse === 'function' && window.DOMPurify) {
-      return DOMPurify.sanitize(MK.parse(hardSpaces(String(src)), { breaks: true, gfm: true }));
+      return DOMPurify.sanitize(MK.parse(preAlign(hardSpaces(String(src))), { breaks: true, gfm: true }));
     }
   } catch (e) {}
-  return mdLegacy(hardSpaces(src));
+  return mdLegacy(hardSpaces(preAlign(src)));
 }
 if (window.DOMPurify) DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   if (node.tagName === 'A') { node.setAttribute('target', '_blank'); node.setAttribute('rel', 'noopener'); }
@@ -129,6 +133,9 @@ const MD_TB_HTML = `<div class="md-tb">
 <button type="button" data-m="link" title="插入链接 [文字](网址)"><svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 6 .4l3-3a4 4 0 0 0-5.6-5.6l-1.7 1.7M14 10a4 4 0 0 0-6-.4l-3 3a4 4 0 0 0 5.6 5.6l1.7-1.7"/></svg></button>
 <button type="button" data-m="img" title="插入图片 ![描述](网址)"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m3 17 5-4 4 3 4-4 5 5"/></svg></button>
 <button type="button" data-m="hr" title="分隔线 ---"><svg viewBox="0 0 24 24"><path d="M3 12h18M8 5h8M8 19h8"/></svg></button>
+<i></i>
+<button type="button" data-m="center" title="居中 :: 文字"><svg viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M9 18h6"/></svg></button>
+<button type="button" data-m="right" title="右对齐 ::: 文字"><svg viewBox="0 0 24 24"><path d="M4 6h16M10 12h10M12 18h8"/></svg></button>
 </div>`;
 function addMdToolbar(taId) {
   const ta = document.getElementById(taId);
@@ -138,6 +145,7 @@ function addMdToolbar(taId) {
   const bar = ta.previousElementSibling;
   bar.addEventListener('mousedown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
   bar.querySelectorAll('button[data-m]').forEach((b) => { b.onclick = () => mdApply(ta, b.dataset.m); });
+  ta.addEventListener('keydown', (ev) => { if (ev.key === 'Tab') { ev.preventDefault(); mdTab(ta, ev.shiftKey); } });
 }
 function mdApply(ta, m) {
   const v = ta.value;
@@ -171,9 +179,25 @@ function mdApply(ta, m) {
   let le = v.indexOf('\n', e); if (le < 0) le = v.length;
   s = ls; e = le;
   const line = v.slice(ls, le);
-  const stripped = line.replace(/^\s*(#{1,3}\s+|>\s+|-\s\[[ x]\]\s+|[-*]\s+|\d+\.\s+)/, '');
-  const pre = { h1: '# ', h2: '## ', h3: '### ', quote: '> ', ul: '- ', ol: '1. ', task: '- [ ] ' }[m];
+  const stripped = line.replace(/^\s*(:::+\s*|#{1,3}\s+|>\s+|-\s\[[ x]\]\s+|[-*]\s+|\d+\.\s+)/, '');
+  const pre = { center: ':: ', right: '::: ', h1: '# ', h2: '## ', h3: '### ', quote: '> ', ul: '- ', ol: '1. ', task: '- [ ] ' }[m];
   if (pre) ins(pre + stripped);
+}
+/* Tab=递进两个全角空格（多行选中则每行缩进），Shift+Tab=回退 */
+function mdTab(ta, back) {
+  const v = ta.value;
+  let s = ta.selectionStart, e = ta.selectionEnd;
+  const ls = v.lastIndexOf('\n', s - 1) + 1;
+  let le = v.indexOf('\n', e); if (le < 0) le = v.length;
+  const lines = v.slice(ls, le).split('\n');
+  const changed = back
+    ? lines.map((l) => l.replace(/^\u3000\u3000/, '').replace(/^ {1,2}/, ''))
+    : lines.map((l) => '\u3000\u3000' + l);
+  ta.focus(); ta.setSelectionRange(ls, le);
+  if (!document.execCommand('insertText', false, changed.join('\n'))) {
+    ta.setRangeText(changed.join('\n'), ls, le, 'end');
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+  }
 }
 function mdLegacy(src) {
   if (!src) return '';
@@ -537,6 +561,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-11-14 18:00', author: 'ZhangCing', items: ['写文章界面改善：编辑框内按 Tab 自动空两格（全角缩进），选中多行可整段缩进，Shift+Tab 回退', '新增 Word 式对齐：工具栏新增「居中」「右对齐」按钮，行首 :: 居中、::: 右对齐，预览和发布后同样生效'] },
   { date: '2026-11-14 16:00', author: 'ZhangCing', items: ['下线全部 AI 功能：移除 AI 写作助手面板、写作页 AI 侧栏与相关入口按钮，后端 AI 接口同步关闭', '写作工具栏与预览等原有功能不受影响'] },
   { date: '2026-11-14 14:30', author: 'ZhangCing', items: ['全站写作编辑器新增 Word 式格式工具栏：写文章、写作工作台、发帖、评论、点评、求助、出题共 8 处输入框，标题/加粗/斜体/删除线/引用/代码块/列表/表格/链接/图片/分隔线一键插入 Markdown 语法', '工具栏与全站图标同款线性描边风格，选中文字后点击直接包裹，深色模式自动适配，手机端自动换行排列', '加载提速后续：页面 HTML 改为缓存优先+后台静默更新，二次打开不再等待网络'] },
   { date: '2026-11-14 12:00', author: 'ZhangCing', items: ['全站背景更新为洛谷风线描背景：立方体、烧瓶、函数曲线、奖杯、代码窗口等 34 个手绘线性元素散布四周，中间留白不干扰阅读', '浅色模式配淡蓝→淡绿渐变底、深色模式配深蓝青渐变底与专属暗色线描层，白卡片内容自然浮于背景之上'] },
