@@ -37,13 +37,21 @@ html.dark[data-accent='rose'] { --blue-light: #331722; --blue-glow: rgba(232, 67
 html.dark[data-accent='indigo'] { --blue-light: #23264d; --blue-glow: rgba(99, 102, 241, .42); }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { height: 100%; }
+html { background: #f4f6f9; }
+html.dark { background: #0f1320; }
 body {
   font-family: "Helvetica Neue", "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
-  background: url('/img/bg-doodle.svg') center top / cover no-repeat fixed, radial-gradient(1200px 800px at 80% -10%, color-mix(in srgb, var(--blue) 7%, transparent), transparent) center / 100% 100% no-repeat fixed, linear-gradient(155deg, #e0effb 0%, #e9f3ef 48%, #e3f3e6 100%) center / 100% 100% no-repeat fixed;
   color: var(--text);
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+body::before {
+  content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: url('/img/bg-doodle.svg') center top / cover no-repeat, radial-gradient(1200px 800px at 80% -10%, color-mix(in srgb, var(--blue) 7%, transparent), transparent) center / 100% 100% no-repeat, linear-gradient(155deg, #e0effb 0%, #e9f3ef 48%, #e3f3e6 100%) center / 100% 100% no-repeat;
+}
+html.dark body::before {
+  background: url('/img/bg-doodle-dark.svg') center top / cover no-repeat, radial-gradient(1200px 800px at 80% -10%, color-mix(in srgb, var(--blue) 4%, transparent), transparent) center / 100% 100% no-repeat, linear-gradient(155deg, #101524 0%, #101a22 48%, #0e1d1a 100%) center / 100% 100% no-repeat;
 }
 a { color: var(--blue); text-decoration: none; transition: color .15s; }
 a:hover { color: var(--blue-dark); }
@@ -952,8 +960,7 @@ table.rank tr:last-child td { border: none; }
 
 /* 深色模式 */
 html.dark #readBar { background: linear-gradient(90deg,var(--blue),#73d13d); }
-html.dark body, html.dark .app-wrap { background:#0f1320; color:#e4e8f0; }
-html.dark body { background: url('/img/bg-doodle-dark.svg') center top / cover no-repeat fixed, radial-gradient(1200px 800px at 80% -10%, color-mix(in srgb, var(--blue) 4%, transparent), transparent) center / 100% 100% no-repeat fixed, linear-gradient(155deg, #101524 0%, #101a22 48%, #0e1d1a 100%) center / 100% 100% no-repeat fixed; }
+html.dark body { color:#e4e8f0; }
 html.dark #sidebar { background:#141a2b; border-right-color:#2a3154; }
 html.dark #sidebar .logo-name { color:#e4e8f0; }
 html.dark #sidebar .logo-sub { color:#6a7599; }
