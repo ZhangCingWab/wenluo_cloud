@@ -254,6 +254,29 @@ async function ensureSeedData(env) {
     )`);
     await dbRun(env, `CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id, read)`);
 
+    // 系统通知：Markdown 写作说明（幂等，每位用户只发一次）
+    try {
+      const mdMsg = [
+        '📢 Markdown 写作说明',
+        '',
+        '所有编辑框顶部都有格式工具栏，点一下就能插入格式，不用背语法！',
+        '',
+        '常用写法：',
+        '① 标题：行首输入 # （一级）、## （二级）、### （三级），# 后记得加空格',
+        '② 加粗：把文字放进两个星号之间',
+        '③ 斜体：把文字放进一个星号之间',
+        '④ 列表：行首输入 - 加空格；任务清单：行首输入 - [ ] 加空格',
+        '⑤ 引用：行首输入 > 加空格',
+        '⑥ 表格、图片、链接、代码块、分隔线：点编辑框上方工具栏对应按钮一键插入',
+        '',
+        '小技巧：先选中一段文字再点按钮直接套用格式；写作时打开「实时预览」，边写边看成品排版效果。'
+      ].join('\n');
+      await dbRun(env, `INSERT INTO notifications (id, user_id, type, from_id, target_type, target_id, content, read, created_at)
+        SELECT 'ntf_md_' || u.id, u.id, 'sys', '', '', '', ?, 0, ?
+        FROM users u
+        WHERE NOT EXISTS (SELECT 1 FROM notifications WHERE id = 'ntf_md_' || u.id)`, [mdMsg, now]);
+    } catch (e) { console.log('md notif seed skip:', e.message); }
+
     // articles 加 tags 列（如果不存在）
     try { await dbRun(env, `ALTER TABLE articles ADD COLUMN tags TEXT DEFAULT '[]'`); } catch {}
     // users 加 email 列

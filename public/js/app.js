@@ -608,7 +608,7 @@ const CHANGELOG = [
   { date: '2026-09-29', author: 'ZhangCing', items: ['审核系统全链路直接 SQL 持久化，审核状态不再丢失', '积分统一实时计算，个人主页与排行榜一致', 'Markdown 全站渲染适配', '比赛列表/详情/状态修复'] },
 ];
 /* ---------- 通知中心 ---------- */
-const NOTIF_ICON = { like: ic('heart'), comment: ic('forum'), reply: ic('reply'), adopt: ic('checkA'), contest_start: ic('contests'), problem_review: ic('problems'), practice: ic('edit') };
+const NOTIF_ICON = { like: ic('heart'), comment: ic('forum'), reply: ic('reply'), adopt: ic('checkA'), contest_start: ic('contests'), problem_review: ic('problems'), practice: ic('edit'), sys: ic('megaphone') };
 function notifUrl(n) {
   return { article: `#/article/${n.targetId}`, post: `#/post/${n.targetId}`, help: `#/discuss/help/${n.targetId}`, contest: `#/contest/${n.targetId}`, problem: `#/problem/${n.targetId}` }[n.targetType] || '';
 }
@@ -621,7 +621,7 @@ async function viewNotifications() {
       <div class="notif-ico">${NOTIF_ICON[n.type] || ic('bell')}</div>
       <div style="flex:1;min-width:0">
         <div class="title"><span class="notif-from">${n.from ? esc(n.from.nickname) : ic('megaphone')+' 系统'}</span>
-          <span style="font-weight:400;color:var(--text2)">${esc(n.content)}</span></div>
+          <span style="font-weight:400;color:var(--text2)">${esc(n.content).replace(/\n/g, '<br>')}</span></div>
         <div class="meta"><span>${fmtTime(n.createdAt)}</span></div>
       </div>
       ${n.read ? '' : '<span class="badge open">未读</span>'}
