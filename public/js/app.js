@@ -108,6 +108,73 @@ if (window.DOMPurify) DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   if (node.tagName === 'A') { node.setAttribute('target', '_blank'); node.setAttribute('rel', 'noopener'); }
   if (node.tagName === 'IMG') node.setAttribute('loading', 'lazy');
 });
+/* ---------- Markdown 格式工具栏（Word 式一键插入语法，用于所有写作输入框） ---------- */
+const MD_TB_HTML = `<div class="md-tb">
+<button type="button" data-m="h1" title="一级标题 # ">H1</button>
+<button type="button" data-m="h2" title="二级标题 ## ">H2</button>
+<button type="button" data-m="h3" title="三级标题 ### ">H3</button>
+<i></i>
+<button type="button" data-m="bold" title="加粗 **文字**"><svg viewBox="0 0 24 24"><path d="M7 5h6a3.5 3.5 0 0 1 0 7H7zM7 12h7a3.5 3.5 0 0 1 0 7H7z"/></svg></button>
+<button type="button" data-m="italic" title="斜体 *文字*"><svg viewBox="0 0 24 24"><path d="M10 5h8M6 19h8M14 5 10 19"/></svg></button>
+<button type="button" data-m="strike" title="删除线 ~~文字~~"><svg viewBox="0 0 24 24"><path d="M4 12h16M8 7a4 4 0 0 1 8-1M8 17a4 4 0 0 0 8 1"/></svg></button>
+<button type="button" data-m="quote" title="引用 > "><svg viewBox="0 0 24 24"><path d="M5 12h4v6H5zM5 12a7 7 0 0 1 4-6M15 12h4v6h-4zM15 12a7 7 0 0 1 4-6"/></svg></button>
+<button type="button" data-m="icode" title="行内代码 \`文字\`"><svg viewBox="0 0 24 24"><path d="m9 8-5 4 5 4M15 8l5 4-5 4"/></svg></button>
+<button type="button" data-m="cblock" title="代码块"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m8 10-2 2 2 2M16 10l2 2-2 2"/></svg></button>
+<i></i>
+<button type="button" data-m="ul" title="无序列表 - "><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.2"/><circle cx="4.5" cy="12" r="1.2"/><circle cx="4.5" cy="18" r="1.2"/></svg></button>
+<button type="button" data-m="ol" title="有序列表 1. "><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 5.5 5.5 5v3M3.5 11h2l-2 3h2M3.5 16.5h2M5.5 16.5v3h-2"/></svg></button>
+<button type="button" data-m="task" title="任务列表 - [ ] "><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3 6 1.2 1.2L6.5 5M3 12l1.2 1.2L6.5 11M6.5 18H3"/></svg></button>
+<i></i>
+<button type="button" data-m="table" title="插入表格"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M9 10v9M15 10v9"/></svg></button>
+<button type="button" data-m="link" title="插入链接 [文字](网址)"><svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 6 .4l3-3a4 4 0 0 0-5.6-5.6l-1.7 1.7M14 10a4 4 0 0 0-6-.4l-3 3a4 4 0 0 0 5.6 5.6l1.7-1.7"/></svg></button>
+<button type="button" data-m="img" title="插入图片 ![描述](网址)"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m3 17 5-4 4 3 4-4 5 5"/></svg></button>
+<button type="button" data-m="hr" title="分隔线 ---"><svg viewBox="0 0 24 24"><path d="M3 12h18M8 5h8M8 19h8"/></svg></button>
+</div>`;
+function addMdToolbar(taId) {
+  const ta = document.getElementById(taId);
+  if (!ta || ta.dataset.tb) return;
+  ta.dataset.tb = 1;
+  ta.insertAdjacentHTML('beforebegin', MD_TB_HTML);
+  const bar = ta.previousElementSibling;
+  bar.addEventListener('mousedown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
+  bar.querySelectorAll('button[data-m]').forEach((b) => { b.onclick = () => mdApply(ta, b.dataset.m); });
+}
+function mdApply(ta, m) {
+  const v = ta.value;
+  let s = ta.selectionStart, e = ta.selectionEnd;
+  const sel = v.slice(s, e);
+  const ins = (txt) => {
+    ta.focus(); ta.setSelectionRange(s, e);
+    if (!document.execCommand('insertText', false, txt)) {
+      ta.setRangeText(txt, s, e, 'end');
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  };
+  const wrap = { bold: '**', italic: '*', strike: '~~', icode: '`' }[m];
+  if (wrap) {
+    const t = sel || '文字';
+    ins(wrap + t + wrap);
+    if (!sel) { const p = s + wrap.length; ta.setSelectionRange(p, p + t.length); }
+    return;
+  }
+  if (m === 'link') {
+    const t = sel || '链接文字';
+    ins('[' + t + '](https://)');
+    if (!sel) { const q = s + t.length + 3; ta.setSelectionRange(q, q + 8); }
+    return;
+  }
+  if (m === 'img') { ins('![图片描述](https://)'); return; }
+  if (m === 'cblock') { ins('\n```\n' + (sel || '代码') + '\n```\n'); return; }
+  if (m === 'table') { ins('\n| 列1 | 列2 | 列3 |\n|---|---|---|\n| 内容 | 内容 | 内容 |\n'); return; }
+  if (m === 'hr') { ins('\n---\n'); return; }
+  const ls = v.lastIndexOf('\n', s - 1) + 1;
+  let le = v.indexOf('\n', e); if (le < 0) le = v.length;
+  s = ls; e = le;
+  const line = v.slice(ls, le);
+  const stripped = line.replace(/^\s*(#{1,3}\s+|>\s+|-\s\[[ x]\]\s+|[-*]\s+|\d+\.\s+)/, '');
+  const pre = { h1: '# ', h2: '## ', h3: '### ', quote: '> ', ul: '- ', ol: '1. ', task: '- [ ] ' }[m];
+  if (pre) ins(pre + stripped);
+}
 function mdLegacy(src) {
   if (!src) return '';
   let s = esc(src);
@@ -539,6 +606,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-11-14 14:30', author: 'ZhangCing', items: ['全站写作编辑器新增 Word 式格式工具栏：写文章、写作工作台、发帖、评论、点评、求助、出题共 8 处输入框，标题/加粗/斜体/删除线/引用/代码块/列表/表格/链接/图片/分隔线一键插入 Markdown 语法', '工具栏与全站图标同款线性描边风格，选中文字后点击直接包裹，深色模式自动适配，手机端自动换行排列', '加载提速后续：页面 HTML 改为缓存优先+后台静默更新，二次打开不再等待网络'] },
   { date: '2026-11-14 12:00', author: 'ZhangCing', items: ['全站背景更新为洛谷风线描背景：立方体、烧瓶、函数曲线、奖杯、代码窗口等 34 个手绘线性元素散布四周，中间留白不干扰阅读', '浅色模式配淡蓝→淡绿渐变底、深色模式配深蓝青渐变底与专属暗色线描层，白卡片内容自然浮于背景之上'] },
   { date: '2026-10-31 20:40', author: 'ZhangCing', items: ['软件 v1.1.8：做题与比赛支持查看完整题面——点选题目后弹窗内 Markdown 排版展示完整题目，看完再提交', '题面下显示难度星级、参与人数、练习数与字数限制，题面区独立滚动、深色模式适配'] },
   { date: '2026-10-31 04:05', author: 'ZhangCing', items: ['软件 v1.1.7：原生「做题」「比赛」按钮——点选题目/比赛题目，把编辑器里的文章一键提交为练习或参赛作品，不再内嵌网页', '比赛支持软件内报名/退出、查看题目与字数限制，登录账号即可直接参赛'] },
@@ -1064,6 +1132,7 @@ async function viewHelpList(body) {
     <div id="helpList"></div>
     <div id="helpPager"></div>
   </div>`;
+  addMdToolbar('hContent');
   const doSearch = () => { viewHelpList._q = document.getElementById('hSearch').value; viewHelpList._page = 1; viewDiscuss('help'); };
   document.getElementById('hSearchBtn').onclick = doSearch;
   document.getElementById('hSearch').onkeydown = (e) => { if (e.key === 'Enter') doSearch(); };
@@ -1140,6 +1209,7 @@ async function viewHelpDetail(body, id) {
       <button class="btn primary" id="rSubmit">回复</button>` :
       '<div class="empty"><a href="#/login">登录</a> 后可以回复</div>'}
   </div>`;
+  addMdToolbar('rContent');
   const refresh = () => viewDiscuss('help/' + id);
   body.querySelectorAll('[data-adopt]').forEach(el => el.onclick = async () => {
     try {
@@ -1373,6 +1443,7 @@ async function viewNewPost() {
       <span class="hint" style="margin-left:10px">审核通过后将在论坛广场展示</span>
     </div>
   </div>`;
+  addMdToolbar('pContent');
   document.getElementById('pSubmit').onclick = async (e) => {
     e.target.disabled = true;
     try {
@@ -1416,6 +1487,8 @@ async function viewPostDetail(id) {
     </div>
   </div>`;
   paginateBody(document.getElementById('postBody'), p.content);
+  const cTa = document.getElementById('cInput');
+  if (cTa) addMdToolbar('cInput');
   const del = document.getElementById('delPost');
   if (del) del.onclick = async () => {
     if (!confirm('确定删除该帖子？')) return;
@@ -1581,6 +1654,7 @@ async function viewArticleDetail(id) {
     <div class="card" id="relatedCard" style="display:none"></div>
   </div>`;
   paginateBody(document.getElementById('artBody'), a.content);
+  ['revContent', 'cmInput'].forEach((n) => { if (document.getElementById(n)) addMdToolbar(n); });
   // 文件投稿文章：把文档内容直接渲染到正文（docx→HTML / pdf→内嵌预览 / txt→文本）
   if ((id || '').startsWith('a_file_')) {
     const fbox = document.getElementById('fileDocBox');
@@ -1996,6 +2070,7 @@ async function viewWrite(editId) {
   };
   aContent.addEventListener('input', updatePreview);
   mdCheck.onchange = updatePreview;
+  addMdToolbar('aContent');
   updatePreview();
   // ========== 标签输入（可多标签） ==========
   const tagsRow = document.createElement('div');
@@ -2274,6 +2349,7 @@ async function viewWorkspace(arg) {
   drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('over'); };
   drop.ondragleave = () => drop.classList.remove('over');
   drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove('over'); readFile(e.dataTransfer.files[0]); };
+  addMdToolbar('wsContent');
   // 拖动分隔条
   const wrap = document.getElementById('wsWrap'), left = document.getElementById('wsLeft');
   let dragging = false;
@@ -3140,6 +3216,7 @@ async function viewProblems() {
       <div id="probPager"></div>
     </div>
   </div>`;
+  addMdToolbar('npContent');
   document.querySelectorAll('.tabs .t').forEach(t => t.onclick = () => { viewProblems._t = t.dataset.t; viewProblems._page = 1; route(); });
   document.getElementById('pDiff').onchange = (e) => { viewProblems._d = e.target.value; viewProblems._page = 1; route(); };
   bindSearch('pQ', (v) => { viewProblems._q = v; viewProblems._page = 1; route(); });

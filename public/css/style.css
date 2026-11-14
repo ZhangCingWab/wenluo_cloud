@@ -347,6 +347,24 @@ button, input, textarea, select, .nav a, .btn, .item, .tpl-card {
 }
 .form-item textarea { resize: vertical; min-height: 120px; }
 .form-item textarea.tall { min-height: 320px; }
+/* Markdown 格式工具栏 */
+.md-tb {
+  display: flex; align-items: center; gap: 2px; flex-wrap: wrap;
+  padding: 5px 7px; margin-bottom: -1px;
+  border: 1px solid var(--border); border-bottom: 0; border-radius: 9px 9px 0 0;
+  background: linear-gradient(var(--card), var(--bg));
+}
+.md-tb button {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 27px; height: 27px; padding: 0 5px; border: 0; border-radius: 6px;
+  background: transparent; font: 700 11.5px 'Cascadia Mono', Consolas, monospace;
+  color: var(--text2); cursor: pointer; transition: background .15s, color .15s;
+}
+.md-tb button:hover { background: var(--blue-light); color: var(--blue); }
+.md-tb button:active { transform: scale(.94); }
+.md-tb button svg { width: 15px; height: 15px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.md-tb i { width: 1px; height: 15px; background: var(--border); margin: 0 4px; }
+.md-tb + textarea { border-radius: 0 0 9px 9px; }
 .hint { font-size: 12px; color: var(--text2); margin-top: 4px; }
 .auth-card { max-width: 420px; margin: 40px auto; }
 .auth-tabs { display: flex; margin-bottom: 18px; border-bottom: 2px solid var(--border); }
