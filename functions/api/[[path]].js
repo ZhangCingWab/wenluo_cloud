@@ -228,7 +228,18 @@ const PROBLEM_PACK = [
   ['skill','用两种颜色贯穿全文写一段人生',6,'意象','两种颜色交替出现，对应人生的两面'],
 ];
 
+/* seed 版本守卫：已完成过则每 isolate 仅 1 次查询即跳过全部建表/种子逻辑；加新 seed 时 bump 版本 */
+const SEED_VERSION = 2;
+let _seedP = null;
+function ensureSeedDataOnce(env) {
+  if (!_seedP) _seedP = ensureSeedData(env).catch(() => {});
+  return _seedP;
+}
 async function ensureSeedData(env) {
+  try {
+    const done = await dbFirst(env, `SELECT v FROM meta WHERE k='seed'`);
+    if (done && done.v >= SEED_VERSION) return;
+  } catch {}
   const now = Date.now();
 
   // 自动建表（幂等，已有表不会重复创建）
@@ -567,11 +578,21 @@ async function ensureSeedData(env) {
       await dbRun(env, `INSERT INTO templates (id,title,category,description,content,created_at) VALUES (?,?,?,?,?,?)`, t);
     }
   }
+
+  // 记录 seed 版本：后续 isolate 冷启动直接跳过全部 seed
+  try {
+    await dbRun(env, `CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v INTEGER)`);
+    await dbRun(env, `INSERT INTO meta (k,v) VALUES ('seed',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v`, [SEED_VERSION]);
+  } catch {}
 }
 
 async function loadDB(env) {
   if (_cache && !_cacheDirty) return _cache;
-  try { await ensureSeedData(env); } catch {}
+  if (!_cache) {
+    // 冷启动：seed 后台跑不阻塞请求（线上表早已建好，等待只为兜底），最多等 600ms
+    ensureSeedDataOnce(env);
+    await Promise.race([_seedP, new Promise((r) => setTimeout(r, 600))]);
+  }
   // 并行加载所有表（15 个 SELECT 同时发出）
   const results = await Promise.all(CACHED_TABLES.map(async t => {
     try { return [t, await dbAll(env, `SELECT * FROM ${t}`)]; }
