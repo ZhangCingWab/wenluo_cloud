@@ -334,6 +334,22 @@ button, input, textarea, select, .nav a, .btn, .item, .tpl-card {
 .btn.sm { padding: 5px 12px; font-size: 12px; border-radius: 7px; }
 .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
 
+/* 挂载下拉 */
+#nvDropdown.show { display:block !important; }
+#nvDropdown { transition: display .2s; }
+.nv-opt { padding:10px 14px; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:8px; transition: background .15s; color:var(--text); border-bottom:1px solid var(--border-light); }
+.nv-opt:last-child { border-bottom:none; }
+.nv-opt:hover { background:var(--blue-light); }
+.nv-opt-sub { color:var(--text2); font-size:12px; margin-left:auto; }
+.nv-opt.nv-new { color:var(--blue); font-weight:500; }
+#nvPick:hover { border-color:var(--blue) !important; }
+
+/* 创建小说 Modal 动画 */
+@keyframes nvmIn {
+  from { opacity:0; transform:scale(.92) translateY(12px); }
+  to { opacity:1; transform:scale(1) translateY(0); }
+}
+
 /* 表单 */
 .form-item { margin-bottom: 14px; }
 .form-item label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--text); }
