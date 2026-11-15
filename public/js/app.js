@@ -59,7 +59,15 @@ async function api(path, { method = 'GET', body, form } = {}) {
     opts.headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(body);
   }
-  const res = await fetch(path, opts);
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 20000);
+  let res;
+  try { res = await fetch(path, { ...opts, signal: ac.signal }); }
+  catch (e) {
+    clearTimeout(timer);
+    throw new Error(e.name === 'AbortError' ? '网络超时，请检查网络后重试（内容未丢失，可复制保存）' : '网络连接失败，请稍后重试');
+  }
+  clearTimeout(timer);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const err = new Error(data.error || '请求失败 (' + res.status + ')');
@@ -1458,11 +1466,13 @@ async function viewPostDetail(id) {
     // 提取 @昵称
     content = content.replace(/^@\S+\s+/, '');
     const parentId = viewPostDetail._replyParentId || null;
+    if (cs.disabled) return;
+    cs.disabled = true; cs.textContent = '提交中…';
     try {
       await api('/api/comments', { method: 'POST', body: { target_type: 'post', target_id: id, parent_id: parentId, content } });
       toast('评论成功');
       route();
-    } catch (err) { toast(err.message, 'err'); }
+    } catch (err) { toast(err.message, 'err'); cs.disabled = false; cs.textContent = '发表回复'; }
   };
   // 初始绑定
   bindCommentEvents(document.getElementById('postComments'));
@@ -1686,11 +1696,13 @@ async function viewArticleDetail(id) {
     const mentionMatch = content.match(/^@(\S+)\s+/);
     content = content.replace(/^@\S+\s+/, '');
     const parentId = viewArticleDetail._replyParentId || null;
+    if (cmBtn.disabled) return;
+    cmBtn.disabled = true; cmBtn.textContent = '提交中…';
     try {
       await api('/api/comments', { method: 'POST', body: { target_type: 'article', target_id: id, parent_id: parentId, content } });
       toast('评论成功');
       route();
-    } catch (e) { toast(e.message, 'err'); }
+    } catch (e) { toast(e.message, 'err'); cmBtn.disabled = false; cmBtn.textContent = '发表评论'; }
   };
   // 阅读进度条
   window.addEventListener('scroll', viewArticleDetail._onScroll = () => {

@@ -113,8 +113,9 @@ const CACHED_TABLES = ['users', 'tokens', 'articles', 'posts', 'contests', 'mess
 
 let _cache = null;
 let _cacheDirty = false;
+let _dirtyAt = 0;
 /* 标记内存缓存过期（写操作后调，下次 loadDB 重查 D1） */
-function invalidateCache() { _cacheDirty = true; }
+function invalidateCache() { _cacheDirty = true; _dirtyAt = Date.now(); }
 
 // 分别检查每张表是否为空，分别补种子
 // —— 题库扩充包：100 道题，难度 1-6 全覆盖 ——
@@ -588,6 +589,8 @@ async function ensureSeedData(env) {
 
 async function loadDB(env) {
   if (_cache && !_cacheDirty) return _cache;
+  // 写风暴节流：标记脏后 4 秒内的请求沿用现有内存（各端点写路径直查 D1 保证落库正确），避免连续写时每请求全量重载 15 表
+  if (_cache && _cacheDirty && Date.now() - _dirtyAt < 4000) return _cache;
   if (!_cache) {
     // 冷启动：seed 后台跑不阻塞请求（线上表早已建好，等待只为兜底），最多等 600ms
     ensureSeedDataOnce(env);
