@@ -1423,7 +1423,7 @@ async function viewPostDetail(id) {
   const d = await api('/api/posts/' + id);
   const p = d.post;
   // 同时拉楼中楼评论
-  const cd = await api('/api/comments?target_type=post&target_id=' + id).catch(() => ({ comments: [], total: 0 }));
+  const cd = await apiRetry('/api/comments?target_type=post&target_id=' + id).catch(() => ({ comments: [], total: 0, _fail: true }));
   p._cmRoots = cd.comments || [];
   p.commentCount = cd.total || (p.comments?.length || 0);
   $app.innerHTML = `
@@ -1443,7 +1443,7 @@ async function viewPostDetail(id) {
     </div>
     <div class="card gap-top">
       <h2>全部回复（${p.commentCount}）</h2>
-      <div id="postComments">${renderComments(p._cmRoots || [], 'post', id)}</div>
+      <div id="postComments">${cd._fail ? CM_FAIL : renderComments(p._cmRoots || [], 'post', id)}</div>
       ${state.me ? `
       <div style="margin-top:14px" class="form-item">
         <textarea id="cInput" placeholder="友善回复，理性讨论…" style="min-height:80px"></textarea>
@@ -1552,8 +1552,8 @@ function loadScript(src) {
 async function viewArticleDetail(id) {
   const [d, rd, cd] = await Promise.all([
     api('/api/articles/' + id),
-    api('/api/articles/' + id + '/reviews').catch(() => ({ reviews: [], avgRating: '0.0', count: 0 })),
-    api('/api/comments?target_type=article&target_id=' + id).catch(() => ({ comments: [], total: 0 }))
+    apiRetry('/api/articles/' + id + '/reviews').catch(() => ({ reviews: [], avgRating: '0.0', count: 0, _fail: true })),
+    apiRetry('/api/comments?target_type=article&target_id=' + id).catch(() => ({ comments: [], total: 0, _fail: true }))
   ]);
   const a = d.article;
   const stars = (n) => { let s = ''; for (let i = 1; i <= 5; i++) s += i <= n ? '★' : '☆'; return s; };
@@ -1583,7 +1583,7 @@ async function viewArticleDetail(id) {
 
     <div class="card gap-top">
       <h2>${ic('star')} 文章点评（${rd.count}）<span class="hint" style="font-weight:400">平均 ${rd.avgRating} 星</span></h2>
-      ${state.me ? `
+      ${rd._fail ? RV_FAIL : state.me ? `
       <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px dashed var(--border)">
         <div class="hint" style="margin-bottom:6px">给这篇文章打个分吧（点评 +10 积分）</div>
         <div class="star-picker" id="starPicker">
@@ -1614,7 +1614,7 @@ async function viewArticleDetail(id) {
         <textarea id="cmInput" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;min-height:60px;font-size:13px;resize:vertical" placeholder="说点什么…"></textarea>
         <button class="btn primary sm" id="cmSubmit" style="margin-top:6px">${ic('forum')} 发表评论</button>
       </div>` : `<div class="empty" style="margin-bottom:12px"><a href="#/login">登录</a> 后参与评论</div>`}
-      <div id="commentBox">${renderComments(cd.comments, 'article', id)}</div>
+      <div id="commentBox">${cd._fail ? CM_FAIL : renderComments(cd.comments, 'article', id)}</div>
     </div>
 
     <div class="card" id="relatedCard" style="display:none"></div>
@@ -1752,6 +1752,16 @@ function cmItem(c, targetType, targetId, isReply) {
     </div>
   </div>`;
 }
+/* 失败自动重试一次的请求（列表类接口偶发失败不再静默吞掉） */
+async function apiRetry(path, tries = 2) {
+  let err;
+  for (let i = 0; i < tries; i++) {
+    try { return await api(path); } catch (e) { err = e; }
+  }
+  throw err;
+}
+const CM_FAIL = '<div class="empty">评论加载失败，<a onclick="route()" style="cursor:pointer;color:var(--blue)">点击重试</a></div>';
+const RV_FAIL = '<div class="empty">点评加载失败，<a onclick="route()" style="cursor:pointer;color:var(--blue)">点击重试</a></div>';
 function renderComments(roots, targetType, targetId) {
   if (!roots || !roots.length) return '<div class="empty">还没有评论，来抢沙发！</div>';
   return roots.map(c => cmItem(c, targetType, targetId, false) +
