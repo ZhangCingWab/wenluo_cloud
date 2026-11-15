@@ -3047,7 +3047,8 @@ export async function onRequest(context) {
       return json({ ok: true });
     }
     // 新增章节
-    if (match(path, 'novels/:id/chapters') && method === 'POST') {
+    m = match(path, 'novels/:id/chapters');
+    if (m && method === 'POST') {
       const me = await auth(request, env);
       if (!me) return bad('请先登录', 401);
       const nv = await env.DB.prepare(`SELECT * FROM novels WHERE id=?`).bind(m.id).first();

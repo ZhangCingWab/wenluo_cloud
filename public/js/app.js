@@ -572,6 +572,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-11-16 00:00', author: 'ZhangCing', items: ['紧急修复：创建章节后端路由 m 变量未赋值导致服务器错误，保存草稿和整本发布现在正常工作', '前端保存/发布按钮全部加 try/catch，网络错误不再让按钮永久卡住"保存中..."'] },
   { date: '2026-11-15 23:00', author: 'ZhangCing', items: ['侧边栏新增「我的小说」独立入口，卡片式展示所有小说、章节数和发布状态', '「写文章」里挂载改成漂亮的下拉选择器（渐变图标 + 悬浮效果），选「创建小说」弹出圆角 modal', '创建小说 modal 重设计：圆角 20px + 半透明毛玻璃遮罩 + 紫蓝渐变 icon，不再是生硬黑边框', '发布流程改成「整本发布」：点按钮自动先存草稿再整本发布所有章节，发布完成跳转到小说详情页', '小说详情页新增，展示已发布章节列表（可点击阅读）和草稿列表，带「继续写下一章」直接跳回编辑器自动挂载'] },
   { date: '2026-11-15 22:00', author: 'ZhangCing', items: ['小说章节直接在「写文章」里写：编辑器顶部加「挂载到」下拉，可选择写独立文章或写某小说第 N 章', '创建小说也在编辑器里一键完成——选「+ 创建新小说…」填名字就好，创建后自动选中可立即开写', '小说章节双按钮：「保存草稿」存到章节库不对外展示，「立即发布」自动生成正式文章并标注《小说名》第 N 章'] },
   { date: '2026-11-15 20:00', author: 'ZhangCing', items: ['侧边栏精简：独立的「小说连载」入口合并进「写文章」，顶部 Tab 一键切换，创作中心二合一', '原有小说连载功能完整保留，支持整库发布、单章发布、草稿编辑等全部能力'] },
@@ -2048,12 +2049,15 @@ async function viewWrite(arg) {
       if (!novelId) return { ok: false, msg: '请先选择小说' };
       if (!title) return { ok: false, msg: '请填写章节标题' };
       if (!aContent.value.trim()) return { ok: false, msg: '内容不能为空' };
-      if (initChapterId) {
-        await api('/api/chapters/' + initChapterId, { method: 'PUT', body: { title, content: aContent.value } });
-      } else {
-        await api('/api/novels/' + novelId + '/chapters', { method: 'POST', body: { title, content: aContent.value } });
-      }
-      return { ok: true };
+      try {
+        if (initChapterId) {
+          await api('/api/chapters/' + initChapterId, { method: 'PUT', body: { title, content: aContent.value } });
+        } else {
+          const r = await api('/api/novels/' + novelId + '/chapters', { method: 'POST', body: { title, content: aContent.value } });
+          initChapterId = r.chapter.id;
+        }
+        return { ok: true };
+      } catch (e) { return { ok: false, msg: e.message }; }
     };
     document.getElementById('chSave').onclick = async (e) => {
       e.target.disabled = true; e.target.textContent = '保存中…';
