@@ -230,7 +230,7 @@ const PROBLEM_PACK = [
 ];
 
 /* seed 版本守卫：已完成过则每 isolate 仅 1 次查询即跳过全部建表/种子逻辑；加新 seed 时 bump 版本 */
-const SEED_VERSION = 2;
+const SEED_VERSION = 3;
 let _seedP = null;
 function ensureSeedDataOnce(env) {
   if (!_seedP) _seedP = ensureSeedData(env).catch(() => {});
@@ -587,6 +587,26 @@ async function ensureSeedData(env) {
   } catch {}
 }
 
+/* 小说连载表：novels 总库 + novel_chapters 章节（与 seed 无关的轻量建表，每次启动幂等跑一次） */
+async function ensureNovelTables(env) {
+  try {
+    await dbRun(env, `CREATE TABLE IF NOT EXISTS novels (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL,
+      title TEXT NOT NULL, description TEXT DEFAULT '',
+      created_at INTEGER, updated_at INTEGER
+    )`);
+    await dbRun(env, `CREATE TABLE IF NOT EXISTS novel_chapters (
+      id TEXT PRIMARY KEY, novel_id TEXT NOT NULL, user_id TEXT NOT NULL,
+      idx INTEGER NOT NULL, title TEXT NOT NULL, content TEXT DEFAULT '',
+      status TEXT DEFAULT 'draft', article_id TEXT,
+      created_at INTEGER, updated_at INTEGER
+    )`);
+    await dbRun(env, `CREATE INDEX IF NOT EXISTS idx_novel_ch ON novel_chapters(novel_id, idx)`);
+    try { await dbRun(env, `ALTER TABLE articles ADD COLUMN novel_id TEXT`); } catch {}
+    try { await dbRun(env, `ALTER TABLE articles ADD COLUMN updated_at INTEGER`); } catch {}
+  } catch (e) { console.log('novel tables skip:', e.message); }
+}
+
 async function loadDB(env) {
   if (_cache && !_cacheDirty) return _cache;
   // 写风暴节流：标记脏后 4 秒内的请求沿用现有内存（各端点写路径直查 D1 保证落库正确），避免连续写时每请求全量重载 15 表
@@ -594,6 +614,7 @@ async function loadDB(env) {
   if (!_cache) {
     // 冷启动：seed 后台跑不阻塞请求（线上表早已建好，等待只为兜底），最多等 600ms
     ensureSeedDataOnce(env);
+    ensureNovelTables(env);
     await Promise.race([_seedP, new Promise((r) => setTimeout(r, 600))]);
   }
   // 并行加载所有表（15 个 SELECT 同时发出）
@@ -1464,6 +1485,12 @@ export async function onRequest(context) {
       };
       const o = articleOut(a, db);
       o.liked = !!(me && a.likes.includes(me.id));
+      if (row.novel_id) {
+        try {
+          const nv = await env.DB.prepare(`SELECT id, title FROM novels WHERE id=?`).bind(row.novel_id).first();
+          if (nv) o.novel = { id: nv.id, title: nv.title };
+        } catch {}
+      }
       return json({ article: o });
     }
 
@@ -2958,6 +2985,212 @@ export async function onRequest(context) {
           files: fC?.c || 0
         });
       } catch (e) { return bad(e.message); }
+    }
+
+    // ==================== 小说连载（文章库） ====================
+    // 我的小说列表
+    if (match(path, 'novels') && method === 'GET') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const novels = await env.DB.prepare(`SELECT n.*, (SELECT COUNT(*) FROM novel_chapters c WHERE c.novel_id=n.id) AS chCount,
+        (SELECT COUNT(*) FROM novel_chapters c WHERE c.novel_id=n.id AND c.article_id IS NOT NULL) AS pubCount
+        FROM novels n WHERE n.user_id=? ORDER BY n.updated_at DESC`).bind(me.id).all();
+      return json({ novels: (novels.results || []).map(r => ({
+        id: r.id, title: r.title, description: r.description, chCount: r.chCount, pubCount: r.pubCount,
+        createdAt: r.created_at, updatedAt: r.updated_at
+      })) });
+    }
+    // 创建小说
+    if (match(path, 'novels') && method === 'POST') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const body = await request.json().catch(() => ({}));
+      const title = clean(body.title, 100);
+      const description = clean(body.description || '', 500);
+      if (!title) return bad('小说名称不能为空');
+      const id = uid('n');
+      const now = Date.now();
+      try {
+        await env.DB.prepare(`INSERT INTO novels (id, user_id, title, description, created_at, updated_at) VALUES (?,?,?,?,?,?)`)
+          .bind(id, me.id, title, description, now, now).run();
+      } catch (e) { return bad('创建失败: ' + e.message); }
+      invalidateCache();
+      return json({ novel: { id, title, description } });
+    }
+    // 小说详情（公开：含章节目录，未发布章节仅作者可见）
+    m = match(path, 'novels/:id');
+    if (m && method === 'GET') {
+      const me = await auth(request, env);
+      const nv = await env.DB.prepare(`SELECT n.*, u.nickname AS a_nick, u.username AS a_name FROM novels n LEFT JOIN users u ON u.id=n.user_id WHERE n.id=?`).bind(m.id).first();
+      if (!nv) return bad('小说不存在', 404);
+      const isOwner = me && (me.id === nv.user_id || me.role === 'admin');
+      const chs = await env.DB.prepare(`SELECT id, idx, title, status, article_id, LENGTH(content) AS chars, updated_at FROM novel_chapters WHERE novel_id=? ORDER BY idx ASC`).bind(m.id).all();
+      const chapters = (chs.results || []).filter(c => isOwner || c.status === 'published').map(c => ({
+        id: c.id, idx: c.idx, title: c.title, published: !!c.article_id, articleId: c.article_id,
+        chars: c.chars || 0, updatedAt: c.updated_at
+      }));
+      return json({ novel: { id: nv.id, title: nv.title, description: nv.description, userId: nv.user_id,
+        author: { nickname: nv.a_nick || nv.a_name || '佚名' }, isOwner, createdAt: nv.created_at }, chapters });
+    }
+    // 删除小说（含全部章节）
+    m = match(path, 'novels/:id');
+    if (m && method === 'DELETE') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const nv = await env.DB.prepare(`SELECT * FROM novels WHERE id=?`).bind(m.id).first();
+      if (!nv) return bad('小说不存在', 404);
+      if (nv.user_id !== me.id && me.role !== 'admin') return bad('无权操作', 403);
+      await env.DB.prepare(`DELETE FROM novel_chapters WHERE novel_id=?`).bind(m.id).run();
+      await env.DB.prepare(`DELETE FROM novels WHERE id=?`).bind(m.id).run();
+      invalidateCache();
+      return json({ ok: true });
+    }
+    // 修改小说信息
+    m = match(path, 'novels/:id');
+    if (m && method === 'PUT') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const nv = await env.DB.prepare(`SELECT * FROM novels WHERE id=?`).bind(m.id).first();
+      if (!nv) return bad('小说不存在', 404);
+      if (nv.user_id !== me.id && me.role !== 'admin') return bad('无权操作', 403);
+      const body = await request.json().catch(() => ({}));
+      const title = clean(body.title, 100), description = clean(body.description || '', 500);
+      if (!title) return bad('小说名称不能为空');
+      await env.DB.prepare(`UPDATE novels SET title=?, description=?, updated_at=? WHERE id=?`).bind(title, description, Date.now(), m.id).run();
+      invalidateCache();
+      return json({ ok: true });
+    }
+    // 新增章节
+    if (match(path, 'novels/:id/chapters') && method === 'POST') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const nv = await env.DB.prepare(`SELECT * FROM novels WHERE id=?`).bind(m.id).first();
+      if (!nv) return bad('小说不存在', 404);
+      if (nv.user_id !== me.id && me.role !== 'admin') return bad('无权操作', 403);
+      const body = await request.json().catch(() => ({}));
+      const title = clean(body.title, 100), content = clean(body.content || '', 100000);
+      if (!title) return bad('章节标题不能为空');
+      const maxIdx = await env.DB.prepare(`SELECT COALESCE(MAX(idx),0) AS m FROM novel_chapters WHERE novel_id=?`).bind(m.id).first();
+      const cid = uid('c');
+      const now = Date.now();
+      await env.DB.prepare(`INSERT INTO novel_chapters (id, novel_id, user_id, idx, title, content, status, article_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,NULL,?,?)`)
+        .bind(cid, m.id, me.id, (maxIdx?.m || 0) + 1, title, content, 'draft', now, now).run();
+      await env.DB.prepare(`UPDATE novels SET updated_at=? WHERE id=?`).bind(now, m.id).run();
+      invalidateCache();
+      return json({ chapter: { id: cid, idx: (maxIdx?.m || 0) + 1, title } });
+    }
+    // 整库发布：已发布章节更新原文章，未发布章节新建文章（每章一篇，标注小说归属）
+    m = match(path, 'novels/:id/publish');
+    if (m && method === 'POST') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const nv = await env.DB.prepare(`SELECT * FROM novels WHERE id=?`).bind(m.id).first();
+      if (!nv) return bad('小说不存在', 404);
+      if (nv.user_id !== me.id && me.role !== 'admin') return bad('无权操作', 403);
+      const chs = await env.DB.prepare(`SELECT * FROM novel_chapters WHERE novel_id=? ORDER BY idx ASC`).bind(m.id).all();
+      if (!(chs.results || []).length) return bad('小说还没有章节，先写一章吧');
+      const status = me.role === 'admin' ? 'approved' : 'pending';
+      const now = Date.now();
+      let created = 0, updated = 0;
+      for (const c of (chs.results || [])) {
+        const artTitle = `《${nv.title}》第${c.idx}章 · ${c.title}`;
+        const artContent = c.content || '';
+        if (c.article_id) {
+          const exists = await env.DB.prepare(`SELECT id FROM articles WHERE id=?`).bind(c.article_id).first();
+          if (exists) {
+            await env.DB.prepare(`UPDATE articles SET title=?, content=?, status=?, novel_id=?, updated_at=? WHERE id=?`)
+              .bind(artTitle, artContent, status, nv.id, now, c.article_id).run();
+            updated++;
+            await env.DB.prepare(`UPDATE novel_chapters SET status=?, updated_at=? WHERE id=?`).bind(status, now, c.id).run();
+            continue;
+          }
+        }
+        const aid = uid('a');
+        await env.DB.prepare(`INSERT INTO articles (id, author_id, title, content, category, status, views, likes, tags, novel_id, created_at, reviewed_at)
+          VALUES (?,?,?,?,?,?,0,'[]','[]',?,?,?)`)
+          .bind(aid, me.id, artTitle, artContent, '小说', status, nv.id, now, status === 'approved' ? now : null).run();
+        await env.DB.prepare(`UPDATE novel_chapters SET status=?, article_id=?, updated_at=? WHERE id=?`).bind(status, aid, now, c.id).run();
+        created++;
+      }
+      await env.DB.prepare(`UPDATE novels SET updated_at=? WHERE id=?`).bind(now, m.id).run();
+      invalidateCache();
+      return json({ ok: true, created, updated, status, message: `整库发布完成：新建 ${created} 篇、更新 ${updated} 篇${status === 'pending' ? '，等待审核' : ''}` });
+    }
+    // 章节内容（作者可读，用于编辑）
+    m = match(path, 'chapters/:id');
+    if (m && method === 'GET') {
+      const me = await auth(request, env);
+      const c = await env.DB.prepare(`SELECT * FROM novel_chapters WHERE id=?`).bind(m.id).first();
+      if (!c) return bad('章节不存在', 404);
+      const nv = await env.DB.prepare(`SELECT * FROM novels WHERE id=?`).bind(c.novel_id).first();
+      if (!nv) return bad('小说不存在', 404);
+      if (!me || (nv.user_id !== me.id && me.role !== 'admin')) return bad('无权操作', 403);
+      return json({ chapter: { id: c.id, novelId: c.novel_id, idx: c.idx, title: c.title, content: c.content, status: c.status, articleId: c.article_id } });
+    }
+    // 保存章节
+    m = match(path, 'chapters/:id');
+    if (m && method === 'PUT') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const c = await env.DB.prepare(`SELECT * FROM novel_chapters WHERE id=?`).bind(m.id).first();
+      if (!c) return bad('章节不存在', 404);
+      const nv = await env.DB.prepare(`SELECT * FROM novels WHERE id=?`).bind(c.novel_id).first();
+      if (!nv || (nv.user_id !== me.id && me.role !== 'admin')) return bad('无权操作', 403);
+      const body = await request.json().catch(() => ({}));
+      const title = clean(body.title, 100), content = clean(body.content || '', 100000);
+      let idx = Number.isInteger(body.idx) ? body.idx : c.idx;
+      if (!title) return bad('章节标题不能为空');
+      await env.DB.prepare(`UPDATE novel_chapters SET title=?, content=?, idx=?, updated_at=? WHERE id=?`).bind(title, content, idx, Date.now(), m.id).run();
+      await env.DB.prepare(`UPDATE novels SET updated_at=? WHERE id=?`).bind(Date.now(), c.novel_id).run();
+      invalidateCache();
+      return json({ ok: true });
+    }
+    // 删除章节
+    m = match(path, 'chapters/:id');
+    if (m && method === 'DELETE') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const c = await env.DB.prepare(`SELECT * FROM novel_chapters WHERE id=?`).bind(m.id).first();
+      if (!c) return bad('章节不存在', 404);
+      const nv = await env.DB.prepare(`SELECT * FROM novels WHERE id=?`).bind(c.novel_id).first();
+      if (!nv || (nv.user_id !== me.id && me.role !== 'admin')) return bad('无权操作', 403);
+      await env.DB.prepare(`DELETE FROM novel_chapters WHERE id=?`).bind(m.id).run();
+      invalidateCache();
+      return json({ ok: true });
+    }
+    // 单章发布：发布为一篇文章，标题自动标注小说归属
+    m = match(path, 'chapters/:id/publish');
+    if (m && method === 'POST') {
+      const me = await auth(request, env);
+      if (!me) return bad('请先登录', 401);
+      const c = await env.DB.prepare(`SELECT * FROM novel_chapters WHERE id=?`).bind(m.id).first();
+      if (!c) return bad('章节不存在', 404);
+      const nv = await env.DB.prepare(`SELECT * FROM novels WHERE id=?`).bind(c.novel_id).first();
+      if (!nv || (nv.user_id !== me.id && me.role !== 'admin')) return bad('无权操作', 403);
+      const content = c.content || '';
+      if (!content.trim()) return bad('章节内容为空，先写点内容再发布');
+      const status = me.role === 'admin' ? 'approved' : 'pending';
+      const now = Date.now();
+      const artTitle = `《${nv.title}》第${c.idx}章 · ${c.title}`;
+      let aid = c.article_id;
+      if (aid) {
+        const exists = await env.DB.prepare(`SELECT id FROM articles WHERE id=?`).bind(aid).first();
+        if (exists) {
+          await env.DB.prepare(`UPDATE articles SET title=?, content=?, status=?, novel_id=?, updated_at=? WHERE id=?`)
+            .bind(artTitle, content, status, nv.id, now, aid).run();
+          await env.DB.prepare(`UPDATE novel_chapters SET status=?, updated_at=? WHERE id=?`).bind(status, now, c.id).run();
+          invalidateCache();
+          return json({ ok: true, articleId: aid, updated: true, status, message: status === 'pending' ? '章节已更新，等待审核' : '章节文章已更新' });
+        }
+      }
+      aid = uid('a');
+      await env.DB.prepare(`INSERT INTO articles (id, author_id, title, content, category, status, views, likes, tags, novel_id, created_at, reviewed_at)
+        VALUES (?,?,?,?,?,?,0,'[]','[]',?,?,?)`)
+        .bind(aid, me.id, artTitle, content, '小说', status, nv.id, now, status === 'approved' ? now : null).run();
+      await env.DB.prepare(`UPDATE novel_chapters SET status=?, article_id=?, updated_at=? WHERE id=?`).bind(status, aid, now, c.id).run();
+      await env.DB.prepare(`UPDATE novels SET updated_at=? WHERE id=?`).bind(now, c.novel_id).run();
+      invalidateCache();
+      return json({ ok: true, articleId: aid, status, message: status === 'pending' ? `已发布《${nv.title}》第${c.idx}章，等待审核` : `已发布《${nv.title}》第${c.idx}章` });
     }
 
     // ---- admin 生成一次性邀请码 ----

@@ -361,6 +361,7 @@ const ICONS = {
   submit: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>',
   downloads: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
   mine: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h6"/>',
+  novels: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M9 7h7M9 11h5"/>',
   messages: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
   checkA: '<circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.5 2.5 5-5"/>',
   checkP: '<path d="M11 6h9M11 12h9M11 18h9"/><path d="m4 6 1.2 1.2L7.5 5"/><path d="m4 12 1.2 1.2L7.5 11"/><path d="m4 18 1.2 1.2L7.5 17"/>',
@@ -430,6 +431,7 @@ function renderSidebar() {
     ${link('/submit', 'submit', '文件投稿')}
     ${link('/downloads', 'downloads', '下载站')}
     ${link('/mine', 'mine', '我的文章')}
+    ${me ? link('/novels', 'novels', '小说连载') : ''}
     ${me ? link('/messages', 'messages', '私信', '<span class="msg-badge" id="msgBadge" style="display:none">0</span>') : ''}
     ${me && me.role === 'admin' ? `
       <div class="nav-label">后台管理</div>
@@ -528,6 +530,7 @@ const routes = {
   articles: viewArticles, article: viewArticleDetail, write: viewWrite,
   rank: viewRank, contests: viewContests, contest: viewContestDetail,
   submit: viewSubmit, mine: viewMine, user: viewProfile, settings: viewSettings,
+  novels: viewNovels, novel: viewNovelDetail,
   login: viewLogin, admin: viewAdmin, messages: viewMessages, chat: viewChat,
   problems: viewProblems, problem: viewProblemDetail, work: viewWorkspace,
   templates: viewTemplates, daily: viewDaily, 'contest-create': contestCreate,
@@ -569,6 +572,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-11-15 12:00', author: 'ZhangCing', items: ['新增小说连载功能：侧边栏「小说连载」创建小说总库，一章一章写作，支持 Markdown 工具栏、Tab 空两格缩进与实时预览', '发布方式二选一：整库发布（每章各成一篇文章）或单章发布，标题自动标注「《小说名》第N章」，文章页显示所属小说与章节目录链接'] },
   { date: '2026-11-15 10:00', author: 'ZhangCing', items: ['评论区改为两级扁平结构：回复不再无限楼中楼嵌套，深层回复全部平铺在根评论下，前面标注「回复 @某人」，帖子与文章通用', '全部 API 请求加 20 秒超时保护，评论提交按钮防重复点击并显示提交中状态，网络卡顿不再无反馈'] },
   { date: '2026-11-14 18:00', author: 'ZhangCing', items: ['写文章界面改善：编辑框内按 Tab 自动空两格（全角缩进），选中多行可整段缩进，Shift+Tab 回退', '新增 Word 式对齐：工具栏新增「居中」「右对齐」按钮，行首 :: 居中、::: 右对齐，预览和发布后同样生效'] },
   { date: '2026-11-14 16:00', author: 'ZhangCing', items: ['下线全部 AI 功能：移除 AI 写作助手面板、写作页 AI 侧栏与相关入口按钮，后端 AI 接口同步关闭', '写作工具栏与预览等原有功能不受影响'] },
@@ -1564,6 +1568,7 @@ async function viewArticleDetail(id) {
     <div class="card">
       <div class="doc-head">
         <h1>${esc(a.title)}</h1>
+        ${a.novel ? `<div class="meta" style="margin-top:6px"><span class="badge approved">${ic('novels')} 《${esc(a.novel.title)}》连载章节 · <a href="#/novel/${a.novel.id}" style="color:var(--blue)">查看小说</a></span></div>` : ''}
         <div class="meta">
           <span class="type-badge">${esc(a.category || '其他')}</span>
           ${tagsHtml}
@@ -3266,6 +3271,183 @@ async function viewDaily() {
   </div>`;
   const gc = document.getElementById('goCheckin');
   if (gc) gc.onclick = () => go('#/work/checkin/today');
+}
+
+/* ---------- 小说连载（文章库） ---------- */
+async function viewNovels() {
+  if (needLogin()) return;
+  $app.innerHTML = `
+  <div class="container" style="max-width:820px">
+    <div class="card">
+      <h1>${ic('novels')} 小说连载</h1>
+      <p class="hint" style="margin:8px 0 14px">创建小说总库，一章一章写作。可以整库发布，也可以每章单独发布——单独发布的文章会自动标注「《小说名》第N章」，读者一眼看出归属。</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <input id="nvTitle" class="input" placeholder="小说名称" style="flex:1;min-width:180px">
+        <input id="nvDesc" class="input" placeholder="一句话简介（可选）" style="flex:2;min-width:220px">
+        <button class="btn primary" id="nvCreate">${ic('plus')} 创建小说</button>
+      </div>
+    </div>
+    <div class="card" id="nvList"><div class="empty">加载中…</div></div>
+  </div>`;
+  const load = async () => {
+    try {
+      const d = await apiRetry('/api/novels');
+      document.getElementById('nvList').innerHTML = d.novels.length ? d.novels.map(n => `
+      <div class="item">
+        <div style="flex:1;cursor:pointer" onclick="go('#/novel/${n.id}')">
+          <div class="title">${esc(n.title)}</div>
+          <div class="meta"><span>${ic('novels')} ${n.chCount} 章 · 已发布 ${n.pubCount} 章</span><span>${fmtTime(n.updatedAt)} 更新</span></div>
+          ${n.description ? `<div class="meta" style="color:var(--text2)">${esc(n.description)}</div>` : ''}
+        </div>
+        <button class="btn primary sm" onclick="go('#/novel/${n.id}')">写作台</button>
+      </div>`).join('') : '<div class="empty">还没有小说，在上面创建第一部吧</div>';
+    } catch (e) {
+      document.getElementById('nvList').innerHTML = `<div class="empty">加载失败，<a onclick="route()" style="cursor:pointer;color:var(--blue)">点击重试</a></div>`;
+    }
+  };
+  document.getElementById('nvCreate').onclick = async () => {
+    const title = document.getElementById('nvTitle').value.trim();
+    const description = document.getElementById('nvDesc').value.trim();
+    if (!title) return toast('请填写小说名称', 'err');
+    const btn = document.getElementById('nvCreate');
+    if (btn.disabled) return;
+    btn.disabled = true; btn.textContent = '创建中…';
+    try {
+      const r = await api('/api/novels', { method: 'POST', body: { title, description } });
+      toast('《' + title + '》创建成功');
+      go('#/novel/' + r.novel.id);
+    } catch (e) { toast(e.message, 'err'); btn.disabled = false; btn.textContent = '创建小说'; }
+  };
+  await load();
+}
+
+async function viewNovelDetail(id) {
+  const d = await api('/api/novels/' + id);
+  const nv = d.novel, chapters = d.chapters;
+  const ed = viewNovelDetail._editing;
+  let editingCh = null, editContent = '';
+  if (ed === 'new') editingCh = { id: '', idx: chapters.length + 1, title: '', content: '' };
+  else if (ed) {
+    const c = chapters.find(x => x.id === ed);
+    if (c) {
+      try {
+        const cd = await api('/api/chapters/' + ed);
+        editContent = cd.chapter.content || '';
+        editingCh = { id: c.id, idx: c.idx, title: c.title };
+      } catch (e) { editingCh = null; }
+    }
+  }
+  const chItem = (c) => `
+    <div class="item">
+      <div style="flex:1">
+        <div class="title">第${c.idx}章 · <a ${c.articleId ? `href="#/article/${c.articleId}"` : ''} style="cursor:${c.articleId ? 'pointer' : 'default'}">${esc(c.title)}</a>
+          ${c.published ? '<span class="badge approved">已发布</span>' : '<span class="badge pending">草稿</span>'}</div>
+        <div class="meta"><span>${c.chars || 0} 字</span>${c.updatedAt ? `<span>${fmtTime(c.updatedAt)} 保存</span>` : ''}</div>
+      </div>
+      ${nv.isOwner ? `
+        <button class="btn ghost sm" data-ch-edit="${c.id}">编辑</button>
+        <button class="btn primary sm" data-ch-pub="${c.id}">${c.published ? '更新文章' : '发布'}</button>
+        <button class="btn red sm" data-ch-del="${c.id}">删除</button>` : ''}
+    </div>`;
+  $app.innerHTML = `
+  <div class="container" style="max-width:820px">
+    <div class="card">
+      <div class="doc-head">
+        <h1>${ic('novels')} ${esc(nv.title)}</h1>
+        <div class="meta"><span>${ic('user')} ${esc(nv.author.nickname)}</span><span>${chapters.length} 章</span>
+          ${nv.isOwner ? '<button class="btn red sm" id="nvDel" style="margin-left:auto">删除小说</button>' : ''}</div>
+        ${nv.description ? `<p class="hint" style="margin-top:6px">${esc(nv.description)}</p>` : ''}
+      </div>
+      ${nv.isOwner ? `
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <button class="btn primary" id="chNew">${ic('plus')} 写新章节</button>
+        <button class="btn green" id="nvPubAll">${ic('submit')} 整库发布（每章一篇·自动标注）</button>
+      </div>` : ''}
+    </div>
+    ${editingCh ? `
+    <div class="card">
+      <h2>✍️ 第 ${editingCh.idx} 章</h2>
+      <input id="chTitle" class="input" placeholder="章节标题" value="${esc(editingCh.title)}" style="margin:10px 0">
+      <textarea id="chContent" class="input" rows="14" placeholder="开始写这一章的内容…（支持 Markdown，Tab 空两格缩进）"></textarea>
+      <div id="chPrev" class="prose" style="display:none;border:1px solid var(--border);border-radius:8px;padding:14px;margin-top:10px;background:#fafbfc"></div>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+        <button class="btn primary" id="chSave">${ic('check')} 保存章节</button>
+        <button class="btn ghost" id="chPrevBtn">${ic('eye')} 预览</button>
+        <button class="btn ghost" id="chCancel">取消</button>
+      </div>
+    </div>` : ''}
+    <div class="card">
+      <h2>${ic('novels')} 章节目录</h2>
+      <div id="chList">${chapters.length ? chapters.map(chItem).join('') : '<div class="empty">' + (nv.isOwner ? '还没有章节，点「写新章节」开始创作' : '作者还没有发布任何章节') + '</div>'}</div>
+    </div>
+  </div>`;
+  if (editingCh) {
+    const ta = document.getElementById('chContent');
+    ta.value = editContent;
+    addMdToolbar('chContent');
+    ta.addEventListener('keydown', (ev) => { if (ev.key === 'Tab') { ev.preventDefault(); mdTab(ta, ev.shiftKey); } });
+    document.getElementById('chPrevBtn').onclick = () => {
+      const pv = document.getElementById('chPrev');
+      const show = pv.style.display === 'none';
+      pv.style.display = show ? 'block' : 'none';
+      if (show) pv.innerHTML = md(ta.value || '（还没有内容）');
+    };
+    document.getElementById('chSave').onclick = async () => {
+      const title = document.getElementById('chTitle').value.trim();
+      if (!title) return toast('请填写章节标题', 'err');
+      const btn = document.getElementById('chSave');
+      if (btn.disabled) return;
+      btn.disabled = true; btn.textContent = '保存中…';
+      try {
+        if (ed === 'new') await api('/api/novels/' + id + '/chapters', { method: 'POST', body: { title, content: ta.value } });
+        else await api('/api/chapters/' + ed, { method: 'PUT', body: { title, content: ta.value } });
+        toast('章节已保存');
+        viewNovelDetail._editing = null;
+        route();
+      } catch (e) { toast(e.message, 'err'); btn.disabled = false; btn.innerHTML = ic('check') + ' 保存章节'; }
+    };
+    document.getElementById('chCancel').onclick = () => { viewNovelDetail._editing = null; route(); };
+  }
+  if (nv.isOwner) {
+    const cn = document.getElementById('chNew');
+    if (cn) cn.onclick = () => { viewNovelDetail._editing = 'new'; route(); };
+    const pa = document.getElementById('nvPubAll');
+    if (pa) pa.onclick = async () => {
+      if (pa.disabled) return;
+      if (!confirm('整库发布：全部章节将各发布为一篇文章（标题自动标注《' + nv.title + '》第N章）。已发布过的章节会更新原文。继续？')) return;
+      pa.disabled = true; pa.textContent = '发布中…';
+      try {
+        const r = await api('/api/novels/' + id + '/publish', { method: 'POST' });
+        toast(r.message || '整库发布完成');
+        route();
+      } catch (e) { toast(e.message, 'err'); pa.disabled = false; pa.innerHTML = ic('submit') + ' 整库发布（每章一篇·自动标注）'; }
+    };
+    const nd = document.getElementById('nvDel');
+    if (nd) nd.onclick = async () => {
+      if (!confirm('删除整部小说和全部章节？已发布的文章不会被删除。')) return;
+      try { await api('/api/novels/' + id, { method: 'DELETE' }); toast('已删除'); go('#/novels'); }
+      catch (e) { toast(e.message, 'err'); }
+    };
+    document.querySelectorAll('[data-ch-edit]').forEach(b => { b.onclick = () => { viewNovelDetail._editing = b.dataset.chEdit; route(); }; });
+    document.querySelectorAll('[data-ch-pub]').forEach(b => {
+      b.onclick = async () => {
+        if (b.disabled) return;
+        b.disabled = true; b.textContent = '发布中…';
+        try {
+          const r = await api('/api/chapters/' + b.dataset.chPub + '/publish', { method: 'POST' });
+          toast(r.message || '已发布');
+          route();
+        } catch (e) { toast(e.message, 'err'); b.disabled = false; b.textContent = '发布'; }
+      };
+    });
+    document.querySelectorAll('[data-ch-del]').forEach(b => {
+      b.onclick = async () => {
+        if (!confirm('删除这一章？（已发布的文章不受影响）')) return;
+        try { await api('/api/chapters/' + b.dataset.chDel, { method: 'DELETE' }); toast('章节已删除'); route(); }
+        catch (e) { toast(e.message, 'err'); }
+      };
+    });
+  }
 }
 
 /* ---------- 个人作品集主页 ---------- */
