@@ -569,6 +569,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-11-15 10:00', author: 'ZhangCing', items: ['评论区改为两级扁平结构：回复不再无限楼中楼嵌套，深层回复全部平铺在根评论下，前面标注「回复 @某人」，帖子与文章通用', '全部 API 请求加 20 秒超时保护，评论提交按钮防重复点击并显示提交中状态，网络卡顿不再无反馈'] },
   { date: '2026-11-14 18:00', author: 'ZhangCing', items: ['写文章界面改善：编辑框内按 Tab 自动空两格（全角缩进），选中多行可整段缩进，Shift+Tab 回退', '新增 Word 式对齐：工具栏新增「居中」「右对齐」按钮，行首 :: 居中、::: 右对齐，预览和发布后同样生效'] },
   { date: '2026-11-14 16:00', author: 'ZhangCing', items: ['下线全部 AI 功能：移除 AI 写作助手面板、写作页 AI 侧栏与相关入口按钮，后端 AI 接口同步关闭', '写作工具栏与预览等原有功能不受影响'] },
   { date: '2026-11-14 14:30', author: 'ZhangCing', items: ['全站写作编辑器新增 Word 式格式工具栏：写文章、写作工作台、发帖、评论、点评、求助、出题共 8 处输入框，标题/加粗/斜体/删除线/引用/代码块/列表/表格/链接/图片/分隔线一键插入 Markdown 语法', '工具栏与全站图标同款线性描边风格，选中文字后点击直接包裹，深色模式自动适配，手机端自动换行排列', '加载提速后续：页面 HTML 改为缓存优先+后台静默更新，二次打开不再等待网络'] },
@@ -1733,23 +1734,29 @@ async function viewArticleDetail(id) {
   }).catch(() => {});
 }
 
-/* 递归渲染楼中楼评论 */
-function renderComments(roots, targetType, targetId) {
-  if (!roots || !roots.length) return '<div class="empty">还没有评论，来抢沙发！</div>';
-  return roots.map(c => `
+/* 评论渲染：两级扁平结构——根评论 + 平铺的第二级回复（标注 回复 @某人） */
+function cmItem(c, targetType, targetId, isReply) {
+  return `
   <div class="cm-item" data-id="${c.id}">
     ${avatarHtml(c.author, 'small')}
     <div class="cm-body">
       <div class="cm-meta">
-        <b>${esc(c.author.nickname)}</b> · <span class="hint">${fmtTime(c.createdAt)}</span>
+        <b>${esc(c.author.nickname)}</b>
+        ${isReply && c.replyTo ? `<span class="cm-rt">回复 @${esc(c.replyTo)}</span>` : ''}
+        · <span class="hint">${fmtTime(c.createdAt)}</span>
         <span class="cm-like" data-cid="${c.id}" data-obj="${targetType === 'article' ? 'a' : 'p'}" data-tid="${targetId}">${ic('heart')} ${c.likeCount || 0}</span>
         <span class="cm-reply" data-cid="${c.id}" data-target="${targetType}" data-tid="${targetId}" data-replyto="${esc(c.author.nickname)}">回复</span>
         ${(state.me && (state.me.id === c.authorId || state.me.role === 'admin')) ? `<span class="cm-del" data-cid="${c.id}" data-target="${targetType}" data-tid="${targetId}">删除</span>` : ''}
       </div>
       <div class="cm-text">${esc(c.content)}</div>
-      ${c.replies && c.replies.length ? `<div class="cm-replies">${renderComments(c.replies, targetType, targetId)}</div>` : ''}
     </div>
-  </div>`).join('');
+  </div>`;
+}
+function renderComments(roots, targetType, targetId) {
+  if (!roots || !roots.length) return '<div class="empty">还没有评论，来抢沙发！</div>';
+  return roots.map(c => cmItem(c, targetType, targetId, false) +
+    (c.replies && c.replies.length ? `<div class="cm-replies">${c.replies.map(r => cmItem(r, targetType, targetId, true)).join('')}</div>` : '')
+  ).join('');
 }
 
 /* 绑定评论区的回复/点赞/删除事件（每次局部刷新后调用）*/

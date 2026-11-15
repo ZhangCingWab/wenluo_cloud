@@ -675,6 +675,7 @@ table.rank tr:last-child td { border: none; }
 .cm-body { flex: 1; min-width: 0; }
 .cm-meta { font-size: 12px; margin-bottom: 4px; color: var(--text-2); }
 .cm-meta b { color: var(--text); margin-right: 6px; }
+.cm-rt { color: var(--blue); background: var(--blue-light); border-radius: 5px; padding: 1px 7px; margin-right: 6px; font-size: 11.5px; font-weight: 500; }
 .cm-text { font-size: 14px; line-height: 1.6; word-break: break-word; }
 .cm-like, .cm-reply, .cm-del {
   cursor: pointer; margin-left: 10px; font-size: 12px; color: var(--text-2);

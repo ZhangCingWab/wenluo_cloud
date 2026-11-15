@@ -1681,13 +1681,17 @@ export async function onRequest(context) {
           authorId: row.author_id, content: row.content, likes: JSON.parse(row.likes || '[]'), createdAt: row.created_at
         }));
       } catch {}
-      // 楼中楼
+      // 两级扁平化：深层回复全部挂到根评论第二级，replyTo 标注直接回复对象昵称
       const byId = {}; all.forEach(c => { byId[c.id] = { ...c, author: pub(userByIdSync(db, c.authorId)), replies: [], likeCount: (c.likes || []).length, liked: !!(me && (c.likes || []).includes(me.id)) }; });
       const roots = [];
       all.forEach(c => {
         const node = byId[c.id];
-        if (c.parentId && byId[c.parentId]) byId[c.parentId].replies.push(node);
-        else roots.push(node);
+        if (!c.parentId || !byId[c.parentId]) { roots.push(node); return; }
+        const parent = byId[c.parentId];
+        node.replyTo = parent.author ? parent.author.nickname : '';
+        let p = parent, hops = 0;
+        while (p.parentId && byId[p.parentId] && hops++ < 20) p = byId[p.parentId];
+        p.replies.push(node);
       });
       return json({ comments: roots, total: all.length });
     }
