@@ -686,8 +686,9 @@ table.rank tr:last-child td { border: none; }
 .cm-del { color: var(--danger); }
 .cm-del:hover { text-decoration: underline; }
 .cm-replies {
-  margin-top: 8px; padding-left: 12px; border-left: 2px solid var(--border);
+  margin-top: 4px; padding-left: 40px; border-left: 2px solid var(--border);
 }
+.cm-replies .cm-item { padding: 10px 0; }
 
 /* 通知角标 */
 .notif-badge {
