@@ -330,6 +330,7 @@ button, input, textarea, select, .nav a, .btn, .item, .tpl-card {
 .btn.red:hover { background: #fdeceb; color: #c0392b; transform: translateY(-1px); }
 .btn.ghost { background: #fff; color: var(--text2); border: 1px solid var(--border); }
 .btn.ghost:hover { color: var(--blue); border-color: var(--blue); background: var(--blue-light); }
+.btn.ghost.active-tab { background: var(--blue); color:#fff; border-color: var(--blue); }
 .btn.sm { padding: 5px 12px; font-size: 12px; border-radius: 7px; }
 .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
 
