@@ -571,6 +571,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-11-15 22:00', author: 'ZhangCing', items: ['小说章节直接在「写文章」里写：编辑器顶部加「挂载到」下拉，可选择写独立文章或写某小说第 N 章', '创建小说也在编辑器里一键完成——选「+ 创建新小说…」填名字就好，创建后自动选中可立即开写', '小说章节双按钮：「保存草稿」存到章节库不对外展示，「立即发布」自动生成正式文章并标注《小说名》第 N 章'] },
   { date: '2026-11-15 20:00', author: 'ZhangCing', items: ['侧边栏精简：独立的「小说连载」入口合并进「写文章」，顶部 Tab 一键切换，创作中心二合一', '原有小说连载功能完整保留，支持整库发布、单章发布、草稿编辑等全部能力'] },
   { date: '2026-11-15 18:00', author: 'ZhangCing', items: ['首屏加载提速：/api/me 与首页数据并行请求，不再串行等待，消除「加载中...」长时间卡顿', '后端首页接口改用 SQL LIMIT + LEFT JOIN，替代 4 张表全量拉回 JS 排序，冷启动耗时减半'] },
   { date: '2026-11-15 12:00', author: 'ZhangCing', items: ['新增小说连载功能：侧边栏「小说连载」创建小说总库，一章一章写作，支持 Markdown 工具栏、Tab 空两格缩进与实时预览', '发布方式二选一：整库发布（每章各成一篇文章）或单章发布，标题自动标注「《小说名》第N章」，文章页显示所属小说与章节目录链接'] },
@@ -1825,292 +1826,186 @@ async function viewWrite(arg) {
   if (needLogin()) return;
   const hash = location.hash.replace(/^#\//, '');
   const [name, ...rest] = hash.split('/');
-  const mode = (name === 'novel') ? 'novel' : (name === 'novels') ? 'novels' : 'article';
-  const novelId = mode === 'novel' ? rest[0] : null;
-  const editId = mode === 'article' ? arg : null;
-  $app.innerHTML = `
-  <div class="container" style="max-width:100%;padding:0 16px">
-    <div class="page-title">
-      <div>
-        <h1>${ic(mode==='article'?'edit':'novels')} 创作中心</h1>
-        <div class="sub">${mode==='article'?'写一篇独立文章':'创建小说总库，一章一章连载发布'}</div>
+  const autoNovelId = (name === 'novel' && rest[0]) ? rest[0] : null;
+  const editArticleId = (name === 'write' && arg) ? arg : null;
+  $app.innerHTML = `<div class="container" style="max-width:100%;padding:0 16px"><div class="page-title"><h1>${ic('edit')} 写文章</h1><div class="sub">写独立文章，或选择小说写入第 N 章</div></div><div class="card"><div class="loading-block">加载中…</div></div></div>`;
+  try {
+    const [novelsR, tplsR] = await Promise.all([apiRetry('/api/novels'), api('/api/templates').catch(() => ({ templates: [] }))]);
+    const novels = novelsR.novels || [];
+    const tpls = tplsR.templates || [];
+    let a = null, initNovelSel = null, initChapterId = null, initChapterIdx = 1, initChapterTitle = '', initChapterContent = '';
+    if (editArticleId) {
+      try { const d = await api('/api/articles/' + editArticleId); a = d.article; } catch(e) {}
+    }
+    if (autoNovelId || state._writeNovelSel) initNovelSel = autoNovelId || state._writeNovelSel;
+    if (initNovelSel && !a) {
+      try {
+        const nd = await api('/api/novels/' + initNovelSel);
+        const chs = nd.chapters || [];
+        const maxIdx = chs.reduce((m, c) => Math.max(m, c.idx), 0);
+        initChapterIdx = maxIdx + 1;
+      } catch (e) {}
+    }
+    state._writeNovelSel = null;
+    const nvOpts = [`<option value="">不挂载（独立文章）</option>`];
+    if (novels.length) {
+      nvOpts.push(`<optgroup label="我的小说">`);
+      novels.forEach(n => nvOpts.push(`<option value="${n.id}" ${initNovelSel===n.id?'selected':''}>《${esc(n.title)}》·已有${n.chCount}章</option>`));
+      nvOpts.push(`</optgroup>`);
+    }
+    nvOpts.push(`<option value="__new">+ 创建新小说…</option>`);
+    $app.innerHTML = `
+    <div class="container" style="max-width:100%;padding:0 16px">
+      <div class="page-title">
+        <div><h1>${ic('edit')} 写文章</h1><div class="sub">写独立文章，或选择小说写入第 N 章</div></div>
+        <button class="btn ghost sm" id="tplBtn">${ic('templates')} 模板</button>
       </div>
-      <div style="display:flex;gap:6px">
-        <button class="btn ghost sm ${mode==='article'?'active-tab':''}" id="wvArticle">${ic('edit')} 写文章</button>
-        <button class="btn ghost sm ${mode!=='article'?'active-tab':''}" id="wvNovel">${ic('novels')} 小说连载</button>
-      </div>
-    </div>
-    <div id="writeBody"><div class="loading-block">加载中…</div></div>
-  </div>`;
-  document.getElementById('wvArticle').onclick = () => go('#/write');
-  document.getElementById('wvNovel').onclick = () => go('#/novels');
-  const body = document.getElementById('writeBody');
-  if (mode === 'article') await _wvArticle(body, editId);
-  else if (mode === 'novel') await _wvNovelDetail(body, novelId);
-  else await _wvNovels(body);
-}
-async function _wvArticle(body, editId) {
-  let a = null;
-  if (editId) {
-    try { const d = await api('/api/articles/' + editId); a = d.article; } catch(e) { body.innerHTML = `<div class="card"><div class="empty">${ic('help')} ${esc(e.message)}</div></div>`; return; }
-  }
-  const tpls = await api('/api/templates').catch(() => ({ templates: [] }));
-  body.innerHTML = `
-  <div id="writeSplit" class="write-split">
-    <div id="writeLeft" class="write-pane" style="width:100%">
       <div id="tplPanel" style="display:none">
-        <div class="card">
-          <h2>${ic('templates')} 写作模板（点击应用到编辑器）</h2>
-          <div class="tpl-grid">
-            ${tpls.templates.map(t => `<div class="tpl-card" data-tpl="${t.id}"><div class="t-title">${esc(t.title)}</div><div class="t-desc">${esc(t.description)}</div><span class="t-cat">${esc(t.category)}</span></div>`).join('')}
+        <div class="card"><h2>${ic('templates')} 写作模板（点击应用）</h2><div class="tpl-grid">${tpls.map(t => `<div class="tpl-card" data-tpl="${t.id}"><div class="t-title">${esc(t.title)}</div><div class="t-desc">${esc(t.description)}</div><span class="t-cat">${esc(t.category)}</span></div>`).join('')}</div></div>
+      </div>
+      <div class="card">
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+          <label style="font-size:13px;color:var(--text-2)">挂载到：</label>
+          <select id="nvSel" style="flex:1;min-width:200px">${nvOpts.join('')}</select>
+          <div id="nvNewBox" style="display:none;gap:8px;align-items:center;flex:2;min-width:300px">
+            <input id="nvNewTitle" placeholder="小说名称" style="flex:1;min-width:120px">
+            <input id="nvNewDesc" placeholder="简介（可选）" style="flex:1;min-width:120px">
+            <button class="btn primary sm" id="nvNewGo">创建</button>
+            <button class="btn ghost sm" id="nvNewCancel">取消</button>
           </div>
         </div>
-      </div>
-      <div id="tplDetail" style="display:none"></div>
-      <div class="card">
-        <div style="display:flex;gap:8px;margin-bottom:12px">
-          <button class="btn ghost sm" id="tplBtn">${ic('templates')} 选择模板</button>
+        <div id="indepFields">
+          <div class="form-item"><label>标题</label><input id="aTitle" maxlength="80" value="${a ? esc(a.title) : ''}" placeholder="给你的文章起个标题"></div>
+          <div class="form-item"><label>类别</label><select id="aCat">${ART_CATS.map(c => `<option ${a && (a.category||'其他')===c?'selected':''}>${c}</option>`).join('')}</select><div class="hint">文体/题材类别，方便读者在文章库筛选</div></div>
+          <div class="form-item"><label>标签</label><input id="aTags" placeholder="散文, 随笔（选填，逗号分隔）" value="${a ? (a.tags||[]).join(', ') : ''}"></div>
         </div>
-        <div class="form-item"><label>标题</label><input id="aTitle" maxlength="80" value="${a ? esc(a.title) : ''}" placeholder="给你的文章起个标题"></div>
-        <div class="form-item"><label>类别</label>
-          <select id="aCat">${ART_CATS.map(c => `<option ${a && (a.category || '其他') === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
-          <div class="hint">选择文体/题材类别，方便读者在文章库筛选</div>
+        <div id="chapterFields" style="display:none">
+          <div style="display:flex;gap:10px;align-items:center">
+            <div class="form-item" style="flex:0 0 110px"><label>章节序号</label><input id="chIdx" type="number" min="1" value="${initChapterIdx}"></div>
+            <div class="form-item" style="flex:1"><label>章节标题</label><input id="chTitle" maxlength="100" value="${initChapterTitle}" placeholder="第 N 章 标题"></div>
+          </div>
+          <div class="hint" style="margin-bottom:12px">保存为草稿后，可点「立即发布」自动标注《小说名》第 N 章并成为正式文章</div>
         </div>
         <div class="form-item">
-          <label>内容（支持 Markdown）</label>
-          <div style="display:flex;gap:10px;margin-bottom:6px">
+          <div style="display:flex;gap:10px;margin-bottom:6px;align-items:center">
             <label style="cursor:pointer;font-size:12px;color:var(--text-2)"><input type="checkbox" id="mdPreview" checked> 实时预览</label>
           </div>
           <div id="mdSplit" style="display:flex;gap:12px">
             <div style="flex:1;min-width:0">
               <textarea id="aContent" class="tall" style="min-height:520px" placeholder="## 标题
-这里是正文…">${a ? esc(a.content) : ''}</textarea>
+这里是正文…">${a ? esc(a.content) : initChapterContent}</textarea>
             </div>
             <div id="mdPreviewBox" style="flex:1;min-width:0;max-height:600px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:14px;background:var(--bg-soft);font-size:14px;line-height:1.7"></div>
           </div>
         </div>
-        <button class="btn primary" id="aSubmit">${a ? '保存修改' : '提交（待管理员审核）'}</button>
-        <span class="hint" style="margin-left:10px">审核通过后将在文章库展示</span>
+        <div id="indepBtns">
+          <button class="btn primary" id="aSubmit">${a ? '保存修改' : '提交（待管理员审核）'}</button>
+          <span class="hint" style="margin-left:10px">审核通过后在文章库展示</span>
+        </div>
+        <div id="chapterBtns" style="display:none;gap:10px;flex-wrap:wrap">
+          <button class="btn primary" id="chSave">${ic('check')} 保存草稿</button>
+          <button class="btn green" id="chPub">${ic('submit')} 立即发布</button>
+          <span class="hint" style="margin-left:6px">发布后自动生成正式文章，标题：《小说名》第 N 章</span>
+        </div>
       </div>
-    </div>
-  </div>`;
-  document.getElementById('tplBtn').onclick = () => {
-    const p = document.getElementById('tplPanel');
-    const d = document.getElementById('tplDetail');
-    p.style.display = p.style.display === 'none' ? 'block' : 'none';
-    d.style.display = 'none';
-  };
-  document.querySelectorAll('.tpl-card').forEach(c => c.onclick = async () => {
-    const t = await api('/api/templates/' + c.dataset.tpl);
-    document.getElementById('tplDetail').innerHTML = `<div class="card"><h2>${ic('file')} ${esc(t.template.title)}</h2><div class="hint" style="margin-bottom:10px">${esc(t.template.description)}</div><div class="tpl-preview">${esc(t.template.content)}</div><button class="btn primary sm" id="applyTpl">${ic('check')} 应用到编辑器</button><button class="btn ghost sm" id="closeTpl" style="margin-left:8px">关闭</button></div>`;
-    document.getElementById('tplDetail').style.display = 'block';
-    document.getElementById('tplPanel').style.display = 'none';
-    document.getElementById('applyTpl').onclick = () => {
-      const ta = document.getElementById('aContent');
-      ta.value = (ta.value ? ta.value + '\n\n' : '') + t.template.content;
-      toast('模板已应用！');
-      document.getElementById('tplDetail').style.display = 'none';
-      document.getElementById('aContent').focus();
-      updatePreview();
-    };
-    document.getElementById('closeTpl').onclick = () => { document.getElementById('tplDetail').style.display = 'none'; document.getElementById('tplPanel').style.display = 'block'; };
-  });
-  const aContent = document.getElementById('aContent');
-  const mdBox = document.getElementById('mdPreviewBox');
-  const mdCheck = document.getElementById('mdPreview');
-  const updatePreview = () => {
-    if (!mdCheck.checked) { mdBox.innerHTML = ''; return; }
-    mdBox.innerHTML = md(aContent.value) || '<span class="hint">预览区（输入内容后自动渲染）</span>';
-  };
-  aContent.addEventListener('input', updatePreview);
-  mdCheck.onchange = updatePreview;
-  addMdToolbar('aContent');
-  updatePreview();
-  const tagsRow = document.createElement('div');
-  tagsRow.style.marginTop = '8px';
-  tagsRow.innerHTML = `<label style="font-size:12px;color:var(--text-2)">标签（逗号分隔，最多 8 个，选填）</label>
-    <input id="aTags" placeholder="散文, 随笔, 思考" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:8px;margin-top:4px">`;
-  document.getElementById('aCat').closest('.form-item').after(tagsRow);
-  const aTags = document.getElementById('aTags');
-  if (a) aTags.value = (a.tags || []).join(', ');
-  document.getElementById('aSubmit').onclick = async (e) => {
-    e.target.disabled = true;
-    try {
-      const tags = aTags.value.split(/[,，]/).map(t => t.trim()).filter(Boolean);
-      if (a) await api('/api/articles/' + a.id, { method: 'PUT', body: { title: aTitle.value, category: aCat.value, content: aContent.value, tags } });
-      else await api('/api/articles', { method: 'POST', body: { title: aTitle.value, category: aCat.value, content: aContent.value, tags } });
-      toast('提交成功，等待审核');
-      go('#/mine');
-    } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
-  };
-}
-async function _wvNovels(body) {
-  body.innerHTML = `
-  <div class="card">
-    <h2>${ic('novels')} 我的小说</h2>
-    <p class="hint" style="margin:8px 0 14px">创建小说总库，一章一章写作。可以整库发布，也可以每章单独发布——单独发布的文章会自动标注「《小说名》第N章」，读者一眼看出归属。</p>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <input id="nvTitle" class="input" placeholder="小说名称" style="flex:1;min-width:180px">
-      <input id="nvDesc" class="input" placeholder="一句话简介（可选）" style="flex:2;min-width:220px">
-      <button class="btn primary" id="nvCreate">${ic('plus')} 创建小说</button>
-    </div>
-  </div>
-  <div class="card" id="nvList"><div class="empty">加载中…</div></div>`;
-  try {
-    const d = await apiRetry('/api/novels');
-    document.getElementById('nvList').innerHTML = d.novels.length ? d.novels.map(n => `
-    <div class="item">
-      <div style="flex:1;cursor:pointer" onclick="go('#/novel/${n.id}')">
-        <div class="title">${esc(n.title)}</div>
-        <div class="meta"><span>${ic('novels')} ${n.chCount} 章 · 已发布 ${n.pubCount} 章</span><span>${fmtTime(n.updatedAt)} 更新</span></div>
-        ${n.description ? `<div class="meta" style="color:var(--text2)">${esc(n.description)}</div>` : ''}
-      </div>
-      <button class="btn primary sm" onclick="go('#/novel/${n.id}')">写作台</button>
-    </div>`).join('') : '<div class="empty">还没有小说，在上面创建第一部吧</div>';
-  } catch (e) {
-    document.getElementById('nvList').innerHTML = `<div class="empty">加载失败，<a onclick="route()" style="cursor:pointer;color:var(--blue)">点击重试</a></div>`;
-  }
-  document.getElementById('nvCreate').onclick = async () => {
-    const title = document.getElementById('nvTitle').value.trim();
-    const description = document.getElementById('nvDesc').value.trim();
-    if (!title) return toast('请填写小说名称', 'err');
-    const btn = document.getElementById('nvCreate');
-    if (btn.disabled) return;
-    btn.disabled = true; btn.textContent = '创建中…';
-    try {
-      const r = await api('/api/novels', { method: 'POST', body: { title, description } });
-      toast('《' + title + '》创建成功');
-      go('#/novel/' + r.novel.id);
-    } catch (e) { toast(e.message, 'err'); btn.disabled = false; btn.textContent = '创建小说'; }
-  };
-}
-async function _wvNovelDetail(body, id) {
-  const d = await api('/api/novels/' + id);
-  const nv = d.novel, chapters = d.chapters;
-  const ed = state._novelEditing;
-  let editingCh = null, editContent = '';
-  if (ed === 'new') editingCh = { id: '', idx: chapters.length + 1, title: '', content: '' };
-  else if (ed) {
-    const c = chapters.find(x => x.id === ed);
-    if (c) {
-      try {
-        const cd = await api('/api/chapters/' + ed);
-        editContent = cd.chapter.content || '';
-        editingCh = { id: c.id, idx: c.idx, title: c.title };
-      } catch (e) { editingCh = null; }
-    }
-  }
-  const chItem = (c) => `
-    <div class="item">
-      <div style="flex:1">
-        <div class="title">第${c.idx}章 · <a ${c.articleId ? `href="#/article/${c.articleId}"` : ''} style="cursor:${c.articleId ? 'pointer' : 'default'}">${esc(c.title)}</a>
-          ${c.published ? '<span class="badge approved">已发布</span>' : '<span class="badge pending">草稿</span>'}</div>
-        <div class="meta"><span>${c.chars || 0} 字</span>${c.updatedAt ? `<span>${fmtTime(c.updatedAt)} 保存</span>` : ''}</div>
-      </div>
-      ${nv.isOwner ? `
-        <button class="btn ghost sm" data-ch-edit="${c.id}">编辑</button>
-        <button class="btn primary sm" data-ch-pub="${c.id}">${c.published ? '更新文章' : '发布'}</button>
-        <button class="btn red sm" data-ch-del="${c.id}">删除</button>` : ''}
     </div>`;
-  body.innerHTML = `
-  <div class="card">
-    <div class="doc-head">
-      <div style="display:flex;align-items:center;gap:10px;flex:1">
-        <button class="btn ghost sm" onclick="go('#/novels')">← 我的小说</button>
-        <h1 style="margin:0">${ic('novels')} ${esc(nv.title)}</h1>
-      </div>
-      <div class="meta" style="margin-top:6px"><span>${ic('user')} ${esc(nv.author.nickname)}</span><span>${chapters.length} 章</span>
-        ${nv.isOwner ? '<button class="btn red sm" id="nvDel" style="margin-left:auto">删除小说</button>' : ''}</div>
-      ${nv.description ? `<p class="hint" style="margin-top:6px">${esc(nv.description)}</p>` : ''}
-    </div>
-    ${nv.isOwner ? `
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
-      <button class="btn primary" id="chNew">${ic('plus')} 写新章节</button>
-      <button class="btn green" id="nvPubAll">${ic('submit')} 整库发布（每章一篇·自动标注）</button>
-    </div>` : ''}
-  </div>
-  ${editingCh ? `
-  <div class="card">
-    <h2>✍️ 第 ${editingCh.idx} 章</h2>
-    <input id="chTitle" class="input" placeholder="章节标题" value="${esc(editingCh.title)}" style="margin:10px 0">
-    <textarea id="chContent" class="input" rows="14" placeholder="开始写这一章的内容…（支持 Markdown，Tab 空两格缩进）"></textarea>
-    <div id="chPrev" class="prose" style="display:none;border:1px solid var(--border);border-radius:8px;padding:14px;margin-top:10px;background:#fafbfc"></div>
-    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-      <button class="btn primary" id="chSave">${ic('check')} 保存章节</button>
-      <button class="btn ghost" id="chPrevBtn">${ic('eye')} 预览</button>
-      <button class="btn ghost" id="chCancel">取消</button>
-    </div>
-  </div>` : ''}
-  <div class="card">
-    <h2>${ic('novels')} 章节目录</h2>
-    <div id="chList">${chapters.length ? chapters.map(chItem).join('') : '<div class="empty">' + (nv.isOwner ? '还没有章节，点「写新章节」开始创作' : '作者还没有发布任何章节') + '</div>'}</div>
-  </div>`;
-  if (editingCh) {
-    const ta = document.getElementById('chContent');
-    ta.value = editContent;
-    addMdToolbar('chContent');
-    ta.addEventListener('keydown', (ev) => { if (ev.key === 'Tab') { ev.preventDefault(); mdTab(ta, ev.shiftKey); } });
-    document.getElementById('chPrevBtn').onclick = () => {
-      const pv = document.getElementById('chPrev');
-      const show = pv.style.display === 'none';
-      pv.style.display = show ? 'block' : 'none';
-      if (show) pv.innerHTML = md(ta.value || '（还没有内容）');
+    const sel = document.getElementById('nvSel');
+    const indepFields = document.getElementById('indepFields');
+    const chapterFields = document.getElementById('chapterFields');
+    const indepBtns = document.getElementById('indepBtns');
+    const chapterBtns = document.getElementById('chapterBtns');
+    const nvNewBox = document.getElementById('nvNewBox');
+    const aContent = document.getElementById('aContent');
+    const mdBox = document.getElementById('mdPreviewBox');
+    const mdCheck = document.getElementById('mdPreview');
+    const applyMode = () => {
+      const v = sel.value;
+      if (v === '') { indepFields.style.display=''; chapterFields.style.display='none'; indepBtns.style.display=''; chapterBtns.style.display='none'; nvNewBox.style.display='none'; }
+      else if (v === '__new') { indepFields.style.display='none'; chapterFields.style.display='none'; indepBtns.style.display='none'; chapterBtns.style.display='none'; nvNewBox.style.display='flex'; }
+      else { indepFields.style.display='none'; chapterFields.style.display=''; indepBtns.style.display='none'; chapterBtns.style.display='flex'; nvNewBox.style.display='none'; }
     };
-    document.getElementById('chSave').onclick = async () => {
+    sel.onchange = applyMode; applyMode();
+    document.getElementById('nvNewCancel').onclick = () => { sel.value = ''; applyMode(); };
+    document.getElementById('nvNewGo').onclick = async () => {
+      const title = document.getElementById('nvNewTitle').value.trim();
+      const description = document.getElementById('nvNewDesc').value.trim();
+      if (!title) return toast('请填写小说名称', 'err');
+      const btn = document.getElementById('nvNewGo');
+      btn.disabled = true; btn.textContent = '创建中…';
+      try {
+        const r = await api('/api/novels', { method: 'POST', body: { title, description } });
+        toast('《' + title + '》创建成功');
+        state._writeNovelSel = r.novel.id;
+        route();
+      } catch (e) { toast(e.message, 'err'); btn.disabled = false; btn.textContent = '创建'; }
+    };
+    document.getElementById('tplBtn').onclick = () => {
+      const p = document.getElementById('tplPanel');
+      p.style.display = p.style.display === 'none' ? 'block' : 'none';
+    };
+    document.querySelectorAll('.tpl-card').forEach(c => c.onclick = async () => {
+      const t = await api('/api/templates/' + c.dataset.tpl);
+      aContent.value = (aContent.value ? aContent.value + '\n\n' : '') + t.template.content;
+      toast('模板已应用');
+      document.getElementById('tplPanel').style.display = 'none';
+      updatePreview();
+    });
+    const updatePreview = () => {
+      if (!mdCheck.checked) { mdBox.innerHTML = ''; return; }
+      mdBox.innerHTML = md(aContent.value) || '<span class="hint">预览区（输入内容后自动渲染）</span>';
+    };
+    aContent.addEventListener('input', updatePreview);
+    mdCheck.onchange = updatePreview;
+    addMdToolbar('aContent');
+    updatePreview();
+    document.getElementById('aSubmit').onclick = async (e) => {
+      e.target.disabled = true;
+      try {
+        const tags = document.getElementById('aTags').value.split(/[,，]/).map(t => t.trim()).filter(Boolean);
+        if (a) await api('/api/articles/' + a.id, { method: 'PUT', body: { title: aTitle.value, category: aCat.value, content: aContent.value, tags } });
+        else await api('/api/articles', { method: 'POST', body: { title: aTitle.value, category: aCat.value, content: aContent.value, tags } });
+        toast('提交成功，等待审核');
+        go('#/mine');
+      } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
+    };
+    const saveChapter = async () => {
+      const novelId = sel.value;
       const title = document.getElementById('chTitle').value.trim();
-      if (!title) return toast('请填写章节标题', 'err');
-      const btn = document.getElementById('chSave');
-      if (btn.disabled) return;
-      btn.disabled = true; btn.textContent = '保存中…';
+      const idx = parseInt(document.getElementById('chIdx').value) || 1;
+      if (!novelId) return { ok: false, msg: '请先选择小说' };
+      if (!title) return { ok: false, msg: '请填写章节标题' };
+      if (!aContent.value.trim()) return { ok: false, msg: '内容不能为空' };
+      if (initChapterId) {
+        await api('/api/chapters/' + initChapterId, { method: 'PUT', body: { title, content: aContent.value, idx } });
+      } else {
+        await api('/api/novels/' + novelId + '/chapters', { method: 'POST', body: { title, content: aContent.value } });
+      }
+      return { ok: true };
+    };
+    document.getElementById('chSave').onclick = async (e) => {
+      e.target.disabled = true;
+      const r = await saveChapter();
+      if (!r.ok) { toast(r.msg, 'err'); e.target.disabled = false; return; }
+      toast('草稿已保存，点「立即发布」可生成正式文章');
+      e.target.disabled = false;
+    };
+    document.getElementById('chPub').onclick = async (e) => {
+      e.target.disabled = true;
+      const novelId = sel.value;
       try {
-        if (ed === 'new') await api('/api/novels/' + id + '/chapters', { method: 'POST', body: { title, content: ta.value } });
-        else await api('/api/chapters/' + ed, { method: 'PUT', body: { title, content: ta.value } });
-        toast('章节已保存');
-        state._novelEditing = null;
-        route();
-      } catch (e) { toast(e.message, 'err'); btn.disabled = false; btn.innerHTML = ic('check') + ' 保存章节'; }
+        if (initChapterId) {
+          await api('/api/chapters/' + initChapterId, { method: 'PUT', body: { title: document.getElementById('chTitle').value.trim(), content: aContent.value, idx: parseInt(document.getElementById('chIdx').value) || 1 } });
+          await api('/api/chapters/' + initChapterId + '/publish', { method: 'POST' });
+        } else {
+          const cr = await api('/api/novels/' + novelId + '/chapters', { method: 'POST', body: { title: document.getElementById('chTitle').value.trim(), content: aContent.value } });
+          await api('/api/chapters/' + cr.chapter.id + '/publish', { method: 'POST' });
+        }
+        toast('已发布为正式文章');
+        go('#/mine');
+      } catch (err) { toast(err.message, 'err'); e.target.disabled = false; }
     };
-    document.getElementById('chCancel').onclick = () => { state._novelEditing = null; route(); };
-  }
-  if (nv.isOwner) {
-    const cn = document.getElementById('chNew');
-    if (cn) cn.onclick = () => { state._novelEditing = 'new'; route(); };
-    const pa = document.getElementById('nvPubAll');
-    if (pa) pa.onclick = async () => {
-      if (pa.disabled) return;
-      if (!confirm('整库发布：全部章节将各发布为一篇文章（标题自动标注《' + nv.title + '》第N章）。已发布过的章节会更新原文。继续？')) return;
-      pa.disabled = true; pa.textContent = '发布中…';
-      try {
-        const r = await api('/api/novels/' + id + '/publish', { method: 'POST' });
-        toast(r.message || '整库发布完成');
-        route();
-      } catch (e) { toast(e.message, 'err'); pa.disabled = false; pa.innerHTML = ic('submit') + ' 整库发布（每章一篇·自动标注）'; }
-    };
-    const nd = document.getElementById('nvDel');
-    if (nd) nd.onclick = async () => {
-      if (!confirm('删除整部小说和全部章节？已发布的文章不会被删除。')) return;
-      try { await api('/api/novels/' + id, { method: 'DELETE' }); toast('已删除'); go('#/novels'); }
-      catch (e) { toast(e.message, 'err'); }
-    };
-    document.querySelectorAll('[data-ch-edit]').forEach(b => { b.onclick = () => { state._novelEditing = b.dataset.chEdit; route(); }; });
-    document.querySelectorAll('[data-ch-pub]').forEach(b => {
-      b.onclick = async () => {
-        if (b.disabled) return;
-        b.disabled = true; b.textContent = '发布中…';
-        try {
-          const r = await api('/api/chapters/' + b.dataset.chPub + '/publish', { method: 'POST' });
-          toast(r.message || '发布成功');
-          route();
-        } catch (e) { toast(e.message, 'err'); b.disabled = false; b.textContent = '发布'; }
-      };
-    });
-    document.querySelectorAll('[data-ch-del]').forEach(b => {
-      b.onclick = async () => {
-        if (!confirm('删除这一章？')) return;
-        try { await api('/api/chapters/' + b.dataset.chDel, { method: 'DELETE' }); toast('已删除'); route(); }
-        catch (e) { toast(e.message, 'err'); }
-      };
-    });
+  } catch (e) {
+    $app.innerHTML = `<div class="card"><div class="empty">${ic('help')} ${esc(e.message)}</div></div>`;
   }
 }
 
