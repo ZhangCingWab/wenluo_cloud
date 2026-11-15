@@ -1346,55 +1346,41 @@ export async function onRequest(context) {
     if (match(path, 'home') && method === 'GET') {
       const now = Date.now();
       try {
-        const [usersR, artsR, postsR, contestsR] = await Promise.all([
-          env.DB.prepare('SELECT * FROM users').all(),
-          env.DB.prepare('SELECT * FROM articles').all(),
-          env.DB.prepare('SELECT * FROM posts').all(),
-          env.DB.prepare('SELECT * FROM contests').all()
+        const [statsR, artsR, postsR, contestsR, usersR] = await Promise.all([
+          env.DB.prepare(`SELECT
+            (SELECT COUNT(*) FROM users) as users,
+            (SELECT COUNT(*) FROM articles WHERE status='approved') as articles,
+            (SELECT COUNT(*) FROM posts WHERE status='approved') as posts,
+            (SELECT COUNT(*) FROM contests) as contests`).first(),
+          env.DB.prepare(`SELECT a.*, u.nickname as author_nick FROM articles a LEFT JOIN users u ON a.author_id=u.id WHERE a.status='approved' ORDER BY a.created_at DESC LIMIT 6`).all(),
+          env.DB.prepare(`SELECT p.*, u.nickname as author_nick FROM posts p LEFT JOIN users u ON p.author_id=u.id WHERE p.status='approved' ORDER BY p.created_at DESC LIMIT 6`).all(),
+          env.DB.prepare(`SELECT * FROM contests WHERE start_time<=? AND end_time>=?`).bind(now, now).all(),
+          env.DB.prepare('SELECT id, nickname FROM users').all()
         ]);
-        const users = (usersR.results || []).map(toCamel);
-        const allArts = (artsR.results || []).map(toCamel);
-        const allPosts = (postsR.results || []).map(toCamel);
-        const allContests = (contestsR.results || []).map(toCamel);
-        const approvedArts = allArts.filter(a => a.status === 'approved');
-        const approvedPosts = allPosts.filter(p => p.status === 'approved');
-        const stats = {
-          users: users.length,
-          articles: approvedArts.length,
-          posts: approvedPosts.length,
-          contests: allContests.length
-        };
-        const umap = {};
-        users.forEach(u => { umap[u.id] = u; });
-        const latestArticles = approvedArts.sort((a, b) => b.createdAt - a.createdAt).slice(0, 6).map(row => {
-          const author = umap[row.authorId] || null;
-          return {
-            id: row.id, authorId: row.authorId, title: row.title, content: row.content,
-            category: row.category, status: row.status, views: row.views || 0,
-            likeCount: (row.likes ? safeJSON(row.likes).length : 0),
-            tags: row.tags ? safeJSON(row.tags) : [],
-            createdAt: row.createdAt, reviewedAt: row.reviewedAt,
-            author: author ? pub(author) : { nickname: '未知用户' }
-          };
-        });
-        const latestPosts = approvedPosts.sort((a, b) => b.createdAt - a.createdAt).slice(0, 6).map(row => {
-          const author = umap[row.authorId] || null;
-          return {
-            id: row.id, authorId: row.authorId, title: row.title, content: row.content,
-            category: row.category, status: row.status, createdAt: row.createdAt,
-            commentCount: (row.comments ? safeJSON(row.comments).length : 0),
-            author: author ? pub(author) : { nickname: '未知用户' }
-          };
-        });
-        const activeContests = allContests
-          .filter(c => (c.startTime || 0) <= now && now <= (c.endTime || 0))
-          .map(c => ({
-            id: c.id, title: c.title, description: c.description,
-            participantCount: (() => { const p = c.participants ? safeJSON(c.participants) : []; return Array.isArray(p) ? p.length : 0; })(),
-            problemCount: (() => { const p = c.problems ? safeJSON(c.problems) : []; return Array.isArray(p) ? p.length : 0; })(),
-            startTime: c.startTime, endTime: c.endTime, createdAt: c.createdAt,
-            status: 'active'
-          })).slice(0, 3);
+        const users = (usersR.results || []).reduce((m, u) => { m[u.id] = u.nickname; return m; }, {});
+        const stats = statsR || { users: 0, articles: 0, posts: 0, contests: 0 };
+        const latestArticles = (artsR.results || []).map(row => ({
+          id: row.id, authorId: row.author_id, title: row.title,
+          category: row.category, status: row.status,
+          views: row.views || 0,
+          likeCount: (row.likes ? safeJSON(row.likes).length : 0),
+          tags: row.tags ? safeJSON(row.tags) : [],
+          createdAt: row.created_at,
+          author: { nickname: row.author_nick || users[row.author_id] || '未知用户' }
+        }));
+        const latestPosts = (postsR.results || []).map(row => ({
+          id: row.id, authorId: row.author_id, title: row.title,
+          status: row.status, createdAt: row.created_at,
+          commentCount: (row.comments ? safeJSON(row.comments).length : 0),
+          author: { nickname: row.author_nick || users[row.author_id] || '未知用户' }
+        }));
+        const activeContests = (contestsR.results || []).map(c => ({
+          id: c.id, title: c.title, description: c.description,
+          participantCount: (() => { const p = c.participants ? safeJSON(c.participants) : []; return Array.isArray(p) ? p.length : 0; })(),
+          problemCount: (() => { const p = c.problems ? safeJSON(c.problems) : []; return Array.isArray(p) ? p.length : 0; })(),
+          startTime: c.start_time, endTime: c.end_time, createdAt: c.created_at,
+          status: 'active'
+        })).slice(0, 3);
         return json({ stats, latestArticles, latestPosts, activeContests });
       } catch (e) { return json({ stats: { users: 0, articles: 0, posts: 0, contests: 0 }, latestArticles: [], latestPosts: [], activeContests: [] }); }
     }

@@ -572,6 +572,7 @@ window.applyContestInvite = function () {
 /* ---------- 主页 ---------- */
 /* 站点更新说明（每次部署时追加最新一条在最上面）*/
 const CHANGELOG = [
+  { date: '2026-11-15 18:00', author: 'ZhangCing', items: ['首屏加载提速：/api/me 与首页数据并行请求，不再串行等待，消除「加载中...」长时间卡顿', '后端首页接口改用 SQL LIMIT + LEFT JOIN，替代 4 张表全量拉回 JS 排序，冷启动耗时减半'] },
   { date: '2026-11-15 12:00', author: 'ZhangCing', items: ['新增小说连载功能：侧边栏「小说连载」创建小说总库，一章一章写作，支持 Markdown 工具栏、Tab 空两格缩进与实时预览', '发布方式二选一：整库发布（每章各成一篇文章）或单章发布，标题自动标注「《小说名》第N章」，文章页显示所属小说与章节目录链接'] },
   { date: '2026-11-15 10:00', author: 'ZhangCing', items: ['评论区改为两级扁平结构：回复不再无限楼中楼嵌套，深层回复全部平铺在根评论下，前面标注「回复 @某人」，帖子与文章通用', '全部 API 请求加 20 秒超时保护，评论提交按钮防重复点击并显示提交中状态，网络卡顿不再无反馈'] },
   { date: '2026-11-14 18:00', author: 'ZhangCing', items: ['写文章界面改善：编辑框内按 Tab 自动空两格（全角缩进），选中多行可整段缩进，Shift+Tab 回退', '新增 Word 式对齐：工具栏新增「居中」「右对齐」按钮，行首 :: 居中、::: 右对齐，预览和发布后同样生效'] },
@@ -3648,17 +3649,16 @@ async function viewProfile(id) {
 }
 
 /* ---------- 启动 ---------- */
+const _meP = api('/api/me').then(d => { state.me = d.user; return state.me; }).catch(() => { state.me = null; return null; });
 (async function init() {
-  try {
-    const d = await api('/api/me');
-    state.me = d.user;
-  } catch (e) { state.me = null; }
   window.addEventListener('hashchange', route);
   window.go = go;
   renderSidebar();
   route();
+  const me = await _meP;
+  renderSidebar();
+  refreshUnread();
   setInterval(refreshUnread, 30000);
-  // 移动端抽屉侧边栏：汉堡开关，点导航/遮罩/路由变化自动收起
   document.getElementById('menuBtn').addEventListener('click', () => document.body.classList.toggle('nav-open'));
   document.getElementById('navMask').addEventListener('click', () => document.body.classList.remove('nav-open'));
   document.getElementById('sidebar').addEventListener('click', e => {
